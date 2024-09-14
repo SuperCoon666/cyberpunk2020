@@ -76,7 +76,7 @@ export class CyberpunkActorSheet extends ActorSheet {
         listToFilter = sheetData.filteredSkillIDs; 
       }
       return listToFilter.filter(id => {
-        let skillName = this.actor.items.get(id).name;
+        let skillName = this.actor.items.get(id).system_name;
         return skillName.toUpperCase().includes(upperSearch);
       });
     }
@@ -99,7 +99,7 @@ export class CyberpunkActorSheet extends ActorSheet {
     let nameSorter = new Intl.Collator();
     let showItems = allItems.filter((item) => !hideThese.has(item.type))
       .sort((a, b) => {
-        return nameSorter.compare(a.name, b.name)
+        return nameSorter.compare(a.system_name, b.system_name)
       });
     return showItems;
   }

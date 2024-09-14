@@ -365,7 +365,7 @@ export class CyberpunkItem extends Item {
     let damageRoll = new Roll(this.system.damage);
     let locationRoll = await rollLocation(attackMods.targetActor, attackMods.targetArea);
 
-    let bigRoll = new Multiroll(this.name, this.system.flavor)
+    let bigRoll = new Multiroll(this.system_name, this.system.flavor)
       .addRoll(new Roll(`${DC}`), {name: localize("ToHit")})
       .addRoll(attackRoll, {name: localize("Attack")})
       .addRoll(damageRoll, {name: localize("Damage")})
@@ -382,7 +382,7 @@ export class CyberpunkItem extends Item {
     });
     let locationRoll = await rollLocation(attackMods.targetActor, attackMods.targetArea);
 
-    let bigRoll = new Multiroll(this.name, this.system.flavor)
+    let bigRoll = new Multiroll(this.system_name, this.system.flavor)
       .addRoll(attackRoll, {name: localize("Attack")})
       .addRoll(damageRoll, {name: localize("Damage")})
       .addRoll(locationRoll.roll, {name: localize("Location"), flavor: locationRoll.areaHit });

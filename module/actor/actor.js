@@ -197,9 +197,9 @@ export class CyberpunkActor extends Actor {
   // TODO: Again, will not work if skill names localized
   trainedMartials() {
     return this.itemTypes.skill
-      .filter(skill => skill.name.startsWith("Martial"))
+      .filter(skill => skill.system_name.startsWith("Martial"))
       .filter(martial => martial.system.level > 0)
-      .map(martial => martial.name);
+      .map(martial => martial.system_name);
   }
 
   // TODO: Make this doable with just skill name
@@ -214,7 +214,7 @@ export class CyberpunkActor extends Actor {
   }
 
   getSkillVal(skillName) {
-    return CyberpunkActor.realSkillValue(this.itemTypes.skill.find(skill => skill.name === skillName));
+    return CyberpunkActor.realSkillValue(this.itemTypes.skill.find(skill => skill.system_name === skillName));
   }
 
   rollSkill(skillId) {
@@ -229,11 +229,11 @@ export class CyberpunkActor extends Actor {
       rollParts.push(`@stats.${skillData.stat}.total`);
     }
     // TODO: When using localized names for skills, this will not work
-    if(skill.name === "Awareness/Notice") {
+    if(skill.system_name === "Awareness/Notice") {
       rollParts.push("@skills.CombatSense.value");
     }
 
-    let roll = new Multiroll(skill.name)
+    let roll = new Multiroll(skill.system_name)
       .addRoll(makeD10Roll(rollParts, this.system));
 
     roll.defaultExecute();
