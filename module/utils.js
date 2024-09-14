@@ -95,5 +95,13 @@ export function clamp(x, min, max) {
 export async function getDefaultSkills() {
     const pack = game.packs.get("cyberpunk2020.default-skills");
     const content = await pack.getDocuments();
+
+    for(const item of content){
+        try{
+            item['label'] = game.system.authors.find(el => el['name'] === 'translations').flags.translations[game.i18n.lang][item.name]
+        }catch(error){
+            console.error(error)
+        }
+    }
     return content;
 }
