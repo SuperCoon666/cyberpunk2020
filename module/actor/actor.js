@@ -228,8 +228,7 @@ export class CyberpunkActor extends Actor {
     if(skillData.stat) {
       rollParts.push(`@stats.${skillData.stat}.total`);
     }
-    // TODO: When using localized names for skills, this will not work
-    if(skill.name === "Awareness/Notice") {
+    if(skill.name === localize("SkillAwarenessNotice")) {
       rollParts.push("@skills.CombatSense.value");
     }
 
