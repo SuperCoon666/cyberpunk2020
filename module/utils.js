@@ -98,7 +98,7 @@ export async function getDefaultSkills() {
 
     for(const item of content){
         try{
-            item['label'] = game.system.authors.find(el => el['name'] === 'translations').flags.translations[game.i18n.lang][item.name]
+            item['label'] = game.system.authors.find(el => el['name'] === 'translations').flags.translations[game.i18n.lang][item['name']]
         }catch(error){
             console.error(error)
         }
