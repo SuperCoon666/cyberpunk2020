@@ -194,10 +194,9 @@ export class CyberpunkActor extends Actor {
     return this.stunThreshold() + 3;
   }
 
-  // TODO: Again, will not work if skill names localized
   trainedMartials() {
     return this.itemTypes.skill
-      .filter(skill => skill.name.startsWith("Martial"))
+      .filter(skill => skill.name.startsWith(localize("Martial")))
       .filter(martial => martial.system.level > 0)
       .map(martial => martial.name);
   }
@@ -228,8 +227,7 @@ export class CyberpunkActor extends Actor {
     if(skillData.stat) {
       rollParts.push(`@stats.${skillData.stat}.total`);
     }
-    // TODO: When using localized names for skills, this will not work
-    if(skill.name === "Awareness/Notice") {
+    if(skill.name === localize("SkillAwarenessNotice")) {
       rollParts.push("@skills.CombatSense.value");
     }
 
