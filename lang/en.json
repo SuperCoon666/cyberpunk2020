@@ -385,5 +385,16 @@
     "SETTINGS.TrainedSkillsFirst": "Trained Skills First",
     "SETTINGS.TrainedSkillsFirstHint": "Whether trained skills always come first in the skills list",
     
-    "CYBERPUNK.NoCombatError": "There's currently no combat encounter present; you'll need to start one"
+    "CYBERPUNK.NoCombatError": "There's currently no combat encounter present; you'll need to start one",
+
+    "CYBERPUNK.martials.Martial Arts: Aikido": "Martial Arts: Aikido",
+    "CYBERPUNK.martials.Martial Arts: AnimalKungFu": "Martial Arts: Animal Kung Fu",
+    "CYBERPUNK.martials.Martial Arts: Boxing": "Martial Arts: Boxing",
+    "CYBERPUNK.martials.Martial Arts: Capoeira": "Martial Arts: Capoeira",
+    "CYBERPUNK.martials.Martial Arts: ChoiLiFut": "Martial Arts: Choi Li Fut",
+    "CYBERPUNK.martials.Martial Arts: Judo": "Martial Arts: Judo",
+    "CYBERPUNK.martials.Martial Arts: Karate": "Martial Arts: Karate",
+    "CYBERPUNK.martials.Martial Arts: TaeKwonDo": "Martial Arts: Tae Kwon Do",
+    "CYBERPUNK.martials.Martial Arts: ThaiKickBoxing": "Martial Arts: Thai Kickboxing",
+    "CYBERPUNK.martials.Martial Arts: Wrestling": "Martial Arts: Wrestling"
 }

@@ -209,6 +209,14 @@ export function rangedModifiers(weapon, targetTokens=[]) {
     ];
 }
 
+function getLangKey(label){
+    for(const k in game.i18n.translations.CYBERPUNK.martials){
+        if (game.i18n.translations.CYBERPUNK.martials[k] === label){
+            return k
+        }
+    }
+}
+
 export function martialOptions(actor) {
     return [
         [{
@@ -237,8 +245,8 @@ export function martialOptions(actor) {
         {
             localKey: "MartialArt",
             dataPath: "martialArt",
-            choices: [{value: "Brawling", localKey: "SkillBrawling"}, ...(actor.trainedMartials().map(martialName => {
-                return {value: martialName, localKey: "Skill"+martialName}
+            choices: [{value: game.i18n.localize("CYBERPUNK.SkillBrawling"), localKey: "SkillBrawling"}, ...(actor.trainedMartials().map(martialName => {
+                return {value: martialName, localKey: "Skill"+getLangKey(martialName)}
             }))]
         }
     ]]
