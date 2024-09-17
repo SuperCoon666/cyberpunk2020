@@ -224,6 +224,9 @@ details[open] summary ~ * {
   border-style: solid;
   border-color: black;
 }
+.cyberpunk .field select option {
+  background-color: black;
+}
 .cyberpunk .field > * {
   padding: 2px 3px 2px 0px;
 }
