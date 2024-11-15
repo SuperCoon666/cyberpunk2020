@@ -1,6 +1,7 @@
 // This is where all the magic values go, because cyberpunk has SO many of those
 // Any given string value is the same as its key in the localization file, and will be used for translation
 import { getMartialKeyByName } from './translations.js'
+import { localize } from './translations.js';
 
 export let weaponTypes = {
     pistol: "Pistol",
@@ -15,6 +16,7 @@ export let attackSkills = {
     "Pistol": ["Handgun"],
     "SMG": ["Submachinegun"],
     "Shotgun": ["Rifle"],
+    // "Rifle": [localize("Rifle")],
     "Rifle": ["Rifle"],
     "Heavy": ["HeavyWeapons"],
     // Trained martial arts get added in item-sheet for now

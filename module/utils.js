@@ -93,7 +93,29 @@ export function clamp(x, min, max) {
 }
 
 export async function getDefaultSkills() {
-    const pack = game.packs.get("cyberpunk2020.default-skills");
+    // Получаем значение настройки языка
+    const selectedLanguage= game.i18n.lang
+    console.log("TEST: LANG: ", selectedLanguage)
+
+    // Определяем, какой пакет загружать на основе выбранного языка
+    let packName;
+    switch(selectedLanguage) {
+        case "en":
+            packName = "cyberpunk2020.default-skills";
+            break;
+        case "ru":
+            packName = "cyberpunk2020.default-skills-ru";
+            break;
+        default:
+            packName = "cyberpunk2020.default-skills";
+    }
+
+    // Получаем пакет на основе его имени
+    const pack = game.packs.get(packName);
+
+    // Загружаем содержимое выбранного пакета
     const content = await pack.getDocuments();
+
+    // Возвращаем содержимое пакета
     return content;
 }

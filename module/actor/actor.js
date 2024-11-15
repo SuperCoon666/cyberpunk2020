@@ -213,7 +213,16 @@ export class CyberpunkActor extends Actor {
   }
 
   getSkillVal(skillName) {
-    return CyberpunkActor.realSkillValue(this.itemTypes.skill.find(skill => skill.name === localize("Skill"+skillName)));
+    console.log("SkillName:", skillName);
+    console.log("SkillName_localize:", localize("Skill"+skillName));
+    console.log("lang:", game.i18n);
+
+    let name = localize("Skill"+skillName)
+    if (name.includes("Skill")){
+      name = skillName
+    }
+    console.log("SkillName_2:", name);
+    return CyberpunkActor.realSkillValue(this.itemTypes.skill.find(skill => skill.name === name));
   }
 
   rollSkill(skillId) {
