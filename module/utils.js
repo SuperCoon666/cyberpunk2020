@@ -94,10 +94,12 @@ export function clamp(x, min, max) {
 
 export async function getDefaultSkills() {
     // Получаем значение настройки языка
+    // Get the language setting value
     const selectedLanguage= game.i18n.lang
     console.log("TEST: LANG: ", selectedLanguage)
 
     // Определяем, какой пакет загружать на основе выбранного языка
+    // Determine which package to load based on the selected language
     let packName;
     switch(selectedLanguage) {
         case "en":
@@ -111,11 +113,14 @@ export async function getDefaultSkills() {
     }
 
     // Получаем пакет на основе его имени
+    // Retrieve the package by its name
     const pack = game.packs.get(packName);
 
     // Загружаем содержимое выбранного пакета
+    // Load the content of the selected package
     const content = await pack.getDocuments();
 
     // Возвращаем содержимое пакета
+    // Return the package content
     return content;
 }

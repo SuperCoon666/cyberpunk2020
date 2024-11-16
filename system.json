@@ -50,6 +50,13 @@
       "type": "Item"
     },
     {
+      "name": "role-skills-ru",
+      "label": "Role Skills RU",
+      "system": "cyberpunk2020",
+      "path": "./packs/role-skills-ru.db",
+      "type": "Item"
+    },
+    {
       "name": "pistols",
       "label": "Pistols",
       "path": "./packs/pistols.db",
