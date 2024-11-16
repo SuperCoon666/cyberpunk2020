@@ -272,17 +272,27 @@ export class CyberpunkActor extends Actor {
     });
   }
 
-  rollStunDeath() {
+  rollStunDeath(modificator) {
     let rolls = new Multiroll(localize("StunDeathSave"), localize("UnderThresholdMessage"));
-    rolls.addRoll(new Roll("1d10"), {
+    
+    const integerRegex = /^-?\d+$/;
+    if(modificator && !integerRegex.test(modificator)){
+      // TODO Показать ошибку в интерфейсе
+      return
+    }
+
+    const rollType = "1d10"
+    rolls.addRoll(new Roll(modificator ? `${rollType} + ${modificator}` : rollType), {
       name: localize("Save")
     });
+
     rolls.addRoll(new Roll(`${this.stunThreshold()}`), {
       name: "Stun Threshold"
     });
     rolls.addRoll(new Roll(`${this.deathThreshold()}`), {
       name: "Death Threshold"
     });
+
     rolls.defaultExecute();
   }
 }

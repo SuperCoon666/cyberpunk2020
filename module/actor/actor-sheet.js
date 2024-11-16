@@ -205,7 +205,8 @@ export class CyberpunkActorSheet extends ActorSheet {
       });
     });
     html.find(".stun-death-save").click(ev => {
-      this.actor.rollStunDeath();
+      const rollModificatorInput = html.find(".roll-modificator")[0]
+      this.actor.rollStunDeath(rollModificatorInput.value);
     });
 
     html.find('.item-roll').click(ev => {
