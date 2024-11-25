@@ -90,13 +90,46 @@ export class CyberpunkActor extends Actor {
       }
 
       // While we're looping through armor, might as well modify hit locations' armor
+      // I. Version of the direct addition of armor. In the future, can add it as an additional option in the settings
+      // for(let armorArea in armorData.coverage) {
+      //   let location = system.hitLocations[armorArea];
+      //   if(location !== undefined) {
+      //     armorArea = armorData.coverage[armorArea];
+      //     // Преобразование обоих значений в числа перед сложением
+      //     location.stoppingPower = Number(location.stoppingPower) + Number(armorArea.stoppingPower);
+      //   }
+      // }
+      
+      // II. The version of the addition of armor according to the rule book
       for(let armorArea in armorData.coverage) {
         let location = system.hitLocations[armorArea];
         if(location !== undefined) {
-          armorArea = armorData.coverage[armorArea];
-          location.stoppingPower += armorArea.stoppingPower;
+          let armorValue = armorData.coverage[armorArea].stoppingPower;
+            let locationStoppingPower = Number(location.stoppingPower);
+            let armorStoppingPower = Number(armorValue);
+
+            // If there is no armor on one of the zones, just add armor
+            if(locationStoppingPower === 0 || armorStoppingPower === 0) {
+                location.stoppingPower = locationStoppingPower + armorStoppingPower;
+            } else {
+                // If the armor is already on, we count it according to the modification table
+                let difference = Math.abs(locationStoppingPower - armorStoppingPower);
+                let maxValue = Math.max(locationStoppingPower, armorStoppingPower);
+                let modifier = 0;
+
+                if (difference >= 27) modifier = 0;
+                else if (difference >= 21) modifier = 2;
+                else if (difference >= 15) modifier = 3;
+                else if (difference >= 9) modifier = 3;
+                else if (difference >= 5) modifier = 4;
+                else modifier = 5;
+
+                // Adding the modifier to the highest value
+                location.stoppingPower = maxValue + modifier;
+            }
         }
       }
+
     });
     stats.ref.total = stats.ref.base + stats.ref.tempMod + stats.ref.armorMod;
 
