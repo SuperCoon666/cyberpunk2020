@@ -18,6 +18,10 @@
     border-width: $field-border-width;
     border-style: solid;
     border-color: $text-colour;
+
+    select option{
+        background-color: $text-colour;
+    }
     
 
     // Only apply padding to direct children. Padding isn't on field itself, as it's the children that have the background color

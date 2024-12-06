@@ -5,3 +5,7 @@ export function getMartialKeyByName(name){
         }
     }
 }
+
+export function localize(str) {
+    return game.i18n.localize("CYBERPUNK." + str);
+}

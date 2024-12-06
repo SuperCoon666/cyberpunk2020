@@ -7,7 +7,7 @@
 }
 
 *::-webkit-scrollbar-track {
-  background-color: #5a5a5a;
+  background-color: rgb(90, 90, 90);
   border-radius: 0px;
 }
 
@@ -224,6 +224,9 @@ details[open] summary ~ * {
   border-style: solid;
   border-color: black;
 }
+.cyberpunk .field select option {
+  background-color: black;
+}
 .cyberpunk .field > * {
   padding: 2px 3px 2px 0px;
 }
@@ -284,7 +287,7 @@ details[open] summary ~ * {
 }
 .cyberpunk .field select {
   border-radius: 0px;
-  border: 1px solid #5a5a5a;
+  border: 1px solid rgb(90, 90, 90);
   width: 50%;
 }
 .cyberpunk .field p {
@@ -376,13 +379,13 @@ details[open] summary ~ * {
 }
 .statsrow > div.stat .stat-mod {
   font-size: 9pt;
-  background: #5a5a5a;
+  background: rgb(90, 90, 90);
   color: whitesmoke;
   padding: 0px 1px 0px 1px;
 }
 .statsrow > div.stat .stat-temp {
   font-size: 9pt;
-  background: #5a5a5a;
+  background: rgb(90, 90, 90);
   color: whitesmoke;
   border-right-style: solid;
   border-right-color: black;
@@ -470,6 +473,11 @@ div.statderive .value.rightborder {
   position: unset;
   top: unset;
   margin: unset;
+}
+.wound-tracker .damage:checked {
+  filter: none;
+}
+.wound-tracker .damage {
   height: 100%;
   width: 1.3em;
   flex-grow: 1;
@@ -477,9 +485,6 @@ div.statderive .value.rightborder {
   border-width: 0px 1px 0px 1px;
   border-color: black;
   transition: background-color 0.25s;
-}
-.wound-tracker .damage:checked {
-  filter: none;
 }
 .wound-tracker .damage.filled:hover {
   background-color: rgba(178, 34, 34, 0.7);
@@ -614,10 +619,10 @@ div.statderive .value.rightborder {
   margin-right: 5px;
 }
 .cyberpunk-card .part-total.crit {
-  background-color: #77b968b8;
+  background-color: rgba(119, 185, 104, 0.7215686275);
 }
 .cyberpunk-card .part-total.fumble {
-  background-color: #d1502fb8;
+  background-color: rgba(209, 80, 47, 0.7215686275);
 }
 .cyberpunk-card.autofire .damage-tally {
   margin-left: 3em;

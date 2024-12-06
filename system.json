@@ -36,10 +36,24 @@
       "type": "Item"
     },
     {
+      "name": "default-skills-ru",
+      "label": "Default Skills RU",
+      "system": "cyberpunk2020",
+      "path": "./packs/default-skills-ru.db",
+      "type": "Item"
+    },
+    {
       "name": "role-skills",
       "label": "Role Skills",
       "system": "cyberpunk2020",
       "path": "./packs/role-skills.db",
+      "type": "Item"
+    },
+    {
+      "name": "role-skills-ru",
+      "label": "Role Skills RU",
+      "system": "cyberpunk2020",
+      "path": "./packs/role-skills-ru.db",
       "type": "Item"
     },
     {
@@ -191,6 +205,11 @@
       "lang": "it",
       "name": "Italiano",
       "path": "lang/it.json"
+    },
+    {
+      "lang": "ru",
+      "name": "Russian",
+      "path": "lang/ru.json"
     }
   ],
   "socket": false,
