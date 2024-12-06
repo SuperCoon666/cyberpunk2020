@@ -359,6 +359,7 @@ export class CyberpunkItem extends Item {
   }
 
   async __semiAuto(attackMods) {
+    let system = this.system;
     // The range we're shooting at
     let DC = rangeDCs[attackMods.range];
     let attackRoll = await this.attackRoll(attackMods);
