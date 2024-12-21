@@ -213,7 +213,7 @@
     }
   ],
   "socket": false,
-  "initiative": "1d10x10 + @stats.ref.total + @skills.CombatSense.value",
+  "initiative": "1d10 + @stats.ref.total + @skills.CombatSense.value + @initiativeMod",
   "gridDistance": 5,
   "gridUnits": "m",
   "primaryTokenAttribute": null,

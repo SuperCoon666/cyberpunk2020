@@ -292,22 +292,43 @@ export class CyberpunkActor extends Actor {
   /*
    * Adds this actor to the current encounter - if there isn't one, this just shows an error - and rolls their initiative
    */
-  async addToCombatAndRollInitiative(options = {createCombatants: true}) {
+  async addToCombatAndRollInitiative(modificator, options = {createCombatants: true}) {
     if(!game.combat) {
       ui.notifications.error(localize("NoCombatError"));
       return;
     }
+  
+    console.log(modificator);
+  
+    const combat = game.combat;
+    let combatant = combat.combatants.find(c => c.actorId === this.id);
+  
+    // If no combatant found and creation is allowed, add the actor to the combat
+    if (!combatant && options.createCombatants) {
+      await combat.createEmbeddedDocuments("Combatant", [{ actorId: this.id }]);
+      combatant = combat.combatants.find(c => c.actorId === this.id);
+    }    
+  
+    if (!combatant) {
+      ui.notifications.error("No combatant found for this actor.");
+      return;
+    }
+  
+    // Roll initiative for the combatant
+    return combat.rollInitiative([combatant.id]);
+  }  
 
-    // This... doesn't seem to actually roll the iniative, and the docs aren't telling in how to make this function do so
-    // So for now, we're going to have to add them to the combat, then ask the combat very nicely to roll this actor please
-    return this.rollInitiative(options = options).then( (combat) => {
-      combat.rollInitiative([combat.getCombatantByActor(this).id]);
-    });
-  }
-
-  rollStunDeath() {
+  rollStunDeath(modificator) {
     let rolls = new Multiroll(localize("StunDeathSave"), localize("UnderThresholdMessage"));
-    rolls.addRoll(new Roll("1d10"), {
+    
+    const integerRegex = /^-?\d+$/;
+    if(modificator && !integerRegex.test(modificator)){
+      // TODO Показать ошибку в интерфейсе
+      return
+    }
+
+    const rollType = "1d10"
+    rolls.addRoll(new Roll(modificator ? `${rollType} + ${modificator}` : rollType), {
       name: localize("Save")
     });
     rolls.addRoll(new Roll(`${this.stunThreshold()}`), {

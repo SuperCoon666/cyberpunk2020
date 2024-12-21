@@ -25,24 +25,41 @@ export class CyberpunkActorSheet extends ActorSheet {
   /* -------------------------------------------- */
 
   /** @override */
-  getData() {
-    // the data THIS returns is only available in this class and the template
-    const sheetData = super.getData();
-    const actorData = sheetData.data;
-    // Make actor info available relatively easily
-    sheetData.system = actorData.system;
+  getData(options) {
+    // Call the parent getData method, which provides the base sheetData
+    const sheetData = super.getData(options);
 
-    // Prepare items.
-    if (this.actor.type == 'character' || this.actor.type == "npc") {
+    // Extract the actor and system references for convenience
+    const actor = this.actor;
+    const system = actor.system;
+
+    // Store a reference to the system data for easier access in templates and other methods
+    sheetData.system = system;
+
+    // Only proceed with character or NPC types
+    if (actor.type === 'character' || actor.type === 'npc') {
+      // If transient data doesn't exist, initialize it.
+      // Transient data is used for temporary things like skill search filters.
+      if (system.transient == null) {
+        system.transient = { skillFilter: "" };
+      }
+
+      // Prepare character-related items and data
       this._prepareCharacterItems(sheetData);
       this._addWoundTrack(sheetData);
-      // Reset search text if it's null or we just rendered for the first time
-      if(sheetData.system.transient == null) {
-        sheetData.system.transient = { skillFilter: "" };
-      }
       this._prepareSkills(sheetData);
-      // All this extra lookup is cos we can't store a list of entities in data :(
+
+      // Reference to weapon types for the template
+      // This is needed because we can't directly store a list of entities in the system data
       sheetData.weaponTypes = weaponTypes;
+
+      // Retrieve the initiative modifier from system data
+      // Ensure that you have defined `initiativeMod` in your system data schema
+      const initiativeMod = getProperty(system, "initiativeMod") || 0;
+      sheetData.initiativeMod = initiativeMod;
+
+      const StunDeathMod = getProperty(system, "StunDeathMod") || 0;
+      sheetData.StunDeathMod = StunDeathMod;
     }
     return sheetData;
   }
@@ -196,8 +213,17 @@ export class CyberpunkActorSheet extends ActorSheet {
       this.actor.rollSkill(id);
     });
     html.find(".roll-initiative").click(ev => {
-      this.actor.addToCombatAndRollInitiative();
+      const rollInitiativeModificatorInput = html.find(".roll-initiative-modificator")[0];
+      this.actor.addToCombatAndRollInitiative(rollInitiativeModificatorInput.value);
     });
+    html.find(".roll-initiative-modificator").change(ev => {
+      const value = ev.target.value;
+      this.actor.update({"system.initiativeMod": Number(value)});
+    });
+    html.find(".roll-stun-death-modificator").change(ev => {
+      const value = ev.target.value;
+      this.actor.update({"system.StunDeathMod": Number(value)});
+    });           
     html.find(".damage").click(ev => {
       let damage = Number(ev.currentTarget.dataset.damage);
       this.actor.update({
@@ -205,7 +231,8 @@ export class CyberpunkActorSheet extends ActorSheet {
       });
     });
     html.find(".stun-death-save").click(ev => {
-      this.actor.rollStunDeath();
+      const rollModificatorInput = html.find(".roll-stun-death-modificator")[0]
+      this.actor.rollStunDeath(rollModificatorInput.value);
     });
 
     html.find('.item-roll').click(ev => {
