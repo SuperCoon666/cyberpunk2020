@@ -29,10 +29,10 @@
       "type": "RollTable"
     },
     {
-      "name": "default-skills",
-      "label": "Default Skills",
+      "name": "default-skills-en",
+      "label": "Default Skills EN",
       "system": "cyberpunk2020",
-      "path": "./packs/default-skills.db",
+      "path": "./packs/default-skills-en.db",
       "type": "Item"
     },
     {
