@@ -1,9 +1,9 @@
 {{!-- Stuff that affects a single given attack's effects at the other end --}}
 <div class="field-list">
-    {{> (template "fields/number") label="Accuracy" edit="system.accuracy"}}
     {{> (template "fields/string") label="Damage" edit="system.damage"}}
-    {{> (template "fields/boolean") label="AP" edit="system.ap"}}
+    {{> (template "fields/number") label="Accuracy" edit="system.accuracy"}}
     {{> (template "fields/number") label="Range" edit="system.range"}}
+    {{> (template "fields/boolean") label="AP" edit="system.ap"}}
 
     {{!-- Something like this will end up being in there, but it's not currently ready for release --}}
     {{!-- <details class="field span-two-cells">
