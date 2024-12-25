@@ -36,7 +36,6 @@
         </div>
     </div>
     
-    
     <div>
         {{!-- "X hit of y fired" Uses "hit" and "fired" fields respectively --}}
         {{!-- They're separate so we can emphasise the hit --}}
@@ -44,16 +43,18 @@
     </div>
     {{#if hit}}
         <h3>{{CPLocal "Damage"}}</h3>
-        <div class="damage-tally">
-            {{#each areaDamages as |damages areaName|}}
-                <div>
-                    <label>{{CPLocal areaName}}</label>
-                    {{#each damages as |damage|}}
-                    <span>{{damage.total}}</span>
-                    {{/each}}
-                </div>
-            {{/each}}
-        </div>
+            <div class="damage-tally">
+                {{#each areaDamages as |damages areaName|}}
+                    <div>
+                        <label>{{CPLocal areaName}}</label>
+                        <ul>
+                            {{#each damages as |damage|}}
+                                <li>{{CPLocal "Penetration"}} {{damage.penetration}} {{CPLocal "Damage"}} {{damage.damage}}</li>
+                            {{/each}}
+                        </ul>
+                    </div>
+                {{/each}}
+            </div>
     {{else}}
         <h3>{{CPLocal "NoHits"}}</h3>
     {{/if}}

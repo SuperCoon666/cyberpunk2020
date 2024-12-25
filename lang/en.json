@@ -173,6 +173,7 @@
     "CYBERPUNK.Flavor": "Flavor",
     "CYBERPUNK.Accuracy": "Accuracy",
     "CYBERPUNK.Damage": "Damage",
+    "CYBERPUNK.Penetration": "Penetration",
     "CYBERPUNK.DamageShort": "Dmg",
     "CYBERPUNK.Shots": "Shots",
     "CYBERPUNK.ShotsLeft": "Shots Left",

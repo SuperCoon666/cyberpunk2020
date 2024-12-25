@@ -161,6 +161,7 @@
     "CYBERPUNK.Flavor": "Описание",
     "CYBERPUNK.Accuracy": "Точность",
     "CYBERPUNK.Damage": "Урон",
+    "CYBERPUNK.Penetration": "Бронепробитие",
     "CYBERPUNK.DamageShort": "Урн",
     "CYBERPUNK.Shots": "Выстрелы",
     "CYBERPUNK.ShotsLeft": "Боезапас",
