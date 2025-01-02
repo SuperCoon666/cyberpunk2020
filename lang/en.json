@@ -396,5 +396,10 @@
     "CYBERPUNK.martials.Martial Arts: Karate": "Martial Arts: Karate(2)",
     "CYBERPUNK.martials.Martial Arts: TaeKwonDo": "Martial Arts: Tae Kwon Do(3)",
     "CYBERPUNK.martials.Martial Arts: ThaiKickBoxing": "Martial Arts: Thai Kickboxing(4)",
-    "CYBERPUNK.martials.Martial Arts: Wrestling": "Martial Arts: Wrestling"
+    "CYBERPUNK.martials.Martial Arts: Wrestling": "Martial Arts: Wrestling",
+
+    "CYBERPUNK.NoCyberlimb": "No Cyberlimb / Unenhanced Cyberlimb",
+    "CYBERPUNK.CyberTerminusX2": "Cyber-terminus with X2 damage",
+    "CYBERPUNK.CyberTerminusX3": "Cyber-terminus with X3 damage",
+    "CYBERPUNK.CyberTerminus": "Cyber-terminus Options"
 }

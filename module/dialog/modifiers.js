@@ -15,7 +15,7 @@ import { defaultTargetLocations } from "../lookups.js"
         classes: ["cyberpunk2020"],
         title: localize("AttackModifiers"),
         template: "systems/cyberpunk2020/templates/dialog/modifiers.hbs",
-        width: 400,
+        width: 500,
         height: "auto",
         weapon: null,
         // Use like [[mod1, mod2], [mod3, mod4, mod5]] etc to add groupings,
