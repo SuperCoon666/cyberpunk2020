@@ -71,6 +71,13 @@
       "type": "Item"
     },
     {
+      "name": "homebrew",
+      "label": "homebrew",
+      "path": "./packs/homebrew.db",
+      "system": "cyberpunk2020",
+      "type": "Item"
+    },
+    {
       "name": "cyberware",
       "label": "Cyberware",
       "path": "./packs/cyberware.db",
