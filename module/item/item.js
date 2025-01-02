@@ -151,15 +151,23 @@ export class CyberpunkItem extends Item {
     // For now assume full auto = all bullets; spray and pray
     // +1/-1 per 10 bullets fired. + if close, - if medium onwards.
     // Friend's copy of the rulebook states penalties/bonus for all except point blank
-    if(fireMode === fireModes.fullAuto) {
+    if (fireMode === fireModes.fullAuto) {
       let bullets = Math.min(this.system.shotsLeft, this.system.rof);
+      let multiplier;
       // If close range, add, else subtract
-      let multiplier = 
-          (range === ranges.close) ? 1 
-        : (range === ranges.pointBlank) ? 0 
-        : -1;
-      terms.push(multiplier * Math.floor(bullets/10))
-    }
+      if (this.system.weaponType !== "SMG") {
+        multiplier = (range === ranges.close) ? 1 
+                   : (range === ranges.pointBlank) ? 0 
+                   : -1;
+      } else {
+        multiplier = (range === ranges.close) ? 2 
+                   : (range === ranges.medium) ? 1 
+                   : (range === ranges.pointBlank) ? 0 
+                   : -1;
+      }
+    
+      terms.push(multiplier * Math.floor(bullets / 10));
+    }    
 
     // +3 mod for 3-round-burst at close or medium range
     if(fireMode === fireModes.threeRoundBurst
