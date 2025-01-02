@@ -245,6 +245,16 @@ export function martialOptions(actor) {
             choices: [{value: game.i18n.localize("CYBERPUNK.SkillBrawling"), localKey: "SkillBrawling"}, ...(actor.trainedMartials().map(martialName => {
                 return {value: martialName, localKey: "Skill" + getMartialKeyByName(martialName)}
             }))]
+        },
+        {
+            localKey: "CyberTerminus",
+            dataPath: "cyberTerminus",
+            defaultValue: "NoCyberlimb",
+            choices: [
+                { value: "NoCyberlimb", localKey: "NoCyberlimb" },
+                { value: "CyberTerminusX2", localKey: "CyberTerminusX2" },
+                { value: "CyberTerminusX3", localKey: "CyberTerminusX3" }
+            ]
         }
     ]]
 }
@@ -259,6 +269,16 @@ export function meleeBonkOptions() {
             // TODO: Have this dependent on target
             choices: defaultTargetLocations,
             allowBlank: true
+        },
+        {
+            localKey: "CyberTerminus",
+            dataPath: "cyberTerminus",
+            defaultValue: "NoCyberlimb",
+            choices: [
+                { value: "NoCyberlimb", localKey: "NoCyberlimb" },
+                { value: "CyberTerminusX2", localKey: "CyberTerminusX2" },
+                { value: "CyberTerminusX3", localKey: "CyberTerminusX3" }
+            ]
         }
     ]]
 }

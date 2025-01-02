@@ -365,5 +365,10 @@
     "CYBERPUNK.martials.Martial Arts: TaeKwonDo": "Боевое искусство: Тхэквондо(3)",
     "CYBERPUNK.martials.Martial Arts: ThaiKickBoxing": "Боевое искусство: Тайский кикбоксинг(4)",
     "CYBERPUNK.martials.Martial Arts: Wrestling": "Боевое искусство: Борьба",
-    "CYBERPUNK.martials.Martial Arts: Savate": "Боевое искусство: Сават"
+    "CYBERPUNK.martials.Martial Arts: Savate": "Боевое искусство: Сават",
+    
+    "CYBERPUNK.NoCyberlimb": "Без киберконечности / Неусиленная киберконечность",
+    "CYBERPUNK.CyberTerminusX2": "Киберконечность с уроном X2",
+    "CYBERPUNK.CyberTerminusX3": "Киберконечность с уроном X3",
+    "CYBERPUNK.CyberTerminus": "Опции киберконечностей"
 }
