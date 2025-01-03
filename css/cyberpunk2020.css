@@ -888,20 +888,6 @@ div.statderive .value.rightborder {
  *  ALL PROGRAMS
  **********************************************/
 
-/* Header (search / sorting) like skills */
-.skill-top-matter {
-  display: flex;
-  flex-wrap: nowrap;
-  width: 100%;
-  margin-bottom: 5px;
-  align-items: center;
-}
-
-.skill-top-matter .field {
-  margin-right: 5px;
-  flex-grow: 0;
-}
-
 /* List (2 columns) */
 .netrun-program-list {
   width: 100%;
