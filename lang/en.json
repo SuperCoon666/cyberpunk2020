@@ -401,5 +401,8 @@
     "CYBERPUNK.NoCyberlimb": "No Cyberlimb / Unenhanced Cyberlimb",
     "CYBERPUNK.CyberTerminusX2": "Cyber-terminus with X2 damage",
     "CYBERPUNK.CyberTerminusX3": "Cyber-terminus with X3 damage",
-    "CYBERPUNK.CyberTerminus": "Cyber-terminus Options"
+    "CYBERPUNK.CyberTerminus": "Cyber-terminus Options",
+    
+    "CYBERPUNK.NetRun": "Netrunning"
+
 }

@@ -14,6 +14,7 @@ export const preloadHandlebarsTemplates = async function() {
         "systems/cyberpunk2020/templates/actor/parts/combat.hbs",
         "systems/cyberpunk2020/templates/actor/parts/armor-display.hbs",
         "systems/cyberpunk2020/templates/actor/parts/skill.hbs",
+        "systems/cyberpunk2020/templates/actor/parts/netrunning.hbs",
 
         // Shared templates
         "systems/cyberpunk2020/templates/fields/string.hbs",
@@ -51,6 +52,10 @@ export const preloadHandlebarsTemplates = async function() {
 
         // Weapon settings dialog
         "systems/cyberpunk2020/templates/dialog/modifiers.hbs",
+
+        // Program
+        "systems/cyberpunk2020/templates/item/parts/program/summary.hbs",
+        "systems/cyberpunk2020/templates/item/parts/program/settings.hbs",
         
     ]);
   };

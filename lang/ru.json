@@ -370,5 +370,7 @@
     "CYBERPUNK.NoCyberlimb": "Без киберконечности / Неусиленная киберконечность",
     "CYBERPUNK.CyberTerminusX2": "Киберконечность с уроном X2",
     "CYBERPUNK.CyberTerminusX3": "Киберконечность с уроном X3",
-    "CYBERPUNK.CyberTerminus": "Опции киберконечностей"
+    "CYBERPUNK.CyberTerminus": "Опции киберконечностей",
+
+    "CYBERPUNK.NetRun": "Нетранниг"
 }

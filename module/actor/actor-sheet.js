@@ -61,6 +61,10 @@ export class CyberpunkActorSheet extends ActorSheet {
       const StunDeathMod = getProperty(system, "StunDeathMod") || 0;
       sheetData.StunDeathMod = StunDeathMod;
     }
+    const allPrograms = this.actor.items.filter(i => i.type === "program");
+    allPrograms.sort((a, b) => a.name.localeCompare(b.name));
+    sheetData.netrunPrograms = allPrograms;
+
     return sheetData;
   }
 
@@ -87,11 +91,6 @@ export class CyberpunkActorSheet extends ActorSheet {
     }
     else {
       // If we searched previously and the old search had results, we can filter those instead of the whole lot
-      if(sheetData.system.transient.oldSearch != null 
-        && sheetData.filteredSkillIDs != null
-        && upperSearch.startsWith(oldSearch)) {
-        listToFilter = sheetData.filteredSkillIDs; 
-      }
       return listToFilter.filter(id => {
         let skillName = this.actor.items.get(id).name;
         return skillName.toUpperCase().includes(upperSearch);
@@ -110,14 +109,13 @@ export class CyberpunkActorSheet extends ActorSheet {
    * Items that aren't actually cyberware or skills - everything that should be shown in the gear tab. 
    */
   _gearTabItems(allItems) {
-    let hideThese = new Set(["cyberware", "skill"])
     // As per https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Collator
     // Compares locale-compatibly, and pretty fast too apparently.
+    let hideThese = new Set(["cyberware", "skill", "program"]);
     let nameSorter = new Intl.Collator();
-    let showItems = allItems.filter((item) => !hideThese.has(item.type))
-      .sort((a, b) => {
-        return nameSorter.compare(a.name, b.name)
-      });
+    let showItems = allItems
+      .filter((item) => !hideThese.has(item.type))
+      .sort((a, b) => nameSorter.compare(a.name, b.name));
     return showItems;
   }
 
@@ -255,12 +253,11 @@ export class CyberpunkActorSheet extends ActorSheet {
       let isRanged = item.isRanged();
 
       let modifierGroups = undefined;
-      let onConfirm = undefined;
-      let targetTokens = Array.from(game.users.current.targets.values().map(target => {
+      let targetTokens = Array.from(game.users.current.targets.values()).map(target => {
         return {
-          name: target.document.name,
-          id: target.id }
-      }));
+          name: target.document.name, 
+          id: target.id};
+      });
       if(isRanged) {
         // For now just look at the names.
         // We have to get the values as an iterator; else if multiple targets share names, it'd turn a set with size 2 to one with size 1
@@ -281,5 +278,31 @@ export class CyberpunkActorSheet extends ActorSheet {
       });
       dialog.render(true);
     });
+  }
+
+  async _onDropItem(event, data) {
+    event.preventDefault();
+
+    // Search for the parent element with the data-drop-target attribute
+    const dropTarget = event.target.closest("[data-drop-target]");
+    // If not found, then let the standard Foundry logic work
+    if ( !dropTarget ) return super._onDropItem(event, data);
+
+    // Check if we threw in “program-list”
+    if ( dropTarget.dataset.dropTarget === "program-list") {
+      // Parsing data about the dragged item (ItemData)
+      let itemData = await Item.implementation.fromDropData(data);
+
+      if (itemData.type !== "program") {
+        return ui.notifications.warn(`Это не программа: ${itemData.name}`);
+      }
+
+      // Create a new item (copy) for this actor.
+      return this.actor.createEmbeddedDocuments("Item", [ itemData ]);
+    }
+
+    // If it's not “program-list”, give control to the parent method,
+    // so as not to break the standard behavior of dropping to other parts of the sheet
+    return super._onDropItem(event, data);
   }
 }

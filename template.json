@@ -763,7 +763,7 @@
 		}
 	},
 	"Item": {
-		"types": ["skill", "weapon", "armor", "cyberware", "vehicle", "misc"],
+		"types": ["skill", "weapon", "armor", "cyberware", "vehicle", "misc", "program"],
 		"templates": {
 			"common": {
 				"flavor": "",
@@ -784,6 +784,14 @@
 			"isChipped": false,
 			"isRoleSkill": false,
 			"stat": "cool"
+		},
+		"program": {
+			"templates": ["common"],
+		
+			"power": 0,
+			"mu": 0,
+			"programType": "",
+			"damageFormula": "2d6"
 		},
 		"weapon": {
 			"templates": ["common"],

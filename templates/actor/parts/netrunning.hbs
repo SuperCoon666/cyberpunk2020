@@ -1,0 +1,143 @@
+{{!-- netrun-tab.hbs --}}
+<div class="netrun-sheet" data-tab="netrun">
+
+  <div class="netrun-container">
+
+    <!-- 1st line: icon, model, interface -->
+    <div class="netrun-row">
+      <div class="netrun-cell">
+        <label class="netrun-label">ICON IMAGE</label>
+        <div class="netrun-icon-frame" data-edit="system.netrun.icon">
+          {{!-- Clicking on <img> or .netrun-icon-frame will open a file selection dialog --}}
+          <img src="{{actor.system.netrun.icon}}" alt="Runner Icon"
+               data-edit="system.netrun.icon" title="Click to change icon" />
+        </div>
+      </div>
+
+      <div class="netrun-cell">
+        <label class="netrun-label">MODEL NAME</label>
+        <input type="text" placeholder="Enter deck model..."
+               data-edit="system.netrun.deckModel" value="{{actor.system.netrun.deckModel}}" />
+      </div>
+
+      <div class="netrun-cell">
+        <label class="netrun-label">INTERFACE</label>
+        <input type="number" placeholder="0"
+               data-edit="system.netrun.interface" value="{{actor.system.netrun.interface}}" />
+      </div>
+    </div><!-- /netrun-row -->
+
+    <!-- 2-я строка: CPU, Speed, Strength, DataWall, RAM -->
+    <div class="netrun-row-five">
+      <div class="netrun-cell">
+        <label class="netrun-label">CPU</label>
+        <input type="number" class="short-input" placeholder="0"
+               data-edit="system.netrun.cpu" value="{{actor.system.netrun.cpu}}" />
+      </div>
+      <div class="netrun-cell">
+        <label class="netrun-label">SPEED</label>
+        <input type="number" class="short-input" placeholder="0"
+               data-edit="system.netrun.speed" value="{{actor.system.netrun.speed}}" />
+      </div>
+      <div class="netrun-cell">
+        <label class="netrun-label">STRENGTH</label>
+        <input type="number" class="short-input" placeholder="0"
+               data-edit="system.netrun.strength" value="{{actor.system.netrun.strength}}" />
+      </div>
+      <div class="netrun-cell">
+        <label class="netrun-label">DATA WALL</label>
+        <input type="number" class="short-input" placeholder="0"
+               data-edit="system.netrun.dataWall" value="{{actor.system.netrun.dataWall}}" />
+      </div>
+      <div class="netrun-cell netrun-cell-ram">
+        <label class="netrun-label">RAM</label>
+        <div class="netrun-ram-info">
+          <div>Used: <span>{{actor.system.netrun.ramUsed}}</span></div>
+          <div>Max: 
+            <input type="number" class="netrun-ram-short" placeholder="0"
+                   data-edit="system.netrun.ramMax" value="{{actor.system.netrun.ramMax}}" />
+          </div>
+        </div>
+      </div>
+    </div><!-- /netrun-row-five -->
+
+    <!-- 3rd line: Deck Type + Options -->
+    <div class="netrun-options-row">
+      <div class="netrun-cell">
+        <label class="netrun-label">ТИП ДЕКИ</label>
+        <select class="deck-type-select" data-edit="system.netrun.deckType" value="{{actor.system.netrun.deckType}}">
+          <option value="cellular">Сотовая</option>
+          <option value="portable">Портатив</option>
+          <option value="combat">Боевая</option>
+          <option value="implant">Имплант</option>
+          <option value="standard">Стандарт</option>
+        </select>
+      </div>
+      <div class="netrun-cell">
+        <label class="netrun-label">ОПЦИИ</label>
+        <div class="deck-options">
+          <label class="deck-option">
+            <input type="checkbox" data-edit="system.netrun.hasElectrodes" {{checked actor.system.netrun.hasElectrodes}}/>
+            Электроды
+          </label>
+          <label class="deck-option">
+            <input type="checkbox" data-edit="system.netrun.hasKeyboard" {{checked actor.system.netrun.hasKeyboard}}/>
+            Клавиатура
+          </label>
+          <label class="deck-option">
+            <input type="checkbox" data-edit="system.netrun.hasScreen" {{checked actor.system.netrun.hasScreen}}/>
+            Экран
+          </label>
+          <label class="deck-option">
+            <input type="checkbox" data-edit="system.netrun.hasPrinter" {{checked actor.system.netrun.hasPrinter}}/>
+            Принтер
+          </label>
+          <label class="deck-option">
+            <input type="checkbox" data-edit="system.netrun.hasChipReader" {{checked actor.system.netrun.hasChipReader}}/>
+            Счит. Чип.
+          </label>
+          <label class="deck-option">
+            <input type="checkbox" data-edit="system.netrun.hasVoxBox" {{checked actor.system.netrun.hasVoxBox}}/>
+            ВоксБокс
+          </label>
+          <label class="deck-option">
+            <input type="checkbox" data-edit="system.netrun.hasScanner" {{checked actor.system.netrun.hasScanner}}/>
+            Сканер
+          </label>
+          <label class="deck-option">
+            <input type="checkbox" data-edit="system.netrun.hasExtraChip" {{checked actor.system.netrun.hasExtraChip}}/>
+            Доп. Чип.
+          </label>
+        </div>
+      </div>
+    </div><!-- /netrun-options-row -->
+
+  </div><!-- /netrun-container -->
+
+  <!-- ACTIVE PROGRAMS block -->
+  <div class="netrun-active-programs-container" style="margin-top: 10px;">
+    <label class="netrun-label">ACTIVE PROGRAMS</label>
+    <div class="netrun-active-icons">
+      <!-- Icons of active programs -->
+      {{!-- Example statically --}}
+      <div class="netrun-active-icon"></div>
+      <div class="netrun-active-icon"></div>
+    </div>
+  </div>
+
+  <!-- List of all programs (2 columns) -->
+<div class="field-list netrun-program-list" data-drop-target="program-list">
+  {{#each netrunPrograms as |prog|}}
+    <div class="field netrun-program" data-item-id="{{prog.id}}">
+      <div class="program-left">
+        <img src="{{prog.img}}" alt="icon" />
+        <label class="program-name">{{prog.name}}</label>
+        <span class="program-type">({{prog.system.programType}})</span>
+      </div>
+      <div class="program-controls">
+        <i class="fas fa-trash"></i>
+        <i class="fas fa-edit"></i>
+      </div>
+    </div>
+  {{/each}}
+</div>
