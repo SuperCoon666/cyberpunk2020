@@ -376,6 +376,7 @@ export class CyberpunkItem extends Item {
       return roll;
   }
 
+
   async __semiAuto(attackMods) {
       let system = this.system;
       console.log("System:", system);
@@ -436,19 +437,36 @@ export class CyberpunkItem extends Item {
       return roll;
   }
   async __meleeBonk(attackMods) {
-    // Just doesn't have a DC - is contested instead
-    let attackRoll = await this.attackRoll(attackMods);
-    let damageRoll = new Roll(`${this.system.damage}+@strengthBonus`, {
-      strengthBonus: strengthDamageBonus(this.actor.system.stats.bt.total)
-    });
-    let locationRoll = await rollLocation(attackMods.targetActor, attackMods.targetArea);
+      // Just doesn't have a DC - is contested instead
+      let attackRoll = await this.attackRoll(attackMods);
 
-    let bigRoll = new Multiroll(this.name, this.system.flavor)
-      .addRoll(attackRoll, {name: localize("Attack")})
-      .addRoll(damageRoll, {name: localize("Damage")})
-      .addRoll(locationRoll.roll, {name: localize("Location"), flavor: locationRoll.areaHit });
-    bigRoll.defaultExecute({img:this.img});
-    return bigRoll;
+      // Take into account the CyberTerminus modifier for damage
+      let damageFormula = `${this.system.damage}+@strengthBonus`;
+      if (attackMods.cyberTerminus) {
+          switch (attackMods.cyberTerminus) {
+              case "CyberTerminusX2":
+                  damageFormula = `(${damageFormula})*2`;
+                  break;
+              case "CyberTerminusX3":
+                  damageFormula = `(${damageFormula})*3`;
+                  break;
+              case "NoCyberlimb":
+              default:
+                  break;
+          }
+      }
+      let damageRoll = new Roll(damageFormula, {
+          strengthBonus: strengthDamageBonus(this.actor.system.stats.bt.total)
+      });
+
+      let locationRoll = await rollLocation(attackMods.targetActor, attackMods.targetArea);
+
+      let bigRoll = new Multiroll(this.name, this.system.flavor)
+          .addRoll(attackRoll, {name: localize("Attack")})
+          .addRoll(damageRoll, {name: localize("Damage")})
+          .addRoll(locationRoll.roll, {name: localize("Location"), flavor: locationRoll.areaHit });
+      bigRoll.defaultExecute({img: this.img});
+      return bigRoll;
   }
   async __martialBonk(attackMods) {
     let actor = this.actor;
@@ -481,6 +499,20 @@ export class CyberpunkItem extends Item {
     }
     else if([martialActions.kick, martialActions.throw, martialActions.choke].includes(action)) {
       damageFormula = "1d6+@strengthBonus+@martialDamageBonus"; // Seriously, WHY is kicking objectively better?!
+    }
+
+    if (damageFormula !== "" && attackMods.cyberTerminus) {
+        switch (attackMods.cyberTerminus) {
+            case "CyberTerminusX2":
+                damageFormula = `(${damageFormula})*2`;
+                break;
+            case "CyberTerminusX3":
+                damageFormula = `(${damageFormula})*3`;
+                break;
+            case "NoCyberlimb":
+            default:
+                break;
+        }
     }
 
     if(damageFormula !== "") {
