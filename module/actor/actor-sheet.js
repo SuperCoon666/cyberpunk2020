@@ -61,9 +61,21 @@ export class CyberpunkActorSheet extends ActorSheet {
       const StunDeathMod = getProperty(system, "StunDeathMod") || 0;
       sheetData.StunDeathMod = StunDeathMod;
     }
+
+    // Collect all programs that belong to this actor.
     const allPrograms = this.actor.items.filter(i => i.type === "program");
     allPrograms.sort((a, b) => a.name.localeCompare(b.name));
     sheetData.netrunPrograms = allPrograms;
+
+    /**
+     * Collect the list of active programs based on the ID array
+     *   actor.system.netrun.activePrograms: string[]
+     */
+    const activeProgIds = this.actor.system.netrun?.activePrograms || [];
+    // Filter out the ones the actor actually has.
+    const activePrograms = allPrograms.filter(p => activeProgIds.includes(p.id));
+    // Put them in sheetData so netrun-tab.hbs can output them
+    sheetData.netrunActivePrograms = activePrograms;
 
     return sheetData;
   }
@@ -104,7 +116,7 @@ export class CyberpunkActorSheet extends ActorSheet {
     const mortals = Array(7).fill().map((_,index) => game.i18n.format("CYBERPUNK.Mortal", {mortality: index}));
     sheetData.woundStates = nonMortals.concat(mortals);
   }
-  
+
   /**
    * Items that aren't actually cyberware or skills - everything that should be shown in the gear tab. 
    */
@@ -128,7 +140,7 @@ export class CyberpunkActorSheet extends ActorSheet {
    */
   _prepareCharacterItems(sheetData) {
     let sortedItems = sheetData.actor.itemTypes;
-    
+
     sheetData.gearTabItems = this._gearTabItems(sheetData.actor.items);
 
     // Convenience copy of itemTypes tab, makes things a little less long-winded in the templates
@@ -148,9 +160,9 @@ export class CyberpunkActorSheet extends ActorSheet {
     super.activateListeners(html);
 
     /**
-   * Get an owned item from a click event, for any event trigger with a data-item-id property
-   * @param {*} ev 
-   */
+     * Get an owned item from a click event, for any event trigger with a data-item-id property
+     * @param {*} ev 
+     */
     function getEventItem(sheet, ev) {
       let itemId = ev.currentTarget.dataset.itemId;
       return sheet.actor.items.get(itemId);
@@ -176,24 +188,23 @@ export class CyberpunkActorSheet extends ActorSheet {
 
     // Everything below here is only needed if the sheet is editable
     if (!this.options.editable) return;
-    
-    // Find elements with stuff like html.find('.cssClass').click(this.function.bind(this));
-    // Bind makes the "this" object in the function this.
-    // html.find('.skill-search').click(this._onItemCreate.bind(this));
 
+    // Stat roll
     html.find('.stat-roll').click(ev => {
       let statName = ev.currentTarget.dataset.statName;
       this.actor.rollStat(statName);
     });
-    // TODO: Refactor these skill interactivity stuff into their own methods
+
+    // Skill level changes
     html.find(".skill-level").click((event) => event.target.select()).change((event) => {
       let skill = this.actor.items.get(event.currentTarget.dataset.skillId);
       let target = skill.system.isChipped ? "system.chipLevel" : "system.level";
       let updateData = {_id: skill.id};
       updateData[target] = parseInt(event.target.value, 10);
       this.actor.updateEmbeddedDocuments("Item", [updateData]);
-      // Mild hack to make sheet refresh and re-sort: the ability to do that should just be put in 
     });
+
+    // Toggle skill chipped
     html.find(".chip-toggle").click(ev => {
       let skill = this.actor.items.get(ev.currentTarget.dataset.skillId);
       this.actor.updateEmbeddedDocuments("Item", [{
@@ -202,14 +213,19 @@ export class CyberpunkActorSheet extends ActorSheet {
       }]);
     });
 
+    // Skill sorting
     html.find(".skill-sort > select").change(ev => {
       let sort = ev.currentTarget.value;
       this.actor.sortSkills(sort);
     });
+
+    // Skill roll
     html.find(".skill-roll").click(ev => {
       let id = ev.currentTarget.dataset.skillId;
       this.actor.rollSkill(id);
     });
+
+    // Initiative
     html.find(".roll-initiative").click(ev => {
       const rollInitiativeModificatorInput = html.find(".roll-initiative-modificator")[0];
       this.actor.addToCombatAndRollInitiative(rollInitiativeModificatorInput.value);
@@ -218,35 +234,45 @@ export class CyberpunkActorSheet extends ActorSheet {
       const value = ev.target.value;
       this.actor.update({"system.initiativeMod": Number(value)});
     });
+
+    // Stun/Death save
     html.find(".roll-stun-death-modificator").change(ev => {
       const value = ev.target.value;
       this.actor.update({"system.StunDeathMod": Number(value)});
-    });           
-    html.find(".damage").click(ev => {
-      let damage = Number(ev.currentTarget.dataset.damage);
-      this.actor.update({
-        "system.damage": damage
-      });
     });
     html.find(".stun-death-save").click(ev => {
       const rollModificatorInput = html.find(".roll-stun-death-modificator")[0]
       this.actor.rollStunDeath(rollModificatorInput.value);
     });
 
+    // Damage
+    html.find(".damage").click(ev => {
+      let damage = Number(ev.currentTarget.dataset.damage);
+      this.actor.update({
+        "system.damage": damage
+      });
+    });
+
+    // Generic item roll (calls item.roll())
     html.find('.item-roll').click(ev => {
       // Roll is often within child events, don't bubble please
       ev.stopPropagation();
       let item = getEventItem(this, ev);
       item.roll();
     });
+
+    // Edit item
     html.find('.item-edit').click(ev => {
       ev.stopPropagation();
       let item = getEventItem(this, ev);
       item.sheet.render(true);
     });
+
+    // Delete item
     html.find('.item-delete').click(deleteItemDialog.bind(this));
     html.find('.rc-item-delete').bind("contextmenu", deleteItemDialog.bind(this)); 
 
+    // Кнопка "Fire" для оружия
     html.find('.fire-weapon').click(ev => {
       ev.stopPropagation();
       let item = getEventItem(this, ev);
@@ -259,8 +285,6 @@ export class CyberpunkActorSheet extends ActorSheet {
           id: target.id};
       });
       if(isRanged) {
-        // For now just look at the names.
-        // We have to get the values as an iterator; else if multiple targets share names, it'd turn a set with size 2 to one with size 1
         modifierGroups = rangedModifiers(item, targetTokens);
       }
       else if (item.system.attackType === meleeAttackTypes.martial){
@@ -269,7 +293,7 @@ export class CyberpunkActorSheet extends ActorSheet {
       else {
         modifierGroups = meleeBonkOptions();
       }
-      
+
       let dialog = new ModifiersDialog(this.actor, {
         weapon: item,
         targetTokens: targetTokens,
@@ -278,31 +302,140 @@ export class CyberpunkActorSheet extends ActorSheet {
       });
       dialog.render(true);
     });
+
+    /**
+     * Открытие/удаление программ из "списка программ"
+     */
+    function getNetrunProgramItem(sheet, ev) {
+      ev.stopPropagation();
+      const itemId = ev.currentTarget.closest(".netrun-program").dataset.itemId;
+      return sheet.actor.items.get(itemId);
+    }
+    html.find('.netrun-program .fa-edit').click(ev => {
+      const item = getNetrunProgramItem(this, ev);
+      if (!item) return;
+      item.sheet.render(true);
+    });
+    html.find('.netrun-program .fa-trash').click(ev => {
+      const item = getNetrunProgramItem(this, ev);
+      if (!item) return;
+      let confirmDialog = new Dialog({
+        title: localize("ItemDeleteConfirmTitle"),
+        content: `<p>${localizeParam("ItemDeleteConfirmText", {itemName: item.name})}</p>`,
+        buttons: {
+          yes: {
+            label: localize("Yes"),
+            callback: () => item.delete()
+          },
+          no: { label: localize("No") },
+        },
+        default:"no"
+      });
+      confirmDialog.render(true);
+    });
+
+    // Make each .netrun-program the “source” of the drag and drop operation
+    html.find('.netrun-program').each((_, programElem) => {
+      // An attribute telling the browser and Foundry that this element can be “dragged”
+      programElem.setAttribute("draggable", true);
+
+      // Process dragstart
+      programElem.addEventListener("dragstart", ev => {
+        // Find the corresponding Item
+        const itemId = programElem.dataset.itemId;
+        const item = this.actor.items.get(itemId);
+        if ( !item ) return;
+
+        // Form dragData - object to be read in _onDropItem(event, data)
+        const dragData = {
+          type: "Item",
+          actorId: this.actor.id,
+          data: item.toObject()
+        };
+
+        // Write dragData to the event
+        ev.dataTransfer.setData("text/plain", JSON.stringify(dragData));
+
+        // You can add an “is-dragging” class or any visual highlighting class
+        programElem.classList.add("is-dragging");
+      });
+
+      // When the dragging is finished, remove the class
+      programElem.addEventListener("dragend", ev => {
+        programElem.classList.remove("is-dragging");
+      });
+    });
   }
 
+  /**
+   * Overridden method of Drag&Drop processing
+   * When dropping, we check where exactly we dropped to (data-drop-target).
+   * If on “program-list” - add program to inventory.
+   * If on “active-programs” - activate the program.
+   */
   async _onDropItem(event, data) {
     event.preventDefault();
 
     // Search for the parent element with the data-drop-target attribute
     const dropTarget = event.target.closest("[data-drop-target]");
     // If not found, then let the standard Foundry logic work
-    if ( !dropTarget ) return super._onDropItem(event, data);
+    if (!dropTarget) return super._onDropItem(event, data);
 
-    // Check if we threw in “program-list”
-    if ( dropTarget.dataset.dropTarget === "program-list") {
-      // Parsing data about the dragged item (ItemData)
+    // 1. Drop to “program-list”.
+    if (dropTarget.dataset.dropTarget === "program-list") {
       let itemData = await Item.implementation.fromDropData(data);
 
+      // If it is not a program, skip it
       if (itemData.type !== "program") {
         return ui.notifications.warn(`Это не программа: ${itemData.name}`);
       }
 
-      // Create a new item (copy) for this actor.
+      // If a person pulls a program that the same actor already has,
+      // and drops it in the program-list, - do nothing (to avoid duplicating)
+      const sameActor = (data.actorId === this.actor.id);
+      const existingItem = sameActor ? this.actor.items.get(itemData._id) : null;
+      if (existingItem) {
+        ui.notifications.warn(`Программа '${existingItem.name}' уже есть в списке. Дубликат не создаю.`);
+        return;
+      }
+
+      // Otherwise (pulling from another actor, or from compendium, or it's another program) - create a copy
       return this.actor.createEmbeddedDocuments("Item", [ itemData ]);
     }
 
-    // If it's not “program-list”, give control to the parent method,
-    // so as not to break the standard behavior of dropping to other parts of the sheet
+    // 2. Drop in “active-programs”
+    if (dropTarget.dataset.dropTarget === "active-programs") {
+      let itemData = await Item.implementation.fromDropData(data);
+
+      if (itemData.type !== "program") {
+        return ui.notifications.warn(`Можно активировать только программы. Это не программа: ${itemData.name}`);
+      }
+
+      // Maybe the actor already has the program
+      let item = this.actor.items.get(itemData._id);
+
+      // If suddenly there is no item in the inventory - it means that “someone else's” Item is being dragged. Let's create a copy:
+      if (!item) {
+        const [created] = await this.actor.createEmbeddedDocuments("Item", [ itemData ]);
+        item = created;
+      }
+
+      // Get an array of already activated programs (ID)
+      const currentActive = this.actor.system.netrun.activePrograms || [];
+
+      // If this item.id is not there yet - add it and save it
+      if (!currentActive.includes(item.id)) {
+        currentActive.push(item.id);
+
+        // Update the actor to reflect the changes.
+        await this.actor.update({ 
+          "system.netrun.activePrograms": currentActive 
+        });
+      }
+      return;
+    }
+
+    // If not “program-list” and not “active-programs”, then execute the standard Foundry mechanism
     return super._onDropItem(event, data);
   }
 }

@@ -114,16 +114,19 @@
 
   </div><!-- /netrun-container -->
 
-  <!-- ACTIVE PROGRAMS block -->
-  <div class="netrun-active-programs-container" style="margin-top: 10px;">
-    <label class="netrun-label">{{CPLocal "NetActivePrograms"}}</label>
-    <div class="netrun-active-icons">
-      <!-- Icons of active programs -->
-      {{!-- Example statically --}}
-      <div class="netrun-active-icon"></div>
-      <div class="netrun-active-icon"></div>
+    <!-- ACTIVE PROGRAMS block -->
+    <div class="netrun-active-programs-container" style="margin-top: 10px;">
+        <label class="netrun-label">{{CPLocal "NetActivePrograms"}}</label>
+        <!-- Указываем data-drop-target="active-programs" -->
+        <div class="netrun-active-icons" data-drop-target="active-programs">
+            {{#each netrunActivePrograms as |prog|}}
+            <div class="netrun-active-icon">
+                <!-- Выводим иконку программы -->
+                <img src="{{prog.img}}" alt="{{prog.name}}" title="{{prog.name}}" />
+            </div>
+            {{/each}}
+        </div>
     </div>
-  </div>
 
   <!-- List of all programs (2 columns) -->
   <div class="field-list netrun-program-list" data-drop-target="program-list">
@@ -135,8 +138,8 @@
           <span class="program-type">({{prog.system.programType}})</span>
         </div>
         <div class="program-controls">
-          <i class="fas fa-trash"></i>
           <i class="fas fa-edit"></i>
+          <i class="fas fa-trash"></i>
         </div>
       </div>
     {{/each}}
