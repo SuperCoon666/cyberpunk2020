@@ -294,7 +294,7 @@ export class CyberpunkActorSheet extends ActorSheet {
 
     // Delete item
     html.find('.item-delete').click(deleteItemDialog.bind(this));
-    html.find('.rc-item-delete').bind("contextmenu", deleteItemDialog.bind(this));
+    html.find('.rc-item-delete').bind("contextmenu", deleteItemDialog.bind(this)); 
 
     // Кнопка "Fire" для оружия
     html.find('.fire-weapon').click(ev => {
@@ -309,6 +309,8 @@ export class CyberpunkActorSheet extends ActorSheet {
           id: target.id};
       });
       if(isRanged) {
+        // For now just look at the names.
+        // We have to get the values as an iterator; else if multiple targets share names, it'd turn a set with size 2 to one with size 1
         modifierGroups = rangedModifiers(item, targetTokens);
       }
       else if (item.system.attackType === meleeAttackTypes.martial){
