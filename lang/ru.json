@@ -378,7 +378,7 @@
     "CYBERPUNK.NetInterface": "ИНТЕРФЕЙС",
     "CYBERPUNK.NetCPU": "ЦПУ",
     "CYBERPUNK.NetSpeed": "СКОРОСТЬ",
-    "CYBERPUNK.NetStrength": "МОЩНОСТЬ",
+    "CYBERPUNK.NetStrength": "С-КОД ВРАТ",
     "CYBERPUNK.NetDataWall": "СТЕНА ДАННЫХ",
     "CYBERPUNK.NetRAM": "ОЗУ",
     "CYBERPUNK.NetRAMUsed": "Использовано",

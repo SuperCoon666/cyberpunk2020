@@ -409,7 +409,7 @@
     "CYBERPUNK.NetInterface": "INTERFACE",
     "CYBERPUNK.NetCPU": "CPU",
     "CYBERPUNK.NetSpeed": "SPEED",
-    "CYBERPUNK.NetStrength": "STRENGTH",
+    "CYBERPUNK.NetStrength": "C-GATE STR",
     "CYBERPUNK.NetDataWall": "DATA WALL",
     "CYBERPUNK.NetRAM": "RAM",
     "CYBERPUNK.NetRAMUsed": "Used",
