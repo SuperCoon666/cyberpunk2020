@@ -120,6 +120,11 @@ export class CyberpunkActorSheet extends ActorSheet {
     }
     else {
       // If we searched previously and the old search had results, we can filter those instead of the whole lot
+      if(sheetData.system.transient.oldSearch != null 
+        && sheetData.filteredSkillIDs != null
+        && upperSearch.startsWith(oldSearch)) {
+        listToFilter = sheetData.filteredSkillIDs; 
+      }
       return listToFilter.filter(id => {
         let skillName = this.actor.items.get(id).name;
         return skillName.toUpperCase().includes(upperSearch);
@@ -179,7 +184,7 @@ export class CyberpunkActorSheet extends ActorSheet {
     /**
      * Get an owned item from a click event, for any event trigger with a data-item-id property
      * @param {*} ev 
-     */
+    */
     function getEventItem(sheet, ev) {
       let itemId = ev.currentTarget.dataset.itemId;
       return sheet.actor.items.get(itemId);
@@ -211,6 +216,7 @@ export class CyberpunkActorSheet extends ActorSheet {
       let statName = ev.currentTarget.dataset.statName;
       this.actor.rollStat(statName);
     });
+    // TODO: Refactor these skill interactivity stuff into their own methods
 
     // Skill level changes
     html.find(".skill-level").click((event) => event.target.select()).change((event) => {
@@ -219,6 +225,7 @@ export class CyberpunkActorSheet extends ActorSheet {
       let updateData = {_id: skill.id};
       updateData[target] = parseInt(event.target.value, 10);
       this.actor.updateEmbeddedDocuments("Item", [updateData]);
+      // Mild hack to make sheet refresh and re-sort: the ability to do that should just be put in
     });
 
     // Toggle skill chipped
@@ -320,9 +327,6 @@ export class CyberpunkActorSheet extends ActorSheet {
       dialog.render(true);
     });
 
-    /**
-     * Открытие/удаление программ из "списка программ"
-     */
     function getNetrunProgramItem(sheet, ev) {
       ev.stopPropagation();
       const itemId = ev.currentTarget.closest(".netrun-program").dataset.itemId;
