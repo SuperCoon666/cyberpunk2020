@@ -7,105 +7,156 @@
     <div class="netrun-row">
       <div class="netrun-cell">
         <label class="netrun-label">{{CPLocal "NetLabel"}}</label>
-        <div class="netrun-icon-frame" data-edit="system.netrun.icon">
-          {{!-- Clicking on <img> or .netrun-icon-frame will open a file selection dialog --}}
-          <img src="{{actor.system.netrun.icon}}" alt="Runner Icon"
-               data-edit="system.netrun.icon" title="Click to change icon" />
+        <div class="netrun-icon-frame filepicker"
+             data-type="Image"
+             data-target="system.netrun.icon"
+             data-fp-type="image"
+             data-fp-action="browse"
+             title="Click to change icon">
+          <img src="{{actor.system.netrun.icon}}" alt="Runner Icon" />
         </div>
+        <input type="text"
+               name="system.netrun.icon"
+               data-dtype="String"
+               value="{{actor.system.netrun.icon}}"
+               style="display: none;" />
       </div>
 
       <div class="netrun-cell">
         <label class="netrun-label">{{CPLocal "NetCyberdeckName"}}</label>
-        <input type="text" placeholder="{{CPLocal 'NetDeckPlaceholder'}}"
-               data-edit="system.netrun.deckModel" value="{{actor.system.netrun.deckModel}}" />
+        <input type="text"
+               name="system.netrun.deckModel"
+               data-dtype="String"
+               placeholder="{{CPLocal 'NetDeckPlaceholder'}}"
+               value="{{actor.system.netrun.deckModel}}" />
       </div>
 
       <div class="netrun-cell">
         <label class="netrun-label">{{CPLocal "NetInterface"}}</label>
-        <input type="number" placeholder="0"
-               data-edit="system.netrun.interface" value="{{actor.system.netrun.interface}}" />
+        <input type="number"
+               class="interface-skill-roll"
+               style="cursor:pointer;"
+               value="{{interfaceSkill.value}}"
+               readonly
+               data-skill-id="{{interfaceSkill.itemId}}" />
       </div>
     </div><!-- /netrun-row -->
 
-    <!-- 2nd line: CPU, Speed, Strength, DataWall, RAM -->
-    <div class="netrun-row-five">
+
+    <!-- 2nd line: CPU, Speed, DataWall, RAM (Strength removed) -->
+    <div class="netrun-row-four">
       <div class="netrun-cell">
         <label class="netrun-label">{{CPLocal "NetCPU"}}</label>
-        <input type="number" class="short-input" placeholder="0"
-               data-edit="system.netrun.cpu" value="{{actor.system.netrun.cpu}}" />
+        <input type="number"
+               name="system.netrun.cpu"
+               data-dtype="Number"
+               class="short-input"
+               placeholder="0"
+               value="{{actor.system.netrun.cpu}}" />
       </div>
       <div class="netrun-cell">
         <label class="netrun-label">{{CPLocal "NetSpeed"}}</label>
-        <input type="number" class="short-input" placeholder="0"
-               data-edit="system.netrun.speed" value="{{actor.system.netrun.speed}}" />
-      </div>
-      <div class="netrun-cell">
-        <label class="netrun-label">{{CPLocal "NetStrength"}}</label>
-        <input type="number" class="short-input" placeholder="0"
-               data-edit="system.netrun.strength" value="{{actor.system.netrun.strength}}" />
+        <input type="number"
+               name="system.netrun.speed"
+               data-dtype="Number"
+               class="short-input"
+               placeholder="0"
+               value="{{actor.system.netrun.speed}}" />
       </div>
       <div class="netrun-cell">
         <label class="netrun-label">{{CPLocal "NetDataWall"}}</label>
-        <input type="number" class="short-input" placeholder="0"
-               data-edit="system.netrun.dataWall" value="{{actor.system.netrun.dataWall}}" />
+        <input type="number"
+               name="system.netrun.dataWall"
+               data-dtype="Number"
+               class="short-input"
+               placeholder="0"
+               value="{{actor.system.netrun.dataWall}}" />
       </div>
       <div class="netrun-cell netrun-cell-ram">
         <label class="netrun-label">{{CPLocal "NetRAM"}}</label>
         <div class="netrun-ram-info">
           <div>{{CPLocal "NetRAMUsed"}}: <span>{{actor.system.netrun.ramUsed}}</span></div>
-          <div>{{CPLocal "NetRAMMax"}}: 
-            <input type="number" class="netrun-ram-short" placeholder="0"
-                   data-edit="system.netrun.ramMax" value="{{actor.system.netrun.ramMax}}" />
+          <div>{{CPLocal "NetRAMMax"}}:
+            <input type="number"
+                   name="system.netrun.ramMax"
+                   data-dtype="Number"
+                   class="netrun-ram-short"
+                   placeholder="0"
+                   value="{{actor.system.netrun.ramMax}}" />
           </div>
         </div>
       </div>
-    </div><!-- /netrun-row-five -->
+    </div><!-- /netrun-row-four -->
 
     <!-- 3rd line: Deck Type + Options -->
     <div class="netrun-options-row">
       <div class="netrun-cell">
         <label class="netrun-label">{{CPLocal "NetDeckType"}}</label>
-        <select class="deck-type-select" data-edit="system.netrun.deckType" value="{{actor.system.netrun.deckType}}">
-          <option value="cellular">{{CPLocal "NetDeckTypeCellular"}}</option>
-          <option value="portable">{{CPLocal "NetDeckTypePortable"}}</option>
-          <option value="combat">{{CPLocal "NetDeckTypeCombat"}}</option>
-          <option value="implant">{{CPLocal "NetDeckTypeImplant"}}</option>
-          <option value="standard">{{CPLocal "NetDeckTypeStandard"}}</option>
+        <select class="deck-type-select" name="system.netrun.deckType" data-dtype="String">
+          <option value="cellular" {{#if (eq actor.system.netrun.deckType "cellular")}}selected{{/if}}>{{CPLocal "NetDeckTypeCellular"}}</option>
+          <option value="portable" {{#if (eq actor.system.netrun.deckType "portable")}}selected{{/if}}>{{CPLocal "NetDeckTypePortable"}}</option>
+          <option value="combat"   {{#if (eq actor.system.netrun.deckType "combat")}}selected{{/if}}>{{CPLocal "NetDeckTypeCombat"}}</option>
+          <option value="implant"  {{#if (eq actor.system.netrun.deckType "implant")}}selected{{/if}}>{{CPLocal "NetDeckTypeImplant"}}</option>
+          <option value="standard" {{#if (eq actor.system.netrun.deckType "standard")}}selected{{/if}}>{{CPLocal "NetDeckTypeStandard"}}</option>
         </select>
       </div>
       <div class="netrun-cell">
         <label class="netrun-label">{{CPLocal "NetOptions"}}</label>
         <div class="deck-options">
           <label class="deck-option">
-            <input type="checkbox" data-edit="system.netrun.hasElectrodes" {{checked actor.system.netrun.hasElectrodes}}/>
+            <input type="checkbox"
+                   name="system.netrun.hasElectrodes"
+                   data-dtype="Boolean"
+                   {{#if actor.system.netrun.hasElectrodes}}checked{{/if}} />
             {{CPLocal "NetOptionElectrodes"}}
           </label>
           <label class="deck-option">
-            <input type="checkbox" data-edit="system.netrun.hasKeyboard" {{checked actor.system.netrun.hasKeyboard}}/>
+            <input type="checkbox"
+                   name="system.netrun.hasKeyboard"
+                   data-dtype="Boolean"
+                   {{#if actor.system.netrun.hasKeyboard}}checked{{/if}} />
             {{CPLocal "NetOptionKeyboard"}}
           </label>
           <label class="deck-option">
-            <input type="checkbox" data-edit="system.netrun.hasScreen" {{checked actor.system.netrun.hasScreen}}/>
+            <input type="checkbox"
+                   name="system.netrun.hasScreen"
+                   data-dtype="Boolean"
+                   {{#if actor.system.netrun.hasScreen}}checked{{/if}} />
             {{CPLocal "NetOptionScreen"}}
           </label>
           <label class="deck-option">
-            <input type="checkbox" data-edit="system.netrun.hasPrinter" {{checked actor.system.netrun.hasPrinter}}/>
+            <input type="checkbox"
+                   name="system.netrun.hasPrinter"
+                   data-dtype="Boolean"
+                   {{#if actor.system.netrun.hasPrinter}}checked{{/if}} />
             {{CPLocal "NetOptionPrinter"}}
           </label>
           <label class="deck-option">
-            <input type="checkbox" data-edit="system.netrun.hasChipReader" {{checked actor.system.netrun.hasChipReader}}/>
+            <input type="checkbox"
+                   name="system.netrun.hasChipReader"
+                   data-dtype="Boolean"
+                   {{#if actor.system.netrun.hasChipReader}}checked{{/if}} />
             {{CPLocal "NetOptionChipReader"}}
           </label>
           <label class="deck-option">
-            <input type="checkbox" data-edit="system.netrun.hasVoxBox" {{checked actor.system.netrun.hasVoxBox}}/>
+            <input type="checkbox"
+                   name="system.netrun.hasVoxBox"
+                   data-dtype="Boolean"
+                   {{#if actor.system.netrun.hasVoxBox}}checked{{/if}} />
             {{CPLocal "NetOptionVoxBox"}}
           </label>
           <label class="deck-option">
-            <input type="checkbox" data-edit="system.netrun.hasScanner" {{checked actor.system.netrun.hasScanner}}/>
+            <input type="checkbox"
+                   name="system.netrun.hasScanner"
+                   data-dtype="Boolean"
+                   {{#if actor.system.netrun.hasScanner}}checked{{/if}} />
             {{CPLocal "NetOptionScanner"}}
           </label>
           <label class="deck-option">
-            <input type="checkbox" data-edit="system.netrun.hasExtraChip" {{checked actor.system.netrun.hasExtraChip}}/>
+            <input type="checkbox"
+                   name="system.netrun.hasExtraChip"
+                   data-dtype="Boolean"
+                   {{#if actor.system.netrun.hasExtraChip}}checked{{/if}} />
             {{CPLocal "NetOptionExtraChip"}}
           </label>
         </div>
@@ -114,35 +165,36 @@
 
   </div><!-- /netrun-container -->
 
-    <!-- ACTIVE PROGRAMS block -->
-    <div class="netrun-active-programs-container" style="margin-top: 10px;">
-        <label class="netrun-label">{{CPLocal "NetActivePrograms"}}</label>
-        <!-- Указываем data-drop-target="active-programs" -->
-        <div class="netrun-active-icons" data-drop-target="active-programs">
-            {{#each netrunActivePrograms as |prog|}}
-            <div class="netrun-active-icon">
-                <!-- Выводим иконку программы -->
-                <img src="{{prog.img}}" alt="{{prog.name}}" title="{{prog.name}}" />
-            </div>
-            {{/each}}
-        </div>
+  <!-- ACTIVE PROGRAMS block -->
+  <div class="netrun-active-programs-container" style="margin-top: 10px;">
+    <label class="netrun-label">{{CPLocal "NetActivePrograms"}}</label>
+    <!-- data-drop-target="active-programs" -->
+    <div class="netrun-active-icons" data-drop-target="active-programs">
+      {{#each netrunActivePrograms}}
+      <div class="netrun-active-icon" data-item-id="{{this.id}}">
+        <img src="{{this.img}}" alt="{{this.name}}" title="{{this.name}}" />
+      </div>
+      {{/each}}
     </div>
+  </div>
 
-  <!-- List of all programs (2 columns) -->
-  <div class="field-list netrun-program-list" data-drop-target="program-list">
-    {{#each netrunPrograms as |prog|}}
-      <div class="field netrun-program" data-item-id="{{prog.id}}">
+    <!-- List of all programs (2 columns) -->
+    <div class="field-list netrun-program-list" data-drop-target="program-list">
+    {{#each netrunPrograms}}
+        <div class="field netrun-program"
+            data-item-id="{{this.id}}"
+            draggable="true">
         <div class="program-left">
-          <img src="{{prog.img}}" alt="{{CPLocal 'NetProgramIcon'}}" />
-          <label class="program-name">{{prog.name}}</label>
-          <span class="program-type">({{prog.system.programType}})</span>
+            <img src="{{this.img}}" alt="{{CPLocal 'NetProgramIcon'}}" />
+            <label class="program-name">{{this.name}}</label>
+            <span class="program-type">({{this.system.programType}})</span>
         </div>
         <div class="program-controls">
-          <i class="fas fa-edit"></i>
-          <i class="fas fa-trash"></i>
+            <i class="fas fa-edit"></i>
+            <i class="fas fa-trash"></i>
         </div>
-      </div>
+        </div>
     {{/each}}
-  </div>
+    </div>
 
 </div><!-- /netrun-sheet -->

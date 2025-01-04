@@ -77,6 +77,23 @@ export class CyberpunkActorSheet extends ActorSheet {
     // Put them in sheetData so netrun-tab.hbs can output them
     sheetData.netrunActivePrograms = activePrograms;
 
+    const allSkills = this.actor.items.filter(i => i.type === "skill");
+
+    const interfaceName = game.i18n.localize("CYBERPUNK.SkillInterface");
+    let interfaceItem = allSkills.find(i => i.name === interfaceName);
+
+    let interfaceValue = 0;
+    let interfaceItemId = null;
+    if (interfaceItem) {
+      interfaceValue = Number(interfaceItem.system?.level || 0);
+      interfaceItemId = interfaceItem.id;
+    }
+
+    sheetData.interfaceSkill = {
+      value: interfaceValue,
+      itemId: interfaceItemId
+    };
+
     return sheetData;
   }
 
@@ -186,7 +203,7 @@ export class CyberpunkActorSheet extends ActorSheet {
       confirmDialog.render(true);
     }
 
-    // Everything below here is only needed if the sheet is editable
+    // If not editable, do nothing further
     if (!this.options.editable) return;
 
     // Stat roll
@@ -270,7 +287,7 @@ export class CyberpunkActorSheet extends ActorSheet {
 
     // Delete item
     html.find('.item-delete').click(deleteItemDialog.bind(this));
-    html.find('.rc-item-delete').bind("contextmenu", deleteItemDialog.bind(this)); 
+    html.find('.rc-item-delete').bind("contextmenu", deleteItemDialog.bind(this));
 
     // Кнопка "Fire" для оружия
     html.find('.fire-weapon').click(ev => {
@@ -365,6 +382,83 @@ export class CyberpunkActorSheet extends ActorSheet {
         programElem.classList.remove("is-dragging");
       });
     });
+
+    // Auto-save changes for all fields that have data-edit=”...”
+    // This will allow writing new values to this.actor at once.
+    html.find('input[data-edit], select[data-edit], textarea[data-edit]').on('change', ev => {
+      ev.preventDefault();
+      const input = ev.currentTarget;
+      const path = input.dataset.edit;
+      const dtype = input.dataset.dtype;
+      let value = input.value;
+
+      if (dtype === "Number") {
+        value = Number(value || 0);
+        if (input.type === "checkbox") value = input.checked ? 1 : 0;
+      }
+      else if (dtype === "Boolean") {
+        value = input.checked;
+      }
+
+      this.actor.update({ [path]: value });
+    });
+
+    // Click on .interface-skill-roll to make a roll (if itemId is not null)
+    const interfaceSkillElems = html.find('.interface-skill-roll');
+
+    interfaceSkillElems.on('click', ev => {
+      ev.preventDefault();
+      const skillId = ev.currentTarget.dataset.skillId;
+      if (!skillId) {
+        ui.notifications.warn(`Interface skill not found - no skill to roll.`);
+        return;
+      }
+      this.actor.rollSkill(skillId);
+    });
+
+    // When clicking (contextmenu) on the icon of the active program - remove it from the list
+    html.find('.netrun-active-icon').on('contextmenu', async ev => {
+      ev.preventDefault();
+      const div = ev.currentTarget;
+      const itemId = div.dataset.itemId;
+      if (!itemId) return;
+      const currentActive = [...(this.actor.system.netrun.activePrograms || [])];
+      const idx = currentActive.indexOf(itemId);
+      if (idx < 0) return;
+
+      currentActive.splice(idx, 1);
+
+      let sumMU = 0;
+      for (let progId of currentActive) {
+        let progItem = this.actor.items.get(progId);
+        if (!progItem) continue;
+        sumMU += (progItem.system.mu || 0);
+      }
+
+      await this.actor.update({
+        "system.netrun.activePrograms": currentActive,
+        "system.netrun.ramUsed": sumMU
+      });
+
+      ui.notifications.info(`Программа снята с активных.`);
+    });
+
+    html.find('.filepicker').on('click', async (ev) => {
+      ev.preventDefault();
+      const currentPath = this.actor.system.netrun.icon || "";
+      
+      const fp = new FilePicker({
+        type: "image",
+        current: currentPath,
+        callback: (path) => {
+          this.actor.update({"system.netrun.icon": path});
+        },
+        top: this.position.top + 40,
+        left: this.position.left + 10
+      });
+
+      fp.render(true);
+    });
   }
 
   /**
@@ -427,10 +521,21 @@ export class CyberpunkActorSheet extends ActorSheet {
       if (!currentActive.includes(item.id)) {
         currentActive.push(item.id);
 
-        // Update the actor to reflect the changes.
+        let sumMU = 0;
+        for (let progId of currentActive) {
+          let progItem = this.actor.items.get(progId);
+          if (!progItem) continue;
+          let muVal = progItem.system.mu || 0;
+          console.log(`DEBUG:   => Summation: add ${progItem.name} (mu=${muVal})`);
+          sumMU += muVal;
+        }
+
         await this.actor.update({ 
-          "system.netrun.activePrograms": currentActive 
+          "system.netrun.activePrograms": currentActive,
+          "system.netrun.ramUsed": sumMU
         });
+
+        this.render(true);
       }
       return;
     }
