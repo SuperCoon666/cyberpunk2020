@@ -43,10 +43,10 @@
       "type": "Item"
     },
     {
-      "name": "role-skills",
-      "label": "Role Skills",
+      "name": "role-skills-en",
+      "label": "Role Skills EN",
       "system": "cyberpunk2020",
-      "path": "./packs/role-skills.db",
+      "path": "./packs/role-skills-en.db",
       "type": "Item"
     },
     {
