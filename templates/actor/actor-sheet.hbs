@@ -32,6 +32,7 @@
         <a class="item" data-tab="gear">{{localize 'CYBERPUNK.TabGear'}}</a>
         <a class="item" data-tab="cyber">{{localize 'CYBERPUNK.TabCyber'}}</a>
         <a class="item" data-tab="life">{{localize 'CYBERPUNK.Life'}}</a>
+        <a class="item" data-tab="netrun">{{localize 'CYBERPUNK.NetRun'}}</a>
     </nav>
 
     {{!-- Sheet Body --}}
@@ -57,6 +58,10 @@
             <div class="biography">
                 {{editor system.notes target="system.notes" button=true owner=owner editable=options.editable}}
             </div>
+        </div>
+
+        <div class="tab gear flexcol" data-group="primary" data-tab="netrun">
+            {{> "systems/cyberpunk2020/templates/actor/parts/netrunning.hbs"}}
         </div>
     </section>
 </form>

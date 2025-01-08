@@ -270,7 +270,7 @@ export class CyberpunkActor extends Actor {
       rollParts.push(`@stats.${skillData.stat}.total`);
     }
     if(skill.name === localize("SkillAwarenessNotice")) {
-      rollParts.push("@skills.CombatSense.value");
+      rollParts.push("@CombatSenseMod");
     }
 
     let roll = new Multiroll(skill.name)

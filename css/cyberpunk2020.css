@@ -1,61 +1,3 @@
-* {
-  scrollbar-width: thin;
-}
-
-*::-webkit-scrollbar {
-  width: 4px;
-}
-
-*::-webkit-scrollbar-track {
-  background-color: rgb(90, 90, 90);
-  border-radius: 0px;
-}
-
-*::-webkit-scrollbar-thumb {
-  border-width: 0px;
-  background-color: black;
-}
-
-.cyberpunk section.window-content {
-  font-family: "Noto Sans", sans-serif;
-  font-weight: bold;
-  overflow-y: scroll;
-}
-.cyberpunk section.window-content .editor-content {
-  font-weight: normal;
-  border: 2px solid black;
-  padding-left: 2px;
-  padding-right: 2px;
-}
-.cyberpunk section.window-content nav.tabs {
-  border-bottom: 2px solid black;
-  box-sizing: content-box;
-  flex: 0;
-  padding-top: 0px;
-  padding-bottom: 0px;
-}
-.cyberpunk section.window-content nav.tabs > .item {
-  padding-top: 4px;
-  padding-bottom: 4px;
-  flex-grow: 1;
-}
-.cyberpunk section.window-content nav.tabs > .item.active {
-  color: whitesmoke;
-  background-color: black;
-  text-shadow: unset;
-}
-.cyberpunk section.window-content .meter-gauge {
-  border: 2px solid black;
-}
-.cyberpunk section.window-content .meter-gauge > span {
-  display: block;
-  min-height: 6px;
-  background-color: green;
-}
-.cyberpunk section.window-content .meter-gauge > span.danger {
-  background-color: darkorange;
-}
-
 /* Overall sheet structure */
 .sheet header.cyberheader {
   display: flex;
@@ -169,10 +111,6 @@
 
 .field-list + * {
   margin-top: 10px;
-}
-
-.margin-bottom {
-  margin-bottom: 10px;
 }
 
 .roll-image {
@@ -690,7 +628,6 @@ div.statderive .value.rightborder {
   justify-content: center;
   text-align: center;
   padding-left: 0px;
-  padding-right: 0px;
   width: 100%;
   background-color: transparent;
   color: black;
@@ -725,6 +662,223 @@ div.statderive .value.rightborder {
   padding-right: 0px;
   border-top: 0px;
   margin-top: -2px;
+}
+
+/**********************************************
+ *  NETRUN TAB
+ **********************************************/
+.netrun-container {
+  border: 3px solid black;
+  width: 100%;
+  margin-top: 10px;
+  box-sizing: border-box;
+  padding: 0;
+}
+
+.netrun-row {
+  display: flex;
+  flex-direction: row;
+  border-bottom: 3px solid black;
+}
+.netrun-row:last-child {
+  border-bottom: none;
+}
+
+.netrun-cell {
+  flex: 1;
+  border-right: 3px solid black;
+  padding: 6px;
+  box-sizing: border-box;
+}
+.netrun-cell:last-child {
+  border-right: none;
+}
+
+/* String of 5 columns (CPU, SPEED, DATA WALL, RAM)*/
+.netrun-row-four {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  border-bottom: 3px solid black;
+}
+.netrun-row-four .netrun-cell {
+  flex: 1;
+  border-right: 3px solid black;
+  padding: 6px;
+}
+.netrun-row-four .netrun-cell:last-child {
+  border-right: none;
+}
+.netrun-cell-ram {
+  width: auto !important;
+}
+
+.netrun-label {
+  display: block;
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+.netrun-icon-frame {
+  width: 80px;
+  height: 80px;
+  border: 2px solid #333;
+  background-color: #ddd;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 5px;
+  cursor: pointer;
+}
+.netrun-icon-frame img {
+  max-width: 80px;
+  max-height: 80px;
+  object-fit: cover;
+}
+
+.netrun-cell input[type="text"],
+.netrun-cell input[type="number"] {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px;
+  margin-bottom: 3px;
+}
+
+.short-input {
+  max-width: 60px !important;
+}
+/* RAM (Used/Max) */
+.netrun-ram-short {
+  width: 60px !important;
+}
+
+/**********************************************
+ *  OPTIONS ROW
+ **********************************************/
+.netrun-options-row {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  border-bottom: 3px solid black;
+}
+.netrun-options-row .netrun-cell {
+  flex: 1;
+  border-right: 3px solid black;
+  padding: 6px;
+}
+.netrun-options-row .netrun-cell:last-child {
+  border-right: none;
+}
+
+.deck-type-select {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 5px;
+  margin-bottom: 5px;
+  padding: 4px;
+}
+
+.deck-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.deck-option {
+  display: flex;
+  align-items: center;
+  background-color: transparent;
+  color: black;
+}
+.deck-option input[type="checkbox"] {
+  margin-right: 5px;
+}
+
+/**********************************************
+ *  ACTIVE PROGRAMS
+ **********************************************/
+.netrun-active-programs-container {
+  border: 3px solid black;
+  padding: 6px;
+  margin-top: 5px;
+}
+
+.netrun-active-icons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 5px;
+
+  min-height: 100px;
+  border: 2px dashed #999;
+  margin-bottom: 15px;
+}
+
+.netrun-active-icon {
+  width: 120px;
+  height: 120px;
+  border: 2px solid black;
+  background-color: #ccc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.netrun-active-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/**********************************************
+ *  ALL PROGRAMS
+ **********************************************/
+
+/* List (2 columns) */
+.netrun-program-list {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  grid-auto-rows: auto;
+  margin-top: 5px;
+  border: 3px solid black;
+  padding: 6px;
+}
+
+/* Each program (tile) - background on the whole area */
+.field.netrun-program {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+
+  background-color: rgb(90, 90, 90);
+  color: whitesmoke;
+  border: 2px solid black;
+  padding: 4px;
+  margin-bottom: 0;
+}
+
+.field.netrun-program .program-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.field.netrun-program .program-left img {
+  width: 32px;
+  height: 32px;
+  border: 2px solid #333;
+  object-fit: cover;
+}
+
+.field.netrun-program .program-controls i {
+  margin-left: 5px;
+  cursor: pointer;
+}
+
+.field.netrun-program .program-type {
+  font-style: italic;
+  color: #ccc;
 }
 
 /*# sourceMappingURL=cyberpunk2020.css.map */
