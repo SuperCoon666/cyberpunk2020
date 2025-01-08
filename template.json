@@ -789,11 +789,10 @@
 		},
 		"program": {
 			"templates": ["common"],
-		
 			"power": 0,
 			"mu": 0,
 			"programType": "",
-			"damageFormula": "2d6"
+			"actionFormula": ""
 		},
 		"netrun": {
 			"icon": "",

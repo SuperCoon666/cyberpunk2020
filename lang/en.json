@@ -431,5 +431,19 @@
     "CYBERPUNK.NetOptionExtraChip": "Extra Chip",
     "CYBERPUNK.NetActivePrograms": "ACTIVE PROGRAMS",
     "CYBERPUNK.NetProgramIcon": "Program Icon",
-    "CYBERPUNK.NetDeckPlaceholder": "Enter deck model..."
+    "CYBERPUNK.NetDeckPlaceholder": "Enter deck model...",
+
+    "CYBERPUNK.ProgramIntrusion": "Intrusion",
+    "CYBERPUNK.ProgramDecryption": "Decryption",
+    "CYBERPUNK.ProgramDetection": "Detection",
+    "CYBERPUNK.ProgramAntiSystem": "Anti-System",
+    "CYBERPUNK.ProgramStealth": "Stealth",
+    "CYBERPUNK.ProgramProtection": "Protection",
+    "CYBERPUNK.ProgramAntiICE": "Anti-ICE",
+    "CYBERPUNK.ProgramAntiPersonnel": "Anti-Personnel",
+    "CYBERPUNK.ProgramController": "Controller",
+    "CYBERPUNK.ProgramUtility": "Utility",
+    "CYBERPUNK.ProgramTypeLabel": "Class",
+    "CYBERPUNK.ProgramStrength": "Strength",
+    "CYBERPUNK.ActionThrow": "Action Throw"
 }

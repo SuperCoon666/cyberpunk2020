@@ -400,5 +400,19 @@
     "CYBERPUNK.NetOptionExtraChip": "Доп. чип",
     "CYBERPUNK.NetActivePrograms": "АКТИВНЫЕ ПРОГРАММЫ",
     "CYBERPUNK.NetProgramIcon": "Иконка программы",
-    "CYBERPUNK.NetDeckPlaceholder": "Введите модель деки..."
+    "CYBERPUNK.NetDeckPlaceholder": "Введите модель деки...",
+
+    "CYBERPUNK.ProgramIntrusion": "Вторжение",
+    "CYBERPUNK.ProgramDecryption": "Расшифровка",
+    "CYBERPUNK.ProgramDetection": "Обнаружение",
+    "CYBERPUNK.ProgramAntiSystem": "Анти-Систем.",
+    "CYBERPUNK.ProgramStealth": "Скрытность",
+    "CYBERPUNK.ProgramProtection": "Защита",
+    "CYBERPUNK.ProgramAntiICE": "Анти-Лёд",
+    "CYBERPUNK.ProgramAntiPersonnel": "Анти-Личн.",
+    "CYBERPUNK.ProgramController": "Контроллер",
+    "CYBERPUNK.ProgramUtility": "Утилита",
+    "CYBERPUNK.ProgramTypeLabel": "Класс",
+    "CYBERPUNK.ProgramStrength": "Сила",
+    "CYBERPUNK.ActionThrow": "Бросок действия"
 }
