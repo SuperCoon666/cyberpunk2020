@@ -217,17 +217,17 @@ export class CyberpunkActorSheet extends ActorSheet {
       this.actor.rollStat(statName);
     });
     // TODO: Refactor these skill interactivity stuff into their own methods
-
     // Skill level changes
-    html.find(".skill-level").click((event) => event.target.select()).change((event) => {
+    html.find(".skill-level").click((event) => event.target.select()).change(async (event) => {
       let skill = this.actor.items.get(event.currentTarget.dataset.skillId);
       let target = skill.system.isChipped ? "system.chipLevel" : "system.level";
-      let updateData = {_id: skill.id};
+      let updateData = { _id: skill.id };
       updateData[target] = parseInt(event.target.value, 10);
-      this.actor.updateEmbeddedDocuments("Item", [updateData]);
-      // Mild hack to make sheet refresh and re-sort: the ability to do that should just be put in
-    });
-
+      // Mild hack to make sheet refresh and re-sort: the ability to do that should just be put in 
+      await this.actor.updateEmbeddedDocuments("Item", [updateData]);
+      let combatSenseItemFind = this.actor.items.find(item => item.type === 'skill' && item.name.includes('Combat'))?.system.level || 0;
+      await this.actor.update({ "system.CombatSenseMod": Number(combatSenseItemFind) });
+    });    
     // Toggle skill chipped
     html.find(".chip-toggle").click(ev => {
       let skill = this.actor.items.get(ev.currentTarget.dataset.skillId);

@@ -43,10 +43,10 @@
       "type": "Item"
     },
     {
-      "name": "role-skills",
-      "label": "Role Skills",
+      "name": "role-skills-en",
+      "label": "Role Skills EN",
       "system": "cyberpunk2020",
-      "path": "./packs/role-skills.db",
+      "path": "./packs/role-skills-en.db",
       "type": "Item"
     },
     {
@@ -213,7 +213,7 @@
     }
   ],
   "socket": false,
-  "initiative": "1d10 + @stats.ref.total + @skills.CombatSense.value + @initiativeMod",
+  "initiative": "1d10 + @stats.ref.total + @CombatSenseMod + @initiativeMod",
   "gridDistance": 5,
   "gridUnits": "m",
   "primaryTokenAttribute": null,
