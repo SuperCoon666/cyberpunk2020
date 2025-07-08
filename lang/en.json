@@ -195,6 +195,8 @@
     "CYBERPUNK.Concealability": "Concealability",
     "CYBERPUNK.Availability": "Availability",
     "CYBERPUNK.Advanced": "Advanced",
+    "CYBERPUNK.Reload": "Reload",
+    "CYBERPUNK.Reloaded": "Weapon reloaded!",
 
     "CYBERPUNK.Pistol": "Pistol",
     "CYBERPUNK.SMG": "SMG",

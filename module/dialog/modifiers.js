@@ -45,35 +45,64 @@ import { defaultTargetLocations } from "../lookups.js"
       // Woo! This should be much more flexible than the previous implementation
       // My gods did it require thinking about the shape of things, because loosely-typed can be a headache
 
-      let data = {
-        modifierGroups: this.options.modifierGroups,
-        targetTokens: this.options.targetTokens,
-        // You can't refer to indices in FormApplication form entries as far as I know, so let's give them a place to live
-        defaultValues: {}
-      };
-      if(this.options.extraMod) {
-        data.modifierGroups.push([{
-          localKey: "ExtraModifiers",
-          dataPath: "extraMod",
-          defaultValue: 0
-        }]);
+      /** 1. Клонируем массив, чтобы не править options.modifierGroups */
+      const groups = JSON.parse(JSON.stringify(this.options.modifierGroups || []));
+
+      /** 2. Добавляем Extra Mod только если нужно и ещё нет */
+      if (this.options.extraMod) {
+        const already = groups.some(g =>
+          g.some(m => m.dataPath === "extraMod"));
+        if (!already) {
+          groups.push([{
+            localKey: "ExtraModifiers",
+            dataPath: "extraMod",
+            defaultValue: 0
+          }]);
+        }
       }
 
-      data.modifierGroups.forEach(group => {
-        group.forEach(modifier => {
+      /** 3. Собираем defaultValues и fieldPath */
+      const defaultValues = {};
+      groups.forEach(group => {
+        group.forEach(mod => {
           // path towards modifier's field template
-          let fieldPath = `fields/${modifier.choices 
-            ? "select" : typeof(modifier.defaultValue)}`;
- 
-          modifier.fieldPath = fieldPath;
-          deepSet(data.defaultValues, modifier.dataPath, (modifier.defaultValue !== undefined ? modifier.defaultValue : ""));
-        })
-      })
+          mod.fieldPath = `fields/${mod.choices ? "select" : typeof mod.defaultValue}`;
+          deepSet(defaultValues, mod.dataPath,
+            mod.defaultValue !== undefined ? mod.defaultValue : "");
+        });
+      });
 
-      return data;
+      /** 4. Отдаём данные в шаблон */
+      return {
+        modifierGroups: groups,
+        targetTokens: this.options.targetTokens,
+        // You can't refer to indices in FormApplication form entries as far as I know, so let's give them a place to live
+        defaultValues,
+        isRanged: this.options.weapon?.isRanged?.() ?? false,
+        shotsLeft: this.options.weapon?.system.shotsLeft ?? 0
+      };
     }
   
     /* -------------------------------------------- */
+
+    /** @override */
+    activateListeners(html) {
+      super.activateListeners(html);
+
+      // ——— КНОПКА "RELOAD" ———
+      html.find(".reload").click(async ev => {
+        ev.preventDefault();
+        const weapon = this.options.weapon;
+        if (!weapon) return;
+
+        // shotsLeft = shots
+        await weapon.update({ "system.shotsLeft": weapon.system.shots });
+        ui.notifications.info(localize("Reloaded"));      // ключ перевода
+
+        // остаёмся в диалоге, но перерисуем его, чтобы обновить любые поля
+        this.render(false);
+      });
+    }
   
     /** @override */
     _updateObject(event, formData) {
