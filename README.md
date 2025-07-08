@@ -5,7 +5,8 @@ This system is built on OctarineSourcerer’s work, refining and expanding the a
 
 R. Talsorian Games’ [Cyberpunk 2020](https://talsorianstore.com/products/cyberpunk-2020) system, now for Foundry VTT.
 
-![image](https://github.com/user-attachments/assets/dce1270f-8432-4552-b0bf-8f00cc73966d)
+![image](https://github.com/user-attachments/assets/9e3ef043-ebaa-479a-954c-50ed04b20a6f)
+
 ![image](https://user-images.githubusercontent.com/6842867/115111021-26bfe680-9f76-11eb-93ee-7cf42d44190f.png)
 
 
