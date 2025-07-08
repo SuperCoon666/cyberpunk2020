@@ -188,6 +188,13 @@
       "path": "./packs/smgs.db",
       "system": "cyberpunk2020",
       "type": "Item"
+    },
+    {
+      "name": "programs",
+      "label": "Programs",
+      "system": "cyberpunk2020",
+      "path": "./packs/programs.db",
+      "type": "Item"
     }
   ],
   "languages": [
