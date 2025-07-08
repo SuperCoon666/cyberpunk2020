@@ -95,7 +95,7 @@ export class CyberpunkActor extends Actor {
       //   let location = system.hitLocations[armorArea];
       //   if(location !== undefined) {
       //     armorArea = armorData.coverage[armorArea];
-      //     // Преобразование обоих значений в числа перед сложением
+      //     // Converting both values to numbers before adding
       //     location.stoppingPower = Number(location.stoppingPower) + Number(armorArea.stoppingPower);
       //   }
       // }
