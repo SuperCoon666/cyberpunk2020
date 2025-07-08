@@ -737,6 +737,27 @@
 			},
 			"gear": {
 				"eurobucks": 0
+			},
+			"netrun": {
+				"icon": "",
+				"deckModel": "",
+				"interface": 0,
+				"cpu": 0,
+				"speed": 0,
+				"strength": 0,
+				"dataWall": 0,
+				"ramMax": 0,
+				"ramUsed": 0,
+				"deckType": "",
+				"hasElectrodes": false,
+				"hasKeyboard": false,
+				"hasScreen": false,
+				"hasPrinter": false,
+				"hasChipReader": false,
+				"hasVoxBox": false,
+				"hasScanner": false,
+				"hasExtraChip": false,
+				"activePrograms": []
 			}
 		},
 		"character": {
@@ -746,7 +767,8 @@
 				"stats",
 				"skills",
 				"hitLocations",
-				"gear"
+				"gear",
+				"netrun"
 			],
 			"damage": 0
 		},
@@ -757,13 +779,14 @@
 				"stats",
 				"skills",
 				"hitLocations",
-				"gear"
+				"gear",
+				"netrun"
 			],
 			"damage": 0
 		}
 	},
 	"Item": {
-		"types": ["skill", "weapon", "armor", "cyberware", "vehicle", "misc"],
+		"types": ["skill", "weapon", "armor", "cyberware", "vehicle", "misc", "program"],
 		"templates": {
 			"common": {
 				"flavor": "",
@@ -784,6 +807,13 @@
 			"isChipped": false,
 			"isRoleSkill": false,
 			"stat": "cool"
+		},
+		"program": {
+			"templates": ["common"],
+			"power": 0,
+			"mu": 0,
+			"programType": "",
+			"actionFormula": ""
 		},
 		"weapon": {
 			"templates": ["common"],

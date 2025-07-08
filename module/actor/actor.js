@@ -14,6 +14,8 @@ export class CyberpunkActor extends Actor {
   async _onCreate(data, options={}) {
     const updates = {_id: data._id};
     if (data.type === "character" ) {
+      updates["img"] = "systems/cyberpunk2020/img/edgerunner.svg";
+      updates["prototypeToken.texture.src"] = "systems/cyberpunk2020/img/edgerunner.svg";
       updates["prototypeToken.actorLink"] = true;
       updates["prototypeToken.sight.enabled"] = true;
     }
@@ -95,7 +97,7 @@ export class CyberpunkActor extends Actor {
       //   let location = system.hitLocations[armorArea];
       //   if(location !== undefined) {
       //     armorArea = armorData.coverage[armorArea];
-      //     // Преобразование обоих значений в числа перед сложением
+      //     // Converting both values to numbers before adding
       //     location.stoppingPower = Number(location.stoppingPower) + Number(armorArea.stoppingPower);
       //   }
       // }
@@ -270,7 +272,7 @@ export class CyberpunkActor extends Actor {
       rollParts.push(`@stats.${skillData.stat}.total`);
     }
     if(skill.name === localize("SkillAwarenessNotice")) {
-      rollParts.push("@skills.CombatSense.value");
+      rollParts.push("@CombatSenseMod");
     }
 
     let roll = new Multiroll(skill.name)

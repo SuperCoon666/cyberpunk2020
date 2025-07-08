@@ -1,8 +1,8 @@
 {
-  "name": "cyberpunk2020",
+  "id": "cyberpunk2020",
   "title": "Cyberpunk 2020",
   "description": "R. Talsorian Games' Cyberpunk 2020 System",
-  "version": "0.3.12",
+  "version": "1.0.0",
   "compatibility": {
     "minimum": "10",
     "verified": "11",
@@ -10,6 +10,10 @@
   },
   "templateVersion": 2,
   "authors": [
+    {
+      "name": "Tilt",
+      "discord": "tilt666"
+    },
     {
       "name": "OctarineSourceror",
       "discord": "octarinesorcerer"
@@ -43,10 +47,10 @@
       "type": "Item"
     },
     {
-      "name": "role-skills",
-      "label": "Role Skills",
+      "name": "role-skills-en",
+      "label": "Role Skills EN",
       "system": "cyberpunk2020",
-      "path": "./packs/role-skills.db",
+      "path": "./packs/role-skills-en.db",
       "type": "Item"
     },
     {
@@ -188,6 +192,13 @@
       "path": "./packs/smgs.db",
       "system": "cyberpunk2020",
       "type": "Item"
+    },
+    {
+      "name": "programs",
+      "label": "Programs",
+      "system": "cyberpunk2020",
+      "path": "./packs/programs.db",
+      "type": "Item"
     }
   ],
   "languages": [
@@ -213,13 +224,13 @@
     }
   ],
   "socket": false,
-  "initiative": "1d10 + @stats.ref.total + @skills.CombatSense.value + @initiativeMod",
+  "initiative": "1d10 + @stats.ref.total + @CombatSenseMod + @initiativeMod",
   "gridDistance": 5,
   "gridUnits": "m",
   "primaryTokenAttribute": null,
   "secondaryTokenAttribute": null,
-  "url": "https://github.com/OctarineSourcerer/cyberpunk2020",
-  "manifest": "https://raw.githubusercontent.com/OctarineSourcerer/cyberpunk2020/main/system.json",
-  "download": "https://github.com/OctarineSourcerer/cyberpunk2020/archive/v0.3.12.zip"
+  "url": "https://github.com/SuperCoon666/cyberpunk2020",
+  "manifest": "https://raw.githubusercontent.com/SuperCoon666/cyberpunk2020/main/system.json",
+  "download": "https://github.com/SuperCoon666/cyberpunk2020/archive/v1.0.0.zip"
 }
   

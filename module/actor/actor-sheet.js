@@ -61,6 +61,42 @@ export class CyberpunkActorSheet extends ActorSheet {
       const StunDeathMod = getProperty(system, "StunDeathMod") || 0;
       sheetData.StunDeathMod = StunDeathMod;
     }
+
+    // Collect all programs that belong to this actor.
+    const allPrograms = this.actor.items.filter(i => i.type === "program");
+    allPrograms.sort((a, b) => a.name.localeCompare(b.name));
+    sheetData.netrunPrograms = allPrograms;
+
+    sheetData.programsTotalCost = allPrograms
+    .reduce((sum, p) => sum + Number(p.system.cost || 0), 0);
+
+    /**
+     * Collect the list of active programs based on the ID array
+     *   actor.system.activePrograms: string[]
+     */
+    const activeProgIds = this.actor.system.activePrograms || [];
+    // Filter out the ones the actor actually has.
+    const activePrograms = allPrograms.filter(p => activeProgIds.includes(p.id));
+    // Put them in sheetData so netrun-tab.hbs can output them
+    sheetData.netrunActivePrograms = activePrograms;
+
+    const allSkills = this.actor.items.filter(i => i.type === "skill");
+
+    const interfaceName = game.i18n.localize("CYBERPUNK.SkillInterface");
+    let interfaceItem = allSkills.find(i => i.name === interfaceName);
+
+    let interfaceValue = 0;
+    let interfaceItemId = null;
+    if (interfaceItem) {
+      interfaceValue = Number(interfaceItem.system?.level || 0);
+      interfaceItemId = interfaceItem.id;
+    }
+
+    sheetData.interfaceSkill = {
+      value: interfaceValue,
+      itemId: interfaceItemId
+    };
+
     return sheetData;
   }
 
@@ -105,19 +141,18 @@ export class CyberpunkActorSheet extends ActorSheet {
     const mortals = Array(7).fill().map((_,index) => game.i18n.format("CYBERPUNK.Mortal", {mortality: index}));
     sheetData.woundStates = nonMortals.concat(mortals);
   }
-  
+
   /**
    * Items that aren't actually cyberware or skills - everything that should be shown in the gear tab. 
    */
   _gearTabItems(allItems) {
-    let hideThese = new Set(["cyberware", "skill"])
     // As per https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Collator
     // Compares locale-compatibly, and pretty fast too apparently.
+    let hideThese = new Set(["cyberware", "skill", "program"]);
     let nameSorter = new Intl.Collator();
-    let showItems = allItems.filter((item) => !hideThese.has(item.type))
-      .sort((a, b) => {
-        return nameSorter.compare(a.name, b.name)
-      });
+    let showItems = allItems
+      .filter((item) => !hideThese.has(item.type))
+      .sort((a, b) => nameSorter.compare(a.name, b.name));
     return showItems;
   }
 
@@ -130,7 +165,7 @@ export class CyberpunkActorSheet extends ActorSheet {
    */
   _prepareCharacterItems(sheetData) {
     let sortedItems = sheetData.actor.itemTypes;
-    
+
     sheetData.gearTabItems = this._gearTabItems(sheetData.actor.items);
 
     // Convenience copy of itemTypes tab, makes things a little less long-winded in the templates
@@ -150,9 +185,9 @@ export class CyberpunkActorSheet extends ActorSheet {
     super.activateListeners(html);
 
     /**
-   * Get an owned item from a click event, for any event trigger with a data-item-id property
-   * @param {*} ev 
-   */
+     * Get an owned item from a click event, for any event trigger with a data-item-id property
+     * @param {*} ev 
+    */
     function getEventItem(sheet, ev) {
       let itemId = ev.currentTarget.dataset.itemId;
       return sheet.actor.items.get(itemId);
@@ -176,26 +211,27 @@ export class CyberpunkActorSheet extends ActorSheet {
       confirmDialog.render(true);
     }
 
-    // Everything below here is only needed if the sheet is editable
+    // If not editable, do nothing further
     if (!this.options.editable) return;
-    
-    // Find elements with stuff like html.find('.cssClass').click(this.function.bind(this));
-    // Bind makes the "this" object in the function this.
-    // html.find('.skill-search').click(this._onItemCreate.bind(this));
 
+    // Stat roll
     html.find('.stat-roll').click(ev => {
       let statName = ev.currentTarget.dataset.statName;
       this.actor.rollStat(statName);
     });
     // TODO: Refactor these skill interactivity stuff into their own methods
-    html.find(".skill-level").click((event) => event.target.select()).change((event) => {
+    // Skill level changes
+    html.find(".skill-level").click((event) => event.target.select()).change(async (event) => {
       let skill = this.actor.items.get(event.currentTarget.dataset.skillId);
       let target = skill.system.isChipped ? "system.chipLevel" : "system.level";
-      let updateData = {_id: skill.id};
+      let updateData = { _id: skill.id };
       updateData[target] = parseInt(event.target.value, 10);
-      this.actor.updateEmbeddedDocuments("Item", [updateData]);
       // Mild hack to make sheet refresh and re-sort: the ability to do that should just be put in 
-    });
+      await this.actor.updateEmbeddedDocuments("Item", [updateData]);
+      let combatSenseItemFind = this.actor.items.find(item => item.type === 'skill' && item.name.includes('Combat'))?.system.level || 0;
+      await this.actor.update({ "system.CombatSenseMod": Number(combatSenseItemFind) });
+    });    
+    // Toggle skill chipped
     html.find(".chip-toggle").click(ev => {
       let skill = this.actor.items.get(ev.currentTarget.dataset.skillId);
       this.actor.updateEmbeddedDocuments("Item", [{
@@ -204,14 +240,19 @@ export class CyberpunkActorSheet extends ActorSheet {
       }]);
     });
 
+    // Skill sorting
     html.find(".skill-sort > select").change(ev => {
       let sort = ev.currentTarget.value;
       this.actor.sortSkills(sort);
     });
+
+    // Skill roll
     html.find(".skill-roll").click(ev => {
       let id = ev.currentTarget.dataset.skillId;
       this.actor.rollSkill(id);
     });
+
+    // Initiative
     html.find(".roll-initiative").click(ev => {
       const rollInitiativeModificatorInput = html.find(".roll-initiative-modificator")[0];
       this.actor.addToCombatAndRollInitiative(rollInitiativeModificatorInput.value);
@@ -220,47 +261,56 @@ export class CyberpunkActorSheet extends ActorSheet {
       const value = ev.target.value;
       this.actor.update({"system.initiativeMod": Number(value)});
     });
+
+    // Stun/Death save
     html.find(".roll-stun-death-modificator").change(ev => {
       const value = ev.target.value;
       this.actor.update({"system.StunDeathMod": Number(value)});
-    });           
-    html.find(".damage").click(ev => {
-      let damage = Number(ev.currentTarget.dataset.damage);
-      this.actor.update({
-        "system.damage": damage
-      });
     });
     html.find(".stun-death-save").click(ev => {
       const rollModificatorInput = html.find(".roll-stun-death-modificator")[0]
       this.actor.rollStunDeath(rollModificatorInput.value);
     });
 
+    // Damage
+    html.find(".damage").click(ev => {
+      let damage = Number(ev.currentTarget.dataset.damage);
+      this.actor.update({
+        "system.damage": damage
+      });
+    });
+
+    // Generic item roll (calls item.roll())
     html.find('.item-roll').click(ev => {
       // Roll is often within child events, don't bubble please
       ev.stopPropagation();
       let item = getEventItem(this, ev);
       item.roll();
     });
+
+    // Edit item
     html.find('.item-edit').click(ev => {
       ev.stopPropagation();
       let item = getEventItem(this, ev);
       item.sheet.render(true);
     });
+
+    // Delete item
     html.find('.item-delete').click(deleteItemDialog.bind(this));
     html.find('.rc-item-delete').bind("contextmenu", deleteItemDialog.bind(this)); 
 
+    // Кнопка "Fire" для оружия
     html.find('.fire-weapon').click(ev => {
       ev.stopPropagation();
       let item = getEventItem(this, ev);
       let isRanged = item.isRanged();
 
       let modifierGroups = undefined;
-      let onConfirm = undefined;
-      let targetTokens = Array.from(game.users.current.targets.values().map(target => {
+      let targetTokens = Array.from(game.users.current.targets.values()).map(target => {
         return {
-          name: target.document.name,
-          id: target.id }
-      }));
+          name: target.document.name, 
+          id: target.id};
+      });
       if(isRanged) {
         // For now just look at the names.
         // We have to get the values as an iterator; else if multiple targets share names, it'd turn a set with size 2 to one with size 1
@@ -272,7 +322,7 @@ export class CyberpunkActorSheet extends ActorSheet {
       else {
         modifierGroups = meleeBonkOptions();
       }
-      
+
       let dialog = new ModifiersDialog(this.actor, {
         weapon: item,
         targetTokens: targetTokens,
@@ -281,5 +331,232 @@ export class CyberpunkActorSheet extends ActorSheet {
       });
       dialog.render(true);
     });
+
+    function getNetrunProgramItem(sheet, ev) {
+      ev.stopPropagation();
+      const itemId = ev.currentTarget.closest(".netrun-program").dataset.itemId;
+      return sheet.actor.items.get(itemId);
+    }
+    html.find('.netrun-program .fa-edit').click(ev => {
+      const item = getNetrunProgramItem(this, ev);
+      if (!item) return;
+      item.sheet.render(true);
+    });
+    html.find('.netrun-program .fa-trash').click(ev => {
+      const item = getNetrunProgramItem(this, ev);
+      if (!item) return;
+      let confirmDialog = new Dialog({
+        title: localize("ItemDeleteConfirmTitle"),
+        content: `<p>${localizeParam("ItemDeleteConfirmText", {itemName: item.name})}</p>`,
+        buttons: {
+          yes: {
+            label: localize("Yes"),
+            callback: () => item.delete()
+          },
+          no: { label: localize("No") },
+        },
+        default:"no"
+      });
+      confirmDialog.render(true);
+    });
+
+    // Make each .netrun-program the “source” of the drag and drop operation
+    html.find('.netrun-program').each((_, programElem) => {
+      // An attribute telling the browser and Foundry that this element can be “dragged”
+      programElem.setAttribute("draggable", true);
+
+      // Process dragstart
+      programElem.addEventListener("dragstart", ev => {
+        // Find the corresponding Item
+        const itemId = programElem.dataset.itemId;
+        const item = this.actor.items.get(itemId);
+        if ( !item ) return;
+
+        // Form dragData - object to be read in _onDropItem(event, data)
+        const dragData = {
+          type: "Item",
+          actorId: this.actor.id,
+          data: item.toObject()
+        };
+
+        // Write dragData to the event
+        ev.dataTransfer.setData("text/plain", JSON.stringify(dragData));
+
+        // You can add an “is-dragging” class or any visual highlighting class
+        programElem.classList.add("is-dragging");
+      });
+
+      // When the dragging is finished, remove the class
+      programElem.addEventListener("dragend", ev => {
+        programElem.classList.remove("is-dragging");
+      });
+    });
+
+    // Auto-save changes for all fields that have data-edit=”...”
+    // This will allow writing new values to this.actor at once.
+    html.find('input[data-edit], select[data-edit], textarea[data-edit]').on('change', ev => {
+      ev.preventDefault();
+      const input = ev.currentTarget;
+      const path = input.dataset.edit;
+      const dtype = input.dataset.dtype;
+      let value = input.value;
+
+      if (dtype === "Number") {
+        value = Number(value || 0);
+        if (input.type === "checkbox") value = input.checked ? 1 : 0;
+      }
+      else if (dtype === "Boolean") {
+        value = input.checked;
+      }
+
+      this.actor.update({ [path]: value });
+    });
+
+    // Click on .interface-skill-roll to make a roll (if itemId is not null)
+    const interfaceSkillElems = html.find('.interface-skill-roll');
+
+    interfaceSkillElems.on('click', ev => {
+      ev.preventDefault();
+      const skillId = ev.currentTarget.dataset.skillId;
+      if (!skillId) {
+        ui.notifications.warn(`Interface skill not found - no skill to roll.`);
+        return;
+      }
+      this.actor.rollSkill(skillId);
+    });
+
+    // When clicking (contextmenu) on the icon of the active program - remove it from the list
+    html.find('.netrun-active-icon').on('contextmenu', async ev => {
+      ev.preventDefault();
+      const div = ev.currentTarget;
+      const itemId = div.dataset.itemId;
+      if (!itemId) return;
+      const currentActive = [...(this.actor.system.activePrograms || [])];
+      const idx = currentActive.indexOf(itemId);
+      if (idx < 0) return;
+
+      currentActive.splice(idx, 1);
+
+      let sumMU = 0;
+      for (let progId of currentActive) {
+        let progItem = this.actor.items.get(progId);
+        if (!progItem) continue;
+        sumMU += Number(progItem.system.mu) || 0;
+      }
+
+      await this.actor.update({
+        "system.activePrograms": currentActive,
+        "system.ramUsed": sumMU
+      });
+
+      ui.notifications.info(`The program has been taken off the active ones.`);
+    });
+
+    html.find('.filepicker').on('click', async (ev) => {
+      ev.preventDefault();
+      const currentPath = this.actor.system.icon || "";
+      
+      const fp = new FilePicker({
+        type: "image",
+        current: currentPath,
+        callback: (path) => {
+          this.actor.update({"system.icon": path});
+        },
+        top: this.position.top + 40,
+        left: this.position.left + 10
+      });
+
+      fp.render(true);
+    });
+  }
+
+  /**
+   * Overridden method of Drag&Drop processing
+   * When dropping, we check where exactly we dropped to (data-drop-target).
+   * If on “program-list” - add program to inventory.
+   * If on “active-programs” - activate the program.
+   */
+  async _onDropItem(event, data) {
+    event.preventDefault();
+
+    // Search for the parent element with the data-drop-target attribute
+    const dropTarget = event.target.closest("[data-drop-target]");
+    // If not found, then let the standard Foundry logic work
+    if (!dropTarget) return super._onDropItem(event, data);
+
+    // 1. Drop to “program-list”.
+    if (dropTarget.dataset.dropTarget === "program-list") {
+      let itemData = await Item.implementation.fromDropData(data);
+
+      // If it is not a program, skip it
+      if (itemData.type !== "program") {
+        return ui.notifications.warn(`It's not a program: ${itemData.name}`);
+      }
+
+      // If a person pulls a program that the same actor already has,
+      // and drops it in the program-list, - do nothing (to avoid duplicating)
+      const sameActor = (data.actorId === this.actor.id);
+      const existingItem = sameActor ? this.actor.items.get(itemData._id) : null;
+      if (existingItem) {
+        ui.notifications.warn(`The program ‘${existingItem.name}’ is already in the list.`);
+        return;
+      }
+
+      // Otherwise (pulling from another actor, or from compendium, or it's another program) - create a copy
+      return this.actor.createEmbeddedDocuments("Item", [ itemData ]);
+    }
+
+    // 2. Drop in “active-programs”
+    if (dropTarget.dataset.dropTarget === "active-programs") {
+      // Get Item from drag data
+      let itemData = await Item.implementation.fromDropData(data);
+
+      if (itemData.type !== "program") {
+        return ui.notifications.warn(`Only programs can be activated. This is not a program: ${itemData.name}`);
+      }
+
+      // Check if the item is already in your inventory; if not, copy it
+      let item = this.actor.items.get(itemData._id);
+      if (!item) {
+        const [created] = await this.actor.createEmbeddedDocuments("Item", [itemData]);
+        item = created;
+      }
+
+      // Current list of active programs (ID)
+      const currentActive = this.actor.system.activePrograms || [];
+      const newMu  = Number(item.system.mu) || 0;
+
+      // Count the already occupied MU
+      const usedMu = currentActive.reduce((sum, id) => {
+        const p = this.actor.items.get(id);
+        return sum + (Number(p?.system.mu) || 0);
+      }, 0);
+
+      const ramMax = Number(this.actor.system.ramMax) || 0;
+
+      // If we exceed the limit after adding, we reject it
+      if (ramMax && (usedMu + newMu) > ramMax) {
+        return ui.notifications.warn(
+          `Not enough free RAM to load “${item.name}” — ${usedMu}/${ramMax} MU already in use.`
+        );
+      }
+
+      // Add to active, if not already there
+      if (!currentActive.includes(item.id)) {
+        currentActive.push(item.id);
+
+        const totalMu = usedMu + newMu;
+        await this.actor.update({
+          "system.activePrograms": currentActive,
+          "system.ramUsed": totalMu
+        });
+
+        this.render(true);
+      }
+      return;
+    }
+
+    // If not “program-list” and not “active-programs”, then execute the standard Foundry mechanism
+    return super._onDropItem(event, data);
   }
 }
