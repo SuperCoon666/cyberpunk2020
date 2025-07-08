@@ -414,5 +414,6 @@
     "CYBERPUNK.ProgramUtility": "Утилита",
     "CYBERPUNK.ProgramTypeLabel": "Класс",
     "CYBERPUNK.ProgramStrength": "Сила",
-    "CYBERPUNK.ActionThrow": "Бросок действия"
+    "CYBERPUNK.ActionThrow": "Бросок действия",
+    "CYBERPUNK.NetProgramsCost": "Стоимость программ"
 }

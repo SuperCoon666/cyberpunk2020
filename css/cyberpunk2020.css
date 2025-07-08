@@ -1087,8 +1087,6 @@ div.statderive .value.rightborder {
 
 }
 
-
-
 /* Each program (tile) - background on the whole area */
 
 .field.netrun-program {
@@ -1115,8 +1113,6 @@ div.statderive .value.rightborder {
 
 }
 
-
-
 .field.netrun-program .program-left {
 
   display: flex;
@@ -1139,8 +1135,6 @@ div.statderive .value.rightborder {
 
 }
 
-
-
 .field.netrun-program .program-controls i {
 
   margin-left: 5px;
@@ -1149,14 +1143,27 @@ div.statderive .value.rightborder {
 
 }
 
-
-
 .field.netrun-program .program-type {
 
   font-style: italic;
 
   color: #ccc;
 
+}
+
+.netrun-cost-info {
+  margin-top: 8px;
+  border-top: 1px dashed #666;
+  padding-top: 4px;
+
+  font-size: inherit;
+  font-weight: bold;
+  font-variant: small-caps;
+  line-height: 1.2em;
+}
+
+.netrun-cost-info .strong {
+  font-weight: bold;
 }
 
 /*# sourceMappingURL=cyberpunk2020.css.map */

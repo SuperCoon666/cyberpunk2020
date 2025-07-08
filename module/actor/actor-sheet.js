@@ -67,11 +67,14 @@ export class CyberpunkActorSheet extends ActorSheet {
     allPrograms.sort((a, b) => a.name.localeCompare(b.name));
     sheetData.netrunPrograms = allPrograms;
 
+    sheetData.programsTotalCost = allPrograms
+    .reduce((sum, p) => sum + Number(p.system.cost || 0), 0);
+
     /**
      * Collect the list of active programs based on the ID array
-     *   actor.system.netrun.activePrograms: string[]
+     *   actor.system.activePrograms: string[]
      */
-    const activeProgIds = this.actor.system.netrun?.activePrograms || [];
+    const activeProgIds = this.actor.system.activePrograms || [];
     // Filter out the ones the actor actually has.
     const activePrograms = allPrograms.filter(p => activeProgIds.includes(p.id));
     // Put them in sheetData so netrun-tab.hbs can output them
@@ -428,7 +431,7 @@ export class CyberpunkActorSheet extends ActorSheet {
       const div = ev.currentTarget;
       const itemId = div.dataset.itemId;
       if (!itemId) return;
-      const currentActive = [...(this.actor.system.netrun.activePrograms || [])];
+      const currentActive = [...(this.actor.system.activePrograms || [])];
       const idx = currentActive.indexOf(itemId);
       if (idx < 0) return;
 
@@ -438,12 +441,12 @@ export class CyberpunkActorSheet extends ActorSheet {
       for (let progId of currentActive) {
         let progItem = this.actor.items.get(progId);
         if (!progItem) continue;
-        sumMU += (progItem.system.mu || 0);
+        sumMU += Number(progItem.system.mu) || 0;
       }
 
       await this.actor.update({
-        "system.netrun.activePrograms": currentActive,
-        "system.netrun.ramUsed": sumMU
+        "system.activePrograms": currentActive,
+        "system.ramUsed": sumMU
       });
 
       ui.notifications.info(`Программа снята с активных.`);
@@ -451,13 +454,13 @@ export class CyberpunkActorSheet extends ActorSheet {
 
     html.find('.filepicker').on('click', async (ev) => {
       ev.preventDefault();
-      const currentPath = this.actor.system.netrun.icon || "";
+      const currentPath = this.actor.system.icon || "";
       
       const fp = new FilePicker({
         type: "image",
         current: currentPath,
         callback: (path) => {
-          this.actor.update({"system.netrun.icon": path});
+          this.actor.update({"system.icon": path});
         },
         top: this.position.top + 40,
         left: this.position.left + 10
@@ -520,8 +523,11 @@ export class CyberpunkActorSheet extends ActorSheet {
         item = created;
       }
 
+      console.log("ACTOR:", this.actor.system);
+      console.log("NETRUN:", this.actor.system.netrun);
+      
       // Get an array of already activated programs (ID)
-      const currentActive = this.actor.system.netrun.activePrograms || [];
+      const currentActive = this.actor.system.activePrograms || [];
 
       // If this item.id is not there yet - add it and save it
       if (!currentActive.includes(item.id)) {
@@ -531,14 +537,14 @@ export class CyberpunkActorSheet extends ActorSheet {
         for (let progId of currentActive) {
           let progItem = this.actor.items.get(progId);
           if (!progItem) continue;
-          let muVal = progItem.system.mu || 0;
+          let muVal = Number(progItem.system.mu) || 0;
           console.log(`DEBUG:   => Summation: add ${progItem.name} (mu=${muVal})`);
           sumMU += muVal;
         }
 
         await this.actor.update({ 
-          "system.netrun.activePrograms": currentActive,
-          "system.netrun.ramUsed": sumMU
+          "system.activePrograms": currentActive,
+          "system.ramUsed": sumMU
         });
 
         this.render(true);
