@@ -449,7 +449,7 @@ export class CyberpunkActorSheet extends ActorSheet {
         "system.ramUsed": sumMU
       });
 
-      ui.notifications.info(`Программа снята с активных.`);
+      ui.notifications.info(`The program has been taken off the active ones.`);
     });
 
     html.find('.filepicker').on('click', async (ev) => {
@@ -490,7 +490,7 @@ export class CyberpunkActorSheet extends ActorSheet {
 
       // If it is not a program, skip it
       if (itemData.type !== "program") {
-        return ui.notifications.warn(`Это не программа: ${itemData.name}`);
+        return ui.notifications.warn(`It's not a program: ${itemData.name}`);
       }
 
       // If a person pulls a program that the same actor already has,
@@ -498,7 +498,7 @@ export class CyberpunkActorSheet extends ActorSheet {
       const sameActor = (data.actorId === this.actor.id);
       const existingItem = sameActor ? this.actor.items.get(itemData._id) : null;
       if (existingItem) {
-        ui.notifications.warn(`Программа '${existingItem.name}' уже есть в списке. Дубликат не создаю.`);
+        ui.notifications.warn(`The program ‘${existingItem.name}’ is already in the list.`);
         return;
       }
 
@@ -508,43 +508,47 @@ export class CyberpunkActorSheet extends ActorSheet {
 
     // 2. Drop in “active-programs”
     if (dropTarget.dataset.dropTarget === "active-programs") {
+      // Get Item from drag data
       let itemData = await Item.implementation.fromDropData(data);
 
       if (itemData.type !== "program") {
-        return ui.notifications.warn(`Можно активировать только программы. Это не программа: ${itemData.name}`);
+        return ui.notifications.warn(`Only programs can be activated. This is not a program: ${itemData.name}`);
       }
 
-      // Maybe the actor already has the program
+      // Check if the item is already in your inventory; if not, copy it
       let item = this.actor.items.get(itemData._id);
-
-      // If suddenly there is no item in the inventory - it means that “someone else's” Item is being dragged. Let's create a copy:
       if (!item) {
-        const [created] = await this.actor.createEmbeddedDocuments("Item", [ itemData ]);
+        const [created] = await this.actor.createEmbeddedDocuments("Item", [itemData]);
         item = created;
       }
 
-      console.log("ACTOR:", this.actor.system);
-      console.log("NETRUN:", this.actor.system.netrun);
-      
-      // Get an array of already activated programs (ID)
+      // Current list of active programs (ID)
       const currentActive = this.actor.system.activePrograms || [];
+      const newMu  = Number(item.system.mu) || 0;
 
-      // If this item.id is not there yet - add it and save it
+      // Count the already occupied MU
+      const usedMu = currentActive.reduce((sum, id) => {
+        const p = this.actor.items.get(id);
+        return sum + (Number(p?.system.mu) || 0);
+      }, 0);
+
+      const ramMax = Number(this.actor.system.ramMax) || 0;
+
+      // If we exceed the limit after adding, we reject it
+      if (ramMax && (usedMu + newMu) > ramMax) {
+        return ui.notifications.warn(
+          `Not enough free RAM to load “${item.name}” — ${usedMu}/${ramMax} MU already in use.`
+        );
+      }
+
+      // Add to active, if not already there
       if (!currentActive.includes(item.id)) {
         currentActive.push(item.id);
 
-        let sumMU = 0;
-        for (let progId of currentActive) {
-          let progItem = this.actor.items.get(progId);
-          if (!progItem) continue;
-          let muVal = Number(progItem.system.mu) || 0;
-          console.log(`DEBUG:   => Summation: add ${progItem.name} (mu=${muVal})`);
-          sumMU += muVal;
-        }
-
-        await this.actor.update({ 
+        const totalMu = usedMu + newMu;
+        await this.actor.update({
           "system.activePrograms": currentActive,
-          "system.ramUsed": sumMU
+          "system.ramUsed": totalMu
         });
 
         this.render(true);
