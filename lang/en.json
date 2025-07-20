@@ -257,7 +257,10 @@
     "CYBERPUNK.Spaces": "Spaces",
     "CYBERPUNK.Source": "Source",
     "CYBERPUNK.Weight": "Weight",
+    "CYBERPUNK.Advantage":    "Advantage",
+    "CYBERPUNK.Disadvantage": "Disadvantage",
     "CYBERPUNK.Encumbrance": "Encumbrance",
+
     "CYBERPUNK.MartialArt": "Martial Art",
     "CYBERPUNK.AttackSkill": "Attack Skill",
     "CYBERPUNK.Attack": "Attack",
@@ -337,7 +340,6 @@
     "CYBERPUNK.SDPFull": "Structural Damage Points",
     "CYBERPUNK.Maneuverability": "Maneuv.",
     "CYBERPUNK.ManeuverabilityFull": "Maneuverability",
-
     "CYBERPUNK.Action": "Action",
     "CYBERPUNK.Rolls": "Rolls",
     "CYBERPUNK.Initiative": "Initiative",
@@ -345,6 +347,7 @@
     "CYBERPUNK.UnderThresholdMessage": "Roll under the thresholds to succeed",
     "CYBERPUNK.Save": "Save",
     "CYBERPUNK.Description": "Description",
+
     "CYBERPUNK.Settings": "Settings",
     "CYBERPUNK.Yes": "Yes",
     "CYBERPUNK.No": "No",
@@ -360,8 +363,6 @@
     "SETTINGS.TrainedSkillsFirst": "Trained Skills First",
     "SETTINGS.TrainedSkillsFirstHint": "Whether trained skills always come first in the skills list",    
     "CYBERPUNK.NoCombatError": "There's currently no combat encounter present; you'll need to start one",
-    "CYBERPUNK.Advantage":    "Advantage",
-    "CYBERPUNK.Disadvantage": "Disadvantage",
 
     "CYBERPUNK.martials.Martial Arts: Aikido": "Martial Arts: Aikido(3)",
     "CYBERPUNK.martials.Martial Arts: AnimalKungFu": "Martial Arts: Animal Kung Fu(3)",
