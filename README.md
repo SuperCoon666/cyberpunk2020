@@ -1,47 +1,48 @@
-# cyberpunk2020 (for FoundryVTT)
-*Finally on 0.8.6! ...hopefully v9 now too!*
-**A note on dev time: For the past while, I've had enough going on that this has been on the backburner. I'm now taking time off from those other things to recover, but don't know how much time I'll be throwing at CP2020. Will still try to address bugs when my brain cooperates, and fingers crossed this situation changes.**
+# cyberpunk2020 (for Foundry VTT)
 
-R. Talsorian Games' [Cyberpunk 2020](https://talsorianstore.com/products/cyberpunk-2020) system, but for FoundryVTT. Time to get chromed, and frag some slags.
+First and foremost, huge thanks to the original author — **OctarineSourcerer**. Because of people like them we all get to enjoy our favourite games.
+This system is built on OctarineSourcerer’s work, refining and expanding the available features. In version **1.0.0** I fixed the bugs I could track down and added new functionality, including **netrunning**. I’m planning to keep improving this system because I’m a long-time Cyberpunk 2020 fan.
 
-![image](https://user-images.githubusercontent.com/6842867/115111007-0f80f900-9f76-11eb-8b42-7f6b6682a6a3.png) ![image](https://user-images.githubusercontent.com/6842867/115111021-26bfe680-9f76-11eb-93ee-7cf42d44190f.png)
+R. Talsorian Games’ [Cyberpunk 2020](https://talsorianstore.com/products/cyberpunk-2020) system, now for Foundry VTT.
 
-I believe this is now ready to reasonably run games in without anything particularly fundamental missing (minus, at the moment, custom skills).
-Here's the gist of what's there so far:
+![image](https://github.com/user-attachments/assets/9e3ef043-ebaa-479a-954c-50ed04b20a6f)
 
-* A character sheet with stats, damage tracking, gear, combat tab, searchable skills, and cyberware.
-  * Cyberware does not currently affect stats - it will probably involve working with Active Effects, but no promises, as I have no idea how to implement that framework yet.
-* Consistent design reminiscent of the Core Rulebook, with UI design and user experience taken into heavy consideration.
-* Skills as items, sortable by either name or stat. Full tracking of chipped/unchipped, IP, etc. Rollable.
-  * Skills with points are shown first
-* Stopping power and encumbrance tracked for armor.
-  * SP is currently just added together for each equipped piece of armor. Proportional armor will come later.
-* Ranged attacks for single shots, as well as three-round burst and autofire for automatic weapons.
-* Easy modifier selection when making ranged attacks.
-* A start of cyberpunk's melee system
+![image](https://user-images.githubusercontent.com/6842867/115111021-26bfe680-9f76-11eb-93ee-7cf42d44190f.png)
 
-Yet to come:
-* Ammo expenditure and reloads easily doable from chat messages.
-* Attack hit roll automatically translating to the name of the hit location.
-* Target selection for attacks.
-* Martial arts key moves
-* Template area selection for area attacks
-* Netrunning: Please dear gods, I've not used it in a campaign so it's a little far down my list
-* Mech sheet: Yes this will come Ste, likely after Okay Weapon Rolls and the combat tab.
 
-All rights to Cyberpunk 2020 lie with R. Talsorian games. Under their [homebrew content policy](https://rtalsoriangames.com/homebrew-content-policy/), any compendium produced with this will likely only be the statistical summaries of items, equivalent to the rows in the weapon table, without R. Talsorian's descriptive text. There will not be any stat blocks for monsters, NPCs, or hazards.
+## Current features
 
-Happy to take any feedback; feel free to add issues or to make a PR :)
+* **Character sheet** with stats, damage tracking, gear, combat tab, searchable skills and cyberware.
+  * Cyberware doesn’t yet modify stats — this is top-priority for the next update — but the total cost of installed implants is calculated automatically.
+* **Consistent UI** inspired by the Core Rulebook, with a strong focus on usability.
+* **Skills as items**, sortable by name or governing stat; full chipped/unchipped tracking, IP, roll-able, etc.
+* **Proportional stopping power & encumbrance** for armour.
+* **Ranged combat**: single shots, three-round burst, and autofire.
+* **Quick modifier picker** when making ranged attacks.
+* The **beginning of the melee system**: cyberlimb damage bonuses and martial-arts bonuses are already in.
+* **Solo professional ability** is factored into initiative and awareness rolls.
+* **Ammo tracking & quick reloads** directly from chat.
+* **Netrunning**: major core functionality — deck builder with configuration, purchased program list, active program panel, automatic RAM usage & total cost, and one-click *Interface* rolls from the Netrunning tab.
+* **Full Russian localisation**.
+* **New icons** styled to match the rest of the system.
 
-## Development notes
-Please feel free to contribute! Whether by raising issues you find during play, requesting features, or contributing yourself, all is appreciated :) 
-This project uses Sass - please edit the .scss files instead of the .css files.
+## Planned features
 
-### How to build
-At the moment, this project only requires running `sass --watch scss/cyberpunk2020.scss css/cyberpunk2020.css` in the project's folder as you develop - this will auto-compile the scss as you make edits.
+* Stat bonuses from cyberware.
+* Target selection and automatic damage application.
+* An expanded melee-weapons library.
+* Shopping workflow with automatic money deduction.
+* Automatic generation of cinematic finishing moves.
+* **Mech sheet**.
 
-### Recent repo url change
-It used to be this repo was called `cyberpunk2020-foundry`, and you'd have to change the folder name after cloning. Not anymore! But due to the rename, if you had the repo, you'll likely want to run `git remote set-url origin git@github.com:OctarineSourcerer/cyberpunk2020.git` to make sure your repo points to the rename (I don't know how long old versions will link to it).
+All rights to Cyberpunk 2020 belong to R. Talsorian Games. Under their [homebrew content policy](https://rtalsoriangames.com/homebrew-content-policy/), any compendium produced with this system will include only the statistical summaries of items (equivalent to the weapon-table rows) and no descriptive text. There will be no stat blocks for monsters, NPCs, or hazards.
 
-### Time I have
-The amount I can do for this repo goes up and down sometimes, so don't be particularly worried if some couple-week gaps happen. Just means I'm a little busy :)
+## How to build
+
+Run
+
+```bash
+sass --watch scss/cyberpunk2020.scss css/cyberpunk2020.css
+```
+
+in the project folder while you develop — the SCSS will recompile automatically whenever you save changes.
