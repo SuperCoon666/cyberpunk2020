@@ -52,6 +52,7 @@
     "CYBERPUNK.ImprovementPointsShort": "ОУ",
     "CYBERPUNK.IsRoleSkill": "Это навык роли",
     "CYBERPUNK.Chipped": "С чипом",
+
     "CYBERPUNK.SkillAuthority": "Авторитет",
     "CYBERPUNK.SkillCharismaticLeadership": "Харизматичное лидерство",
     "CYBERPUNK.SkillCombatSense": "Чувство боя",
@@ -288,6 +289,7 @@
     "CYBERPUNK.Suppressive": "Подавляющий огонь",
     "CYBERPUNK.SemiAuto": "Полуавтомат",
     "CYBERPUNK.AttackModifiers": "Модификаторы атаки",
+    "CYBERPUNK.ModifiersSkillTitle":  "Модификаторы навыка",
     "CYBERPUNK.ExtraModifiers": "Дополнительные модификаторы",
     "CYBERPUNK.FireMode": "Режим стрельбы",
     "CYBERPUNK.Aiming": "Прицеливание",
@@ -356,6 +358,8 @@
     "SETTINGS.TrainedSkillsFirst": "Сначала Обученные Навыки",
     "SETTINGS.TrainedSkillsFirstHint": "Будут ли обученные навыки всегда первыми в списке навыков",
     "CYBERPUNK.NoCombatError": "There's currently no combat encounter present; you'll need to start one",
+    "CYBERPUNK.Advantage":    "Преимущество",
+    "CYBERPUNK.Disadvantage": "Помеха",
 
     "CYBERPUNK.martials.Martial Arts: Aikido": "Боевое искусство: Айкидо(3)",
     "CYBERPUNK.martials.Martial Arts: AnimalKungFu": "Боевое искусство: Животное кунг-фу(3)",

@@ -806,7 +806,8 @@
 			"diffMod": 1,
 			"isChipped": false,
 			"isRoleSkill": false,
-			"stat": "cool"
+			"stat": "cool",
+			"askMods": false
 		},
 		"program": {
 			"templates": ["common"],

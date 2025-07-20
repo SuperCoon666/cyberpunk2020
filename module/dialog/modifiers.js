@@ -23,6 +23,9 @@ import { defaultTargetLocations } from "../lookups.js"
         targetTokens: [], // id and name for each target token
         // Extra mod field for miscellaneous mod
         extraMod: true,
+        showAdvDis:  false,
+        advantage:   false,
+        disadvantage:false,
 
         onConfirm: (results) => console.log(results)
       });
@@ -79,7 +82,10 @@ import { defaultTargetLocations } from "../lookups.js"
         // You can't refer to indices in FormApplication form entries as far as I know, so let's give them a place to live
         defaultValues,
         isRanged: this.options.weapon?.isRanged?.() ?? false,
-        shotsLeft: this.options.weapon?.system.shotsLeft ?? 0
+        shotsLeft: this.options.weapon?.system.shotsLeft ?? 0,
+        showAdvDis:     this.options.showAdvDis,
+        advantage:      this.options.advantage,
+        disadvantage:   this.options.disadvantage
       };
     }
   
@@ -89,7 +95,7 @@ import { defaultTargetLocations } from "../lookups.js"
     activateListeners(html) {
       super.activateListeners(html);
 
-      // ——— КНОПКА "RELOAD" ———
+      // RELOAD
       html.find(".reload").click(async ev => {
         ev.preventDefault();
         const weapon = this.options.weapon;
@@ -97,10 +103,17 @@ import { defaultTargetLocations } from "../lookups.js"
 
         // shotsLeft = shots
         await weapon.update({ "system.shotsLeft": weapon.system.shots });
-        ui.notifications.info(localize("Reloaded"));      // ключ перевода
+        ui.notifications.info(localize("Reloaded"));
 
-        // остаёмся в диалоге, но перерисуем его, чтобы обновить любые поля
         this.render(false);
+      });
+
+      html.find("input.adv-dis").on("change", ev => {
+        const el = ev.currentTarget;
+        if (el.classList.contains("adv") && el.checked)
+          html.find("input.dis").prop("checked", false);
+        if (el.classList.contains("dis") && el.checked)
+          html.find("input.adv").prop("checked", false);
       });
     }
   

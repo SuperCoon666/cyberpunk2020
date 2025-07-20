@@ -309,6 +309,7 @@
     "CYBERPUNK.SemiAuto": "Semi-Auto",
 
     "CYBERPUNK.AttackModifiers": "Attack Modifiers",
+    "CYBERPUNK.ModifiersSkillTitle":  "Skill Modifiers",
     "CYBERPUNK.ExtraModifiers": "Extra Modifiers",
     "CYBERPUNK.FireMode": "Fire Mode",
     "CYBERPUNK.Aiming": "Aiming",
@@ -388,6 +389,8 @@
     "SETTINGS.TrainedSkillsFirstHint": "Whether trained skills always come first in the skills list",
     
     "CYBERPUNK.NoCombatError": "There's currently no combat encounter present; you'll need to start one",
+    "CYBERPUNK.Advantage":    "Advantage",
+    "CYBERPUNK.Disadvantage": "Disadvantage",
 
     "CYBERPUNK.martials.Martial Arts: Aikido": "Martial Arts: Aikido(3)",
     "CYBERPUNK.martials.Martial Arts: AnimalKungFu": "Martial Arts: Animal Kung Fu(3)",

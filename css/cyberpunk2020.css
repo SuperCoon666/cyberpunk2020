@@ -726,6 +726,12 @@ div.statderive .value.rightborder {
   border-top: 0px;
   margin-top: -2px;
 }
+/* -- Skill modifier checkbox ------------------------------------ */
+.skill-mod-toggle input[type=checkbox] {
+  display: inline-block !important;
+  margin: 0 4px;
+}
+
 
 /**********************************************
 

@@ -239,11 +239,10 @@ export class CyberpunkActor extends Actor {
   // TODO: Make this doable with just skill name
   static realSkillValue(skill) {
     // Sometimes we use this to sort raw item data before it becomes a full-fledged item. So we use either system or data, as needed
-    let data = skill.system || skill;
-    let value = data.level;
-    if(data.isChipped) {
-      value = data.chipLevel || 0;
-    }
+    if (!skill) return 0;
+    const data  = skill.system ?? skill;
+    let value   = Number(data.level) || 0;
+    if (data.isChipped) value = Number(data.chipLevel) || 0;
     return value;
   }
 
@@ -252,33 +251,63 @@ export class CyberpunkActor extends Actor {
     console.log("SkillName_localize:", localize("Skill"+skillName));
     console.log("lang:", game.i18n);
 
-    let name = localize("Skill"+skillName)
-    if (name.includes("Skill")){
-      name = skillName
-    }
-    console.log("SkillName_2:", name);
-    return CyberpunkActor.realSkillValue(this.itemTypes.skill.find(skill => skill.name === name));
+    const nameLoc = localize("Skill" + skillName);
+    // Localization may return the original key, so we check both options
+    const targetName = nameLoc.includes("Skill") ? skillName : nameLoc;
+
+    const skillItem = this.itemTypes.skill.find(s => s.name === targetName);
+    if (!skillItem) return 0; // ← no skill — return 0 instead of undefined
+    return CyberpunkActor.realSkillValue(skillItem);
   }
 
-  rollSkill(skillId) {
-    let skill = this.items.get(skillId);
-    let skillData = skill.system;
-    let value = CyberpunkActor.realSkillValue(skill);
+  /**
+   * Skill check with Advantage / Disadvantage taken into account
+   * @param {string}  skillId
+   * @param {number}  extraMod
+   * @param {boolean} advantage
+   * @param {boolean} disadvantage
+   */
+  rollSkill(skillId, extraMod = 0, advantage = false, disadvantage = false) {
+    const skill = this.items.get(skillId);
+    if (!skill) return;
 
-    let rollParts = [];
-    rollParts.push(value);
+    // generate the list of modifiers
+    const parts = [
+      CyberpunkActor.realSkillValue(skill),
+      skill.system.stat ? `@stats.${skill.system.stat}.total` : null,
+      skill.name === localize("SkillAwarenessNotice") ? "@CombatSenseMod" : null,
+      extraMod || null
+    ].filter(Boolean);
 
-    if(skillData.stat) {
-      rollParts.push(`@stats.${skillData.stat}.total`);
+    const makeRoll = () => makeD10Roll(parts, this.system);   // d10 + parts
+
+    // if both are accidentally marked — ignore
+    if (advantage && disadvantage) { advantage = disadvantage = false; }
+
+    // Advantage / Disadvantage
+    if (advantage || disadvantage) {
+      const r1 = makeRoll();
+      const r2 = makeRoll();
+
+      Promise.all([
+        r1.evaluate({ async: true }),
+        r2.evaluate({ async: true })
+      ]).then(() => {
+        const chosen = advantage
+          ? (r1.total >= r2.total ? r1 : r2)   // best
+          : (r1.total <= r2.total ? r1 : r2);  // worst
+
+        new Multiroll(skill.name)
+          .addRoll(chosen)
+          .defaultExecute();
+      });
+      return;
     }
-    if(skill.name === localize("SkillAwarenessNotice")) {
-      rollParts.push("@CombatSenseMod");
-    }
 
-    let roll = new Multiroll(skill.name)
-      .addRoll(makeD10Roll(rollParts, this.system));
-
-    roll.defaultExecute();
+    // normal roll
+    new Multiroll(skill.name)
+      .addRoll(makeRoll())
+      .defaultExecute();
   }
 
   rollStat(statName) {
@@ -325,7 +354,6 @@ export class CyberpunkActor extends Actor {
     
     const integerRegex = /^-?\d+$/;
     if(modificator && !integerRegex.test(modificator)){
-      // TODO Показать ошибку в интерфейсе
       return
     }
 

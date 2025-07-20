@@ -246,9 +246,49 @@ export class CyberpunkActorSheet extends ActorSheet {
       this.actor.sortSkills(sort);
     });
 
+    // Prompt for modifiers
+    html.find(".skill-ask-mod")
+      .on("click",  ev => ev.stopPropagation())
+      .on("change", async ev => {
+        ev.stopPropagation();
+
+        const cb       = ev.currentTarget;
+        const skillId  = cb.dataset.skillId;
+        const skill    = this.actor.items.get(skillId);
+        if (!skill) return ui.notifications.warn("Skill not found");
+
+        try {
+          await skill.update({ "system.askMods": cb.checked });
+        } catch (err) {
+          console.error(err);
+          ui.notifications.error("Can't update askMods flag");
+          cb.checked = !cb.checked;
+        }
+      });
+
     // Skill roll
     html.find(".skill-roll").click(ev => {
-      let id = ev.currentTarget.dataset.skillId;
+      const id    = ev.currentTarget.dataset.skillId;
+      const skill = this.actor.items.get(id);
+      if (!skill) return;
+
+      if (skill.system?.askMods) {
+        const dlg = new ModifiersDialog(this.actor, {
+          title: localize("ModifiersSkillTitle"),
+          showAdvDis: true,
+          modifierGroups: [[
+            { localKey: "ExtraModifiers", dataPath: "extraMod", defaultValue: 0 }
+          ]],
+          onConfirm: ({ extraMod=0, advantage=false, disadvantage=false }) =>
+            this.actor.rollSkill(
+              id,
+              Number(extraMod) || 0,
+              advantage,
+              disadvantage
+            )
+        });
+        return dlg.render(true);
+      }
       this.actor.rollSkill(id);
     });
 
@@ -299,7 +339,7 @@ export class CyberpunkActorSheet extends ActorSheet {
     html.find('.item-delete').click(deleteItemDialog.bind(this));
     html.find('.rc-item-delete').bind("contextmenu", deleteItemDialog.bind(this)); 
 
-    // Кнопка "Fire" для оружия
+    // "Fire" button for weapons
     html.find('.fire-weapon').click(ev => {
       ev.stopPropagation();
       let item = getEventItem(this, ev);

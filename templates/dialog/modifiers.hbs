@@ -36,6 +36,20 @@
         {{/each}}
         </div>
     {{/if}}
+
+    {{#if showAdvDis}}
+    <div class="field-list">
+        <div class="field full-width">
+            <label>{{CPLocal "Advantage"}}</label>
+            <input type="checkbox" name="advantage" class="adv-dis adv">
+        </div>
+        <div class="field full-width">
+            <label>{{CPLocal "Disadvantage"}}</label>
+            <input type="checkbox" name="disadvantage" class="adv-dis dis">
+        </div>
+    </div>
+    {{/if}}
+
     <!-- Кнопки управления -->
     <div class="flexrow" style="justify-content: flex-end; gap: 8px;">
     {{#if isRanged}}
