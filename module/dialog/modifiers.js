@@ -10,7 +10,7 @@ import { defaultTargetLocations } from "../lookups.js"
 
     /** @override */
       static get defaultOptions() {
-        return mergeObject(super.defaultOptions, {
+        return foundry.utils.mergeObject(super.defaultOptions, {
         id: "weapon-modifier",
         classes: ["cyberpunk2020"],
         title: localize("AttackModifiers"),

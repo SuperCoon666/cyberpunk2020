@@ -51,7 +51,7 @@ Hooks.once("ready", function() {
     // The version migrations need to begin - if you make a change from 0.1 to 0.2, this should be 0.2
     const NEEDS_MIGRATION_VERSION = "0.3.0";
     console.log("CYBERPUNK: Last migrated in version: " + lastMigrateVersion);
-    const needsMigration = isNewerVersion(NEEDS_MIGRATION_VERSION, lastMigrateVersion);
+    const needsMigration = foundry.utils.isNewerVersion(NEEDS_MIGRATION_VERSION, lastMigrateVersion);
     if ( !needsMigration ) return;
     migrations.migrateWorld();
 });

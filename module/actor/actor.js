@@ -290,8 +290,8 @@ export class CyberpunkActor extends Actor {
       const r2 = makeRoll();
 
       Promise.all([
-        r1.evaluate({ async: true }),
-        r2.evaluate({ async: true })
+        r1.evaluate(),
+        r2.evaluate()
       ]).then(() => {
         const chosen = advantage
           ? (r1.total >= r2.total ? r1 : r2)   // best

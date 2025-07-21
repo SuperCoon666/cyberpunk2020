@@ -11,7 +11,7 @@ export class CyberpunkActorSheet extends ActorSheet {
 
   /** @override */
   static get defaultOptions() {
-    return mergeObject(super.defaultOptions, {
+    return foundry.utils.mergeObject(super.defaultOptions, {
       // Css classes
       classes: ["cyberpunk", "sheet", "actor"],
       template: "systems/cyberpunk2020/templates/actor/actor-sheet.hbs",
@@ -55,10 +55,10 @@ export class CyberpunkActorSheet extends ActorSheet {
 
       // Retrieve the initiative modifier from system data
       // Ensure that you have defined `initiativeMod` in your system data schema
-      const initiativeMod = getProperty(system, "initiativeMod") || 0;
+      const initiativeMod = foundry.utils.getProperty(system, "initiativeMod") || 0;
       sheetData.initiativeMod = initiativeMod;
 
-      const StunDeathMod = getProperty(system, "StunDeathMod") || 0;
+      const StunDeathMod = foundry.utils.getProperty(system, "StunDeathMod") || 0;
       sheetData.StunDeathMod = StunDeathMod;
     }
 

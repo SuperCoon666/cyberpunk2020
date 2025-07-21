@@ -26,7 +26,7 @@ export let attackSkills = {
 }
 
 export function getStatNames() {
-    let actorTemplate = game.system.template.Actor;
+    const actorTemplate = CONFIG.Actor.template;
     // v11 and earlier format
     if (actorTemplate.templates) {
         return actorTemplate.templates.stats.stats;
@@ -155,7 +155,7 @@ export let defaultAreaLookup = {
     10: "rLeg"
 }
 export function defaultHitLocations() {
-    return game.system.template.Actor.character.hitLocations;
+    return CONFIG.Actor.template.character.hitLocations;
 }
 
 export function rangedModifiers(weapon, targetTokens=[]) {

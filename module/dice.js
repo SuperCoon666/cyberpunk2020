@@ -79,17 +79,17 @@ export function classifyRollDice(roll) {
         this.rolls.push(roll);
         // This should be fine if there are no dice - they'll end up as undefined, and that's dealt with in Multiroll
         if(critThreshold === undefined) {
-            let firstDie = roll.terms?.find(term => term instanceof Die);
+            let firstDie = roll.terms?.find(term => term instanceof foundry.dice.terms.Die);
             if(!!firstDie)
                 critThreshold = (firstDie.number * firstDie.faces);
         }
         if(fumbleThreshold === undefined) {
-            let firstDie = roll.terms?.find(term => term instanceof Die);
+            let firstDie = roll.terms?.find(term => term instanceof foundry.dice.terms.Die);
             if(!!firstDie)
                 fumbleThreshold = firstDie.number;
         }
 
-        this.rollMetaData.push(mergeObject({
+        this.rollMetaData.push(foundry.utils.mergeObject({
             name: name,
             flavor: flavor, 
             critThreshold: critThreshold,
@@ -121,15 +121,15 @@ export function classifyRollDice(roll) {
             }
         }));
         
-        const fullTemplateData = mergeObject({
+        const fullTemplateData = foundry.utils.mergeObject({
             user: game.user.id,
             title: this.title,
             flavor: this.flavor,
             rolls: this.rolls.map((roll, i) => {
                 let metaData = this.rollMetaData[i];
-                let firstDiceTerm = roll.terms.find(term => term instanceof Die) || roll.terms[0];
+                let firstDiceTerm = roll.terms.find(term => term instanceof foundry.dice.terms.Die) || roll.terms[0];
                 // Add name, flavor, critThreshold, fumbleThreshold etc. Also add whether crit or fumble.
-                return mergeObject(metaData, { 
+                return foundry.utils.mergeObject(metaData, { 
                     roll: roll,
                     diceInfo: classifyRollDice(roll),
                     isCrit: metaData.critThreshold && firstDiceTerm.total >= metaData.critThreshold,
@@ -138,10 +138,11 @@ export function classifyRollDice(roll) {
             }),
         }, extraTemplateData || {});
 
+
+        // Filter chat rolls to only those that actually have dice, for Dice So Nice. Doesn't seem to work without this filter if something "rolls" just a number
         let chatData = {
-            type: CONST.CHAT_MESSAGE_TYPES.ROLL,
-            // Filter chat rolls to only those that actually have dice, for Dice So Nice. Doesn't seem to work without this filter if something "rolls" just a number
-            rolls: this.rolls.filter(r=>r.dice.length > 0),
+            rolls: this.rolls.filter(r => r.dice.length > 0),
+
             user: game.user.id,
             speaker: speaker,
             sound: "sounds/dice.wav",

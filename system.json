@@ -8,7 +8,6 @@
     "verified": "11",
     "maximum": "12"
   },
-  "templateVersion": 2,
   "authors": [
     {
       "name": "Tilt",
@@ -17,9 +16,7 @@
     {
       "name": "OctarineSourceror",
       "discord": "octarinesorcerer"
-    },
-    { "name": "cybersmily" },
-    { "name": "drowzero0" }
+    }
   ],
   "scripts": [],
   "esmodules": ["module/cyberpunk2020.js"],
@@ -225,8 +222,10 @@
   ],
   "socket": false,
   "initiative": "1d10 + @stats.ref.total + @CombatSenseMod + @initiativeMod",
-  "gridDistance": 5,
-  "gridUnits": "m",
+  "grid": {
+    "distance": 5,
+    "units": "m"
+  },
   "primaryTokenAttribute": null,
   "secondaryTokenAttribute": null,
   "url": "https://github.com/SuperCoon666/cyberpunk2020",
