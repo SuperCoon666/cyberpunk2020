@@ -1,5 +1,5 @@
 import { deepSet, localize } from "../utils.js"
-import { defaultTargetLocations } from "../lookups.js"
+import { defaultTargetLocations, fireModes } from "../lookups.js"
 
 /**
  * A specialized form used to select the modifiers for shooting with a weapon
@@ -48,10 +48,8 @@ import { defaultTargetLocations } from "../lookups.js"
       // Woo! This should be much more flexible than the previous implementation
       // My gods did it require thinking about the shape of things, because loosely-typed can be a headache
 
-      /** 1. Клонируем массив, чтобы не править options.modifierGroups */
       const groups = JSON.parse(JSON.stringify(this.options.modifierGroups || []));
 
-      /** 2. Добавляем Extra Mod только если нужно и ещё нет */
       if (this.options.extraMod) {
         const already = groups.some(g =>
           g.some(m => m.dataPath === "extraMod"));
@@ -64,7 +62,6 @@ import { defaultTargetLocations } from "../lookups.js"
         }
       }
 
-      /** 3. Собираем defaultValues и fieldPath */
       const defaultValues = {};
       groups.forEach(group => {
         group.forEach(mod => {
@@ -75,7 +72,6 @@ import { defaultTargetLocations } from "../lookups.js"
         });
       });
 
-      /** 4. Отдаём данные в шаблон */
       return {
         modifierGroups: groups,
         targetTokens: this.options.targetTokens,
@@ -88,42 +84,61 @@ import { defaultTargetLocations } from "../lookups.js"
         disadvantage:   this.options.disadvantage
       };
     }
-  
-    /* -------------------------------------------- */
 
     /** @override */
     activateListeners(html) {
       super.activateListeners(html);
 
       // RELOAD
-      html.find(".reload").click(async ev => {
+      html.find(".reload").on("click", async ev => {
         ev.preventDefault();
         const weapon = this.options.weapon;
         if (!weapon) return;
-
-        // shotsLeft = shots
         await weapon.update({ "system.shotsLeft": weapon.system.shots });
         ui.notifications.info(localize("Reloaded"));
-
         this.render(false);
       });
 
-      html.find("input.adv-dis").on("change", ev => {
-        const el = ev.currentTarget;
-        if (el.classList.contains("adv") && el.checked)
-          html.find("input.dis").prop("checked", false);
-        if (el.classList.contains("dis") && el.checked)
-          html.find("input.adv").prop("checked", false);
+      // Advantage/Disadvantage
+      html.find('input.adv, input.dis').on("change", ev => {
+        const $el = $(ev.currentTarget);
+        if ($el.hasClass("adv") && $el.prop("checked")) html.find("input.dis").prop("checked", false);
+        if ($el.hasClass("dis") && $el.prop("checked")) html.find("input.adv").prop("checked", false);
       });
+
+      // Suppressive Fire fields
+      // fire mode select
+      const $fireMode = html.find(
+        'select[name="fields.fireMode"], select[name="fireMode"], .field[data-path="fireMode"] select'
+      );
+
+      // collect strings used exclusively for suppression
+      const $supRows = $([
+        '.field[data-path="zoneWidth"]',
+        '.field[data-path="roundsFired"]',
+        '.field[data-path="targetsCount"]',
+        'input[name="fields.zoneWidth"], input[name="zoneWidth"]',
+        'input[name="fields.roundsFired"], input[name="roundsFired"]',
+        'input[name="fields.targetsCount"], input[name="targetsCount"]'
+      ].join(','), html)
+        .map((i, el) => $(el).closest('.field, .form-group')[0])
+        .get()
+        .reduce((jq, el) => jq.add(el), $());
+
+      const updateVisibility = () => {
+        const isSup = $fireMode.val() === fireModes.suppressive;
+        $supRows.toggle(isSup);
+      };
+
+      updateVisibility();
+      $fireMode.on('change', updateVisibility);
     }
   
     /** @override */
     _updateObject(event, formData) {
       const updateData = formData;
-      // Update the object
       this.object = updateData;
       this.submit().then((form) => {
-        // We don't need to use .values
         let result = this.object;
         this.options.onConfirm(result);
       });
