@@ -206,7 +206,7 @@ export class CyberpunkItem extends Item {
     }
     let isRanged = this.isRanged();
     if(!isRanged) {
-      if(system.attackType === meleeAttackTypes.martial) {
+      if (system.attackType === meleeAttackTypes.martial) {
         return this.__martialBonk(attackMods);
       }
       else {
@@ -232,12 +232,11 @@ export class CyberpunkItem extends Item {
   }
 
   __getFireModes() {
-    if(this.type !== "weapon") {
+    if (this.type !== "weapon") {
       console.error(`${this.name} is not a weapon, and therefore has no fire modes`)
       return [];
     }
-    if(this.system.attackType === rangedAttackTypes.auto
-      || this.system.attackType === rangedAttackTypes.autoshotgun) {
+    if (this.system.attackType === rangedAttackTypes.auto || this.system.attackType === rangedAttackTypes.autoshotgun){
       return [fireModes.fullAuto, fireModes.suppressive, fireModes.threeRoundBurst, fireModes.semiAuto];
     }
     return [fireModes.semiAuto];
@@ -366,20 +365,20 @@ export class CyberpunkItem extends Item {
   }
 
   async __suppressiveFire(mods = {}) {
-    const sys     = this.system;
-    const rounds  = clamp(Number(mods.roundsFired  ?? sys.rof), 1, sys.shotsLeft);
-    const width   = Math.max(2,  Number(mods.zoneWidth    ?? 2));
+    const sys = this.system;
+    const rounds = clamp(Number(mods.roundsFired  ?? sys.rof), 1, sys.shotsLeft);
+    const width = Math.max(2,  Number(mods.zoneWidth    ?? 2));
     const targets = Math.max(1,  Number(mods.targetsCount ?? 1));
 
     await this.update({ "system.shotsLeft": sys.shotsLeft - rounds });
 
-    const saveDC     = Math.ceil(rounds / width);
+    const saveDC = Math.ceil(rounds / width);
     const dmgFormula = sys.damage || "1d6";
-    const rollData   = this.actor?.getRollData?.() ?? {};
+    const rollData = this.actor?.getRollData?.() ?? {};
 
     const results = [];
     for (let t = 0; t < targets; t++) {
-      const hitsRoll    = await new Roll("1d6").evaluate();
+      const hitsRoll = await new Roll("1d6").evaluate();
       const areaDamages = {};
 
       for (let i = 0; i < hitsRoll.total; i++) {

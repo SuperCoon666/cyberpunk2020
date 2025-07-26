@@ -252,9 +252,9 @@ export class CyberpunkActorSheet extends ActorSheet {
       .on("change", async ev => {
         ev.stopPropagation();
 
-        const cb       = ev.currentTarget;
-        const skillId  = cb.dataset.skillId;
-        const skill    = this.actor.items.get(skillId);
+        const cb = ev.currentTarget;
+        const skillId = cb.dataset.skillId;
+        const skill = this.actor.items.get(skillId);
         if (!skill) return ui.notifications.warn("Skill not found");
 
         try {
@@ -268,7 +268,7 @@ export class CyberpunkActorSheet extends ActorSheet {
 
     // Skill roll
     html.find(".skill-roll").click(ev => {
-      const id    = ev.currentTarget.dataset.skillId;
+      const id = ev.currentTarget.dataset.skillId;
       const skill = this.actor.items.get(id);
       if (!skill) return;
 
@@ -564,7 +564,7 @@ export class CyberpunkActorSheet extends ActorSheet {
 
       // Current list of active programs (ID)
       const currentActive = this.actor.system.activePrograms || [];
-      const newMu  = Number(item.system.mu) || 0;
+      const newMu = Number(item.system.mu) || 0;
 
       // Count the already occupied MU
       const usedMu = currentActive.reduce((sum, id) => {

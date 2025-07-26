@@ -240,8 +240,8 @@ export class CyberpunkActor extends Actor {
   static realSkillValue(skill) {
     // Sometimes we use this to sort raw item data before it becomes a full-fledged item. So we use either system or data, as needed
     if (!skill) return 0;
-    const data  = skill.system ?? skill;
-    let value   = Number(data.level) || 0;
+    const data = skill.system ?? skill;
+    let value = Number(data.level) || 0;
     if (data.isChipped) value = Number(data.chipLevel) || 0;
     return value;
   }
