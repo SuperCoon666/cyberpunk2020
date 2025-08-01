@@ -14,8 +14,8 @@ export function replaceIn(replaceIn, replaceWith) {
     return replaceIn.replace("[VAR]", replaceWith);
 }
 
-export function localize(str) {
-    return game.i18n.localize("CYBERPUNK." + str);
+export function localize(key, data = {}) {
+  return game.i18n.format("CYBERPUNK." + key, data);
 }
 export function tryLocalize(str, defaultResult=str) {
     let key = "CYBERPUNK." + str;

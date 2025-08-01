@@ -342,7 +342,7 @@ export class CyberpunkActor extends Actor {
     }    
   
     if (!combatant) {
-      ui.notifications.error("No combatant found for this actor.");
+      ui.notifications.error(localize("NoCombatantForActor"));
       return;
     }
   

@@ -11,7 +11,7 @@ let migrationSuccess = true;
 // Handle migration of things. The shape of it nabbed from 5e
 export async function migrateWorld() {
     if (!game.user.isGM) {
-        ui.notifications.error("Only the GM can migrate the world");
+        ui.notifications.error(localize("MigrateError"));
         return;
     }
 
@@ -27,10 +27,11 @@ export async function migrateWorld() {
     }
     if(migrationSuccess) {
         game.settings.set("cyberpunk2020", "systemMigrationVersion", game.system.version);
-        ui.notifications.info(`Cyberpunk2020 System Migration to version ${game.system.version} completed!`, { permanent: true });
+        ui.notifications.info(localize("MigrationComplete", { version: game.system.version }), { permanent: true });
+
     }
     else {
-        ui.notifications.error(`Cyberpunk2020 System Migration failed :( Please see console log for details`);
+        ui.notifications.error(localize("MigrationFailed"));
     }
 }
 
