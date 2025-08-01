@@ -201,6 +201,12 @@ export class CyberpunkItem extends Item {
   __weaponRoll(attackMods, targetTokens) {
     let owner = this.actor;
     let system = this.system;
+
+    if (system.shotsLeft <= 0) {
+      ui.notifications.warn(localize("NoAmmo"));
+      return false;
+    }
+
     if (owner === null) {
       throw new Error("This item isn't owned by anyone.");
     }
@@ -414,7 +420,7 @@ export class CyberpunkItem extends Item {
       let locationRoll = await rollLocation(attackMods.targetActor, attackMods.targetArea);
       let actualRangeBracket = rangeResolve[attackMods.range](system.range);
       let attackHits = attackRoll.total >= DC;
-      let roundsFired = 1;
+      const roundsFired = Math.min(system.shotsLeft, 1);
       let location = locationRoll.areaHit;
       let areaDamages = {};
 

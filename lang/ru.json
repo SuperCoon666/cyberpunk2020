@@ -258,7 +258,7 @@
     "CYBERPUNK.Source": "Источник",
     "CYBERPUNK.Weight": "Вес",
     "CYBERPUNK.Encumbrance": "Обременение",
-    "CYBERPUNK.Advantage":    "Преимущество",
+    "CYBERPUNK.Advantage": "Преимущество",
     "CYBERPUNK.Disadvantage": "Помеха",
 
 
@@ -293,7 +293,7 @@
     "CYBERPUNK.Suppressive": "Подавляющий огонь",
     "CYBERPUNK.SemiAuto": "Полуавтомат",
     "CYBERPUNK.AttackModifiers": "Модификаторы атаки",
-    "CYBERPUNK.ModifiersSkillTitle":  "Модификаторы навыка",
+    "CYBERPUNK.ModifiersSkillTitle": "Модификаторы навыка",
     "CYBERPUNK.ExtraModifiers": "Дополнительные модификаторы",
     "CYBERPUNK.FireMode": "Режим стрельбы",
     "CYBERPUNK.Aiming": "Прицеливание",
@@ -318,7 +318,7 @@
     "CYBERPUNK.NoHits": "Без попаданий",
     "CYBERPUNK.SuppressiveFire":"Подавляющий огонь",
     "CYBERPUNK.FireZoneWidth": "Ширина подавления (м)",
-    "CYBERPUNK.RoundsFiredLbl":  "Выстрелов: Подавление",
+    "CYBERPUNK.RoundsFiredLbl": "Выстрелов: Подавление",
     "CYBERPUNK.SuppressiveDesc": "Каждая цель на линии огня или пересекающая её делает бросок Атлетика + РЕФ + 1d10 против DC ({save}).",
     "CYBERPUNK.SuppressiveHitsDesc": "При провале цель получает 1D6 попаданий; каждое попадание наносит {dmg} урона в случайную зону.",
 
@@ -369,7 +369,7 @@
     "SETTINGS.TrainedSkillsFirst": "Сначала Обученные Навыки",
     "SETTINGS.TrainedSkillsFirstHint": "Будут ли обученные навыки всегда первыми в списке навыков",
     "CYBERPUNK.NoCombatError": "Сейчас нет активной боевой сцены; Необходимо начать сражение",
-
+    "CYBERPUNK.NoAmmo": "Невозможно выстрелить: пустой магазин. Сначала перезарядитесь.",
 
     "CYBERPUNK.martials.Martial Arts: Aikido": "Боевое искусство: Айкидо(3)",
     "CYBERPUNK.martials.Martial Arts: AnimalKungFu": "Боевое искусство: Животное кунг-фу(3)",

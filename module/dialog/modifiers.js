@@ -23,9 +23,10 @@ import { defaultTargetLocations, fireModes } from "../lookups.js"
         targetTokens: [], // id and name for each target token
         // Extra mod field for miscellaneous mod
         extraMod: true,
-        showAdvDis:  false,
-        advantage:   false,
-        disadvantage:false,
+        showAdvDis: false,
+        advantage: false,
+        disadvantage: false,
+        closeOnSubmit: false,
 
         onConfirm: (results) => console.log(results)
       });
@@ -79,9 +80,9 @@ import { defaultTargetLocations, fireModes } from "../lookups.js"
         defaultValues,
         isRanged: this.options.weapon?.isRanged?.() ?? false,
         shotsLeft: this.options.weapon?.system.shotsLeft ?? 0,
-        showAdvDis:     this.options.showAdvDis,
-        advantage:      this.options.advantage,
-        disadvantage:   this.options.disadvantage
+        showAdvDis: this.options.showAdvDis,
+        advantage: this.options.advantage,
+        disadvantage: this.options.disadvantage
       };
     }
 
@@ -90,13 +91,18 @@ import { defaultTargetLocations, fireModes } from "../lookups.js"
       super.activateListeners(html);
 
       // RELOAD
-      html.find(".reload").on("click", async ev => {
+      html.find(".reload").on("click", async (ev) => {
         ev.preventDefault();
         const weapon = this.options.weapon;
         if (!weapon) return;
+
         await weapon.update({ "system.shotsLeft": weapon.system.shots });
         ui.notifications.info(localize("Reloaded"));
-        this.render(false);
+
+        const shots = weapon.system.shots;
+        this.options.weapon.system.shotsLeft = shots;
+
+        html.find('input.number[readonly]').val(shots);
       });
 
       // Advantage/Disadvantage
@@ -135,12 +141,9 @@ import { defaultTargetLocations, fireModes } from "../lookups.js"
     }
   
     /** @override */
-    _updateObject(event, formData) {
-      const updateData = formData;
-      this.object = updateData;
-      this.submit().then((form) => {
-        let result = this.object;
-        this.options.onConfirm(result);
-      });
+    async _updateObject(event, formData) {
+      this.object = formData;
+      const fired = await this.options.onConfirm(this.object);
+      if (fired !== false) this.close();
     }
  }

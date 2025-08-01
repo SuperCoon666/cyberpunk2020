@@ -257,7 +257,7 @@
     "CYBERPUNK.Spaces": "Spaces",
     "CYBERPUNK.Source": "Source",
     "CYBERPUNK.Weight": "Weight",
-    "CYBERPUNK.Advantage":    "Advantage",
+    "CYBERPUNK.Advantage": "Advantage",
     "CYBERPUNK.Disadvantage": "Disadvantage",
     "CYBERPUNK.Encumbrance": "Encumbrance",
 
@@ -292,7 +292,7 @@
     "CYBERPUNK.Suppressive": "Suppressive Fire",
     "CYBERPUNK.SemiAuto": "Semi-Auto",
     "CYBERPUNK.AttackModifiers": "Attack Modifiers",
-    "CYBERPUNK.ModifiersSkillTitle":  "Skill Modifiers",
+    "CYBERPUNK.ModifiersSkillTitle": "Skill Modifiers",
     "CYBERPUNK.ExtraModifiers": "Extra Modifiers",
     "CYBERPUNK.FireMode": "Fire Mode",
     "CYBERPUNK.Aiming": "Aiming",
@@ -317,7 +317,7 @@
     "CYBERPUNK.NoHits": "No Hits",
     "CYBERPUNK.SuppressiveFire": "Suppressive Fire",
     "CYBERPUNK.FireZoneWidth": "Fire-zone width (m)",
-    "CYBERPUNK.RoundsFiredLbl":  "Rounds: Suppressive",
+    "CYBERPUNK.RoundsFiredLbl": "Rounds: Suppressive",
     "CYBERPUNK.SuppressiveDesc": "Each creature inside or crossing the fire-zone rolls Athletics + REF + 1d10 vs DC ({save}).",
     "CYBERPUNK.SuppressiveHitsDesc":"On failure the target suffers 1D6 hits; each hit deals {dmg} damage to a random location.",
 
@@ -368,6 +368,7 @@
     "SETTINGS.TrainedSkillsFirst": "Trained Skills First",
     "SETTINGS.TrainedSkillsFirstHint": "Whether trained skills always come first in the skills list",    
     "CYBERPUNK.NoCombatError": "There's currently no combat encounter present; you'll need to start one",
+    "CYBERPUNK.NoAmmo": "Cannot fire: magazine empty. Reload first.",
 
     "CYBERPUNK.martials.Martial Arts: Aikido": "Martial Arts: Aikido(3)",
     "CYBERPUNK.martials.Martial Arts: AnimalKungFu": "Martial Arts: Animal Kung Fu(3)",
