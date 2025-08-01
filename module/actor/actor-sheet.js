@@ -501,6 +501,8 @@ export class CyberpunkActorSheet extends ActorSheet {
         current: currentPath,
         callback: (path) => {
           this.actor.update({"system.icon": path});
+          html.find(".netrun-icon-frame img").attr("src", path);
+          html.find('input[name="system.icon"]').val(path);
         },
         top: this.position.top + 40,
         left: this.position.left + 10

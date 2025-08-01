@@ -18,6 +18,7 @@ export class CyberpunkActor extends Actor {
       updates["prototypeToken.texture.src"] = "systems/cyberpunk2020/img/edgerunner.svg";
       updates["prototypeToken.actorLink"] = true;
       updates["prototypeToken.sight.enabled"] = true;
+      updates["system.icon"] = "systems/cyberpunk2020/img/edgerunner.svg";
     }
     
     // Check if we have skills already, don't wipe skill items if we do

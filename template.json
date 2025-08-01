@@ -739,7 +739,7 @@
 				"eurobucks": 0
 			},
 			"netrun": {
-				"icon": "",
+				"icon": { "type": "String", "default": "" },
 				"deckModel": "",
 				"interface": 0,
 				"cpu": 0,
