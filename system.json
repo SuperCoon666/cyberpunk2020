@@ -4,9 +4,9 @@
   "description": "R. Talsorian Games' Cyberpunk 2020 System",
   "version": "1.0.1",
   "compatibility": {
-    "minimum": "10",
-    "verified": "11",
-    "maximum": "12"
+    "minimum": "12",
+    "verified": "12",
+    "maximum": "13"
   },
   "authors": [
     {
