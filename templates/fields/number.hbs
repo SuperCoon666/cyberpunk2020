@@ -1,6 +1,21 @@
 <div class="field">
     <label for="{{edit}}">{{CPLocal label}}</label>
     <span class="flex-pad"></span>
-    <input {{#if readOnly}}readonly{{/if}} class="number nogrow nowidth" name="{{edit}}" 
-        type="number" value="{{deepLookup . edit}}"/>
+
+    <input
+        {{#if readOnly}}readonly{{/if}}
+        class="number nogrow nowidth"
+        name="{{edit}}"
+        type="number"
+
+        {{#if readOnly}}
+            value="{{deepLookup . edit}}"
+
+        {{else}}
+            {{#unless (eq (deepLookup . edit) 0)}}
+                value="{{deepLookup . edit}}"
+            {{/unless}}
+            placeholder="0"
+        {{/if}}
+    />
 </div>

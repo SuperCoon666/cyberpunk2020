@@ -1,0 +1,37 @@
+<div>
+    <h2>{{CPLocal 'SuppressiveFire'}} – {{weaponName}}</h2>
+
+    <ul class="condensed">
+    <li><b>{{CPLocal "RoundsFiredLbl"}}:</b> {{rounds}}</li>
+    <li><b>{{CPLocal "FireZoneWidth"}}:</b> {{width}} m</li>
+    <li><b>DC:</b> {{saveDC}}</li>
+    </ul>
+
+    <hr/>
+
+    <p>{{CPLocal "SuppressiveDesc" save=saveDC rounds=rounds width=width}}</p>
+
+    <p>{{CPLocal "SuppressiveHitsDesc" dmg=dmgFormula}}</p>
+
+    {{#each results as |t idx|}}
+    <hr/>
+    <h3>{{CPLocal "Target"}} {{math idx "+" 1}}</h3>
+
+    {{#if (gt t.hitsRoll.total 0)}}
+    <div class="damage-tally">
+        {{#each t.areaDamages as |damages areaName|}}
+        <div>
+            <label>{{CPLocal areaName}}</label>   {{!-- areaName уже “Head”, “Torso”… --}}
+            <ul>
+            {{#each damages}}
+                <li>{{CPLocal "Damage"}} {{dmg}}</li>
+            {{/each}}
+            </ul>
+        </div>
+        {{/each}}
+    </div>
+    {{else}}
+    <p>{{CPLocal "NoHits"}}</p>
+    {{/if}}
+    {{/each}}
+</div>

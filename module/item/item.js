@@ -201,12 +201,18 @@ export class CyberpunkItem extends Item {
   __weaponRoll(attackMods, targetTokens) {
     let owner = this.actor;
     let system = this.system;
+
+    if (system.shotsLeft <= 0) {
+      ui.notifications.warn(localize("NoAmmo"));
+      return false;
+    }
+
     if (owner === null) {
       throw new Error("This item isn't owned by anyone.");
     }
     let isRanged = this.isRanged();
     if(!isRanged) {
-      if(system.attackType === meleeAttackTypes.martial) {
+      if (system.attackType === meleeAttackTypes.martial) {
         return this.__martialBonk(attackMods);
       }
       else {
@@ -226,15 +232,17 @@ export class CyberpunkItem extends Item {
     else if(attackMods.fireMode === fireModes.semiAuto) {
       return this.__semiAuto(attackMods);
     }
+    else if(attackMods.fireMode === fireModes.suppressive) {
+      return this.__suppressiveFire(attackMods);
+    }
   }
 
   __getFireModes() {
-    if(this.type !== "weapon") {
+    if (this.type !== "weapon") {
       console.error(`${this.name} is not a weapon, and therefore has no fire modes`)
       return [];
     }
-    if(this.system.attackType === rangedAttackTypes.auto
-      || this.system.attackType === rangedAttackTypes.autoshotgun) {
+    if (this.system.attackType === rangedAttackTypes.auto || this.system.attackType === rangedAttackTypes.autoshotgun){
       return [fireModes.fullAuto, fireModes.suppressive, fireModes.threeRoundBurst, fireModes.semiAuto];
     }
     return [fireModes.semiAuto];
@@ -362,6 +370,44 @@ export class CyberpunkItem extends Item {
       return roll;
   }
 
+  async __suppressiveFire(mods = {}) {
+    const sys = this.system;
+    const rounds = clamp(Number(mods.roundsFired  ?? sys.rof), 1, sys.shotsLeft);
+    const width = Math.max(2,  Number(mods.zoneWidth    ?? 2));
+    const targets = Math.max(1,  Number(mods.targetsCount ?? 1));
+
+    await this.update({ "system.shotsLeft": sys.shotsLeft - rounds });
+
+    const saveDC = Math.ceil(rounds / width);
+    const dmgFormula = sys.damage || "1d6";
+    const rollData = this.actor?.getRollData?.() ?? {};
+
+    const results = [];
+    for (let t = 0; t < targets; t++) {
+      const hitsRoll = await new Roll("1d6").evaluate();
+      const areaDamages = {};
+
+      for (let i = 0; i < hitsRoll.total; i++) {
+        const loc = (await rollLocation(mods.targetActor, mods.targetArea)).areaHit;
+        const dmg = (await new Roll(dmgFormula, rollData).evaluate()).total;
+        if (!areaDamages[loc]) areaDamages[loc] = [];
+        areaDamages[loc].push({ dmg });
+      }
+
+      results.push({ hitsRoll, areaDamages });
+    }
+
+    const html = await renderTemplate(
+      "systems/cyberpunk2020/templates/chat/suppressive.hbs",
+      { weaponName: this.name, rounds, width, saveDC, dmgFormula, results }
+    );
+
+    ChatMessage.create({
+      speaker: ChatMessage.getSpeaker({ actor: this.actor }),
+      content: html,
+      flags  : { cyberpunk2020: { fireMode: "suppressive" } }
+    });
+  }
 
   async __semiAuto(attackMods) {
       let system = this.system;
@@ -374,7 +420,7 @@ export class CyberpunkItem extends Item {
       let locationRoll = await rollLocation(attackMods.targetActor, attackMods.targetArea);
       let actualRangeBracket = rangeResolve[attackMods.range](system.range);
       let attackHits = attackRoll.total >= DC;
-      let roundsFired = 1;
+      const roundsFired = Math.min(system.shotsLeft, 1);
       let location = locationRoll.areaHit;
       let areaDamages = {};
 

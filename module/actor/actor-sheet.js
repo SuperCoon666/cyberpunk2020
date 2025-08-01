@@ -11,7 +11,7 @@ export class CyberpunkActorSheet extends ActorSheet {
 
   /** @override */
   static get defaultOptions() {
-    return mergeObject(super.defaultOptions, {
+    return foundry.utils.mergeObject(super.defaultOptions, {
       // Css classes
       classes: ["cyberpunk", "sheet", "actor"],
       template: "systems/cyberpunk2020/templates/actor/actor-sheet.hbs",
@@ -55,10 +55,10 @@ export class CyberpunkActorSheet extends ActorSheet {
 
       // Retrieve the initiative modifier from system data
       // Ensure that you have defined `initiativeMod` in your system data schema
-      const initiativeMod = getProperty(system, "initiativeMod") || 0;
+      const initiativeMod = foundry.utils.getProperty(system, "initiativeMod") || 0;
       sheetData.initiativeMod = initiativeMod;
 
-      const StunDeathMod = getProperty(system, "StunDeathMod") || 0;
+      const StunDeathMod = foundry.utils.getProperty(system, "StunDeathMod") || 0;
       sheetData.StunDeathMod = StunDeathMod;
     }
 
@@ -246,9 +246,49 @@ export class CyberpunkActorSheet extends ActorSheet {
       this.actor.sortSkills(sort);
     });
 
+    // Prompt for modifiers
+    html.find(".skill-ask-mod")
+      .on("click",  ev => ev.stopPropagation())
+      .on("change", async ev => {
+        ev.stopPropagation();
+
+        const cb = ev.currentTarget;
+        const skillId = cb.dataset.skillId;
+        const skill = this.actor.items.get(skillId);
+        if (!skill) return ui.notifications.warn(localize("SkillNotFound"));
+
+        try {
+          await skill.update({ "system.askMods": cb.checked });
+        } catch (err) {
+          console.error(err);
+          ui.notifications.error(localize("UpdateAskModsError"));
+          cb.checked = !cb.checked;
+        }
+      });
+
     // Skill roll
     html.find(".skill-roll").click(ev => {
-      let id = ev.currentTarget.dataset.skillId;
+      const id = ev.currentTarget.dataset.skillId;
+      const skill = this.actor.items.get(id);
+      if (!skill) return;
+
+      if (skill.system?.askMods) {
+        const dlg = new ModifiersDialog(this.actor, {
+          title: localize("ModifiersSkillTitle"),
+          showAdvDis: true,
+          modifierGroups: [[
+            { localKey: "ExtraModifiers", dataPath: "extraMod", defaultValue: 0 }
+          ]],
+          onConfirm: ({ extraMod=0, advantage=false, disadvantage=false }) =>
+            this.actor.rollSkill(
+              id,
+              Number(extraMod) || 0,
+              advantage,
+              disadvantage
+            )
+        });
+        return dlg.render(true);
+      }
       this.actor.rollSkill(id);
     });
 
@@ -299,7 +339,7 @@ export class CyberpunkActorSheet extends ActorSheet {
     html.find('.item-delete').click(deleteItemDialog.bind(this));
     html.find('.rc-item-delete').bind("contextmenu", deleteItemDialog.bind(this)); 
 
-    // Кнопка "Fire" для оружия
+    // "Fire" button for weapons
     html.find('.fire-weapon').click(ev => {
       ev.stopPropagation();
       let item = getEventItem(this, ev);
@@ -419,7 +459,7 @@ export class CyberpunkActorSheet extends ActorSheet {
       ev.preventDefault();
       const skillId = ev.currentTarget.dataset.skillId;
       if (!skillId) {
-        ui.notifications.warn(`Interface skill not found - no skill to roll.`);
+        ui.notifications.warn(localize("InterfaceSkillNotFound"));
         return;
       }
       this.actor.rollSkill(skillId);
@@ -449,7 +489,7 @@ export class CyberpunkActorSheet extends ActorSheet {
         "system.ramUsed": sumMU
       });
 
-      ui.notifications.info(`The program has been taken off the active ones.`);
+      ui.notifications.info(localize("ProgramDeactivated"));
     });
 
     html.find('.filepicker').on('click', async (ev) => {
@@ -461,6 +501,8 @@ export class CyberpunkActorSheet extends ActorSheet {
         current: currentPath,
         callback: (path) => {
           this.actor.update({"system.icon": path});
+          html.find(".netrun-icon-frame img").attr("src", path);
+          html.find('input[name="system.icon"]').val(path);
         },
         top: this.position.top + 40,
         left: this.position.left + 10
@@ -490,7 +532,7 @@ export class CyberpunkActorSheet extends ActorSheet {
 
       // If it is not a program, skip it
       if (itemData.type !== "program") {
-        return ui.notifications.warn(`It's not a program: ${itemData.name}`);
+        return ui.notifications.warn(localize("NotAProgram", { name: itemData.name }));
       }
 
       // If a person pulls a program that the same actor already has,
@@ -498,7 +540,7 @@ export class CyberpunkActorSheet extends ActorSheet {
       const sameActor = (data.actorId === this.actor.id);
       const existingItem = sameActor ? this.actor.items.get(itemData._id) : null;
       if (existingItem) {
-        ui.notifications.warn(`The program ‘${existingItem.name}’ is already in the list.`);
+        ui.notifications.warn(localize("ProgramAlreadyExists", { name: existingItem.name }));
         return;
       }
 
@@ -512,7 +554,7 @@ export class CyberpunkActorSheet extends ActorSheet {
       let itemData = await Item.implementation.fromDropData(data);
 
       if (itemData.type !== "program") {
-        return ui.notifications.warn(`Only programs can be activated. This is not a program: ${itemData.name}`);
+        return ui.notifications.warn(localize("OnlyProgramsCanBeActivated", { name: itemData.name }));
       }
 
       // Check if the item is already in your inventory; if not, copy it
@@ -524,7 +566,7 @@ export class CyberpunkActorSheet extends ActorSheet {
 
       // Current list of active programs (ID)
       const currentActive = this.actor.system.activePrograms || [];
-      const newMu  = Number(item.system.mu) || 0;
+      const newMu = Number(item.system.mu) || 0;
 
       // Count the already occupied MU
       const usedMu = currentActive.reduce((sum, id) => {
@@ -537,7 +579,7 @@ export class CyberpunkActorSheet extends ActorSheet {
       // If we exceed the limit after adding, we reject it
       if (ramMax && (usedMu + newMu) > ramMax) {
         return ui.notifications.warn(
-          `Not enough free RAM to load “${item.name}” — ${usedMu}/${ramMax} MU already in use.`
+          localize("NotEnoughRAM", { name: item.name, used: usedMu, max: ramMax })
         );
       }
 

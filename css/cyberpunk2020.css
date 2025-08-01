@@ -726,6 +726,27 @@ div.statderive .value.rightborder {
   border-top: 0px;
   margin-top: -2px;
 }
+/* -- Skill modifier checkbox ------------------------------------ */
+.skill-mod-toggle input[type=checkbox] {
+  display: inline-block !important;
+  margin: 0 4px;
+}
+/* -----------------------------------------------------------------
+ *  Weapon‑modifier dialog — убираем внутренний scroll
+ *  и разрешаем окну подстраиваться под контент
+ * ----------------------------------------------------------------- */
+#weapon-modifier,
+#weapon-modifier form,
+#weapon-modifier .window-content {
+  height: auto !important;      /* Foundry ставит px-значение инлайном */
+  max-height: none !important;  /* снимаем любые max-height */
+}
+
+#weapon-modifier .window-content {
+  overflow-y: visible !important;   /* вместо scroll/auto */
+  padding-right: 8 !important;      /* убираем «дорожку» под скроллбар */
+}
+
 
 /**********************************************
 

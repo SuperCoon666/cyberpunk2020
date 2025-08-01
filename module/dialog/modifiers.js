@@ -1,5 +1,5 @@
 import { deepSet, localize } from "../utils.js"
-import { defaultTargetLocations } from "../lookups.js"
+import { defaultTargetLocations, fireModes } from "../lookups.js"
 
 /**
  * A specialized form used to select the modifiers for shooting with a weapon
@@ -10,7 +10,7 @@ import { defaultTargetLocations } from "../lookups.js"
 
     /** @override */
       static get defaultOptions() {
-        return mergeObject(super.defaultOptions, {
+        return foundry.utils.mergeObject(super.defaultOptions, {
         id: "weapon-modifier",
         classes: ["cyberpunk2020"],
         title: localize("AttackModifiers"),
@@ -23,6 +23,10 @@ import { defaultTargetLocations } from "../lookups.js"
         targetTokens: [], // id and name for each target token
         // Extra mod field for miscellaneous mod
         extraMod: true,
+        showAdvDis: false,
+        advantage: false,
+        disadvantage: false,
+        closeOnSubmit: false,
 
         onConfirm: (results) => console.log(results)
       });
@@ -45,10 +49,8 @@ import { defaultTargetLocations } from "../lookups.js"
       // Woo! This should be much more flexible than the previous implementation
       // My gods did it require thinking about the shape of things, because loosely-typed can be a headache
 
-      /** 1. Клонируем массив, чтобы не править options.modifierGroups */
       const groups = JSON.parse(JSON.stringify(this.options.modifierGroups || []));
 
-      /** 2. Добавляем Extra Mod только если нужно и ещё нет */
       if (this.options.extraMod) {
         const already = groups.some(g =>
           g.some(m => m.dataPath === "extraMod"));
@@ -61,7 +63,6 @@ import { defaultTargetLocations } from "../lookups.js"
         }
       }
 
-      /** 3. Собираем defaultValues и fieldPath */
       const defaultValues = {};
       groups.forEach(group => {
         group.forEach(mod => {
@@ -72,47 +73,77 @@ import { defaultTargetLocations } from "../lookups.js"
         });
       });
 
-      /** 4. Отдаём данные в шаблон */
       return {
         modifierGroups: groups,
         targetTokens: this.options.targetTokens,
         // You can't refer to indices in FormApplication form entries as far as I know, so let's give them a place to live
         defaultValues,
         isRanged: this.options.weapon?.isRanged?.() ?? false,
-        shotsLeft: this.options.weapon?.system.shotsLeft ?? 0
+        shotsLeft: this.options.weapon?.system.shotsLeft ?? 0,
+        showAdvDis: this.options.showAdvDis,
+        advantage: this.options.advantage,
+        disadvantage: this.options.disadvantage
       };
     }
-  
-    /* -------------------------------------------- */
 
     /** @override */
     activateListeners(html) {
       super.activateListeners(html);
 
-      // ——— КНОПКА "RELOAD" ———
-      html.find(".reload").click(async ev => {
+      // RELOAD
+      html.find(".reload").on("click", async (ev) => {
         ev.preventDefault();
         const weapon = this.options.weapon;
         if (!weapon) return;
 
-        // shotsLeft = shots
         await weapon.update({ "system.shotsLeft": weapon.system.shots });
-        ui.notifications.info(localize("Reloaded"));      // ключ перевода
+        ui.notifications.info(localize("Reloaded"));
 
-        // остаёмся в диалоге, но перерисуем его, чтобы обновить любые поля
-        this.render(false);
+        const shots = weapon.system.shots;
+        this.options.weapon.system.shotsLeft = shots;
+
+        html.find('input.number[readonly]').val(shots);
       });
+
+      // Advantage/Disadvantage
+      html.find('input.adv, input.dis').on("change", ev => {
+        const $el = $(ev.currentTarget);
+        if ($el.hasClass("adv") && $el.prop("checked")) html.find("input.dis").prop("checked", false);
+        if ($el.hasClass("dis") && $el.prop("checked")) html.find("input.adv").prop("checked", false);
+      });
+
+      // Suppressive Fire fields
+      // fire mode select
+      const $fireMode = html.find(
+        'select[name="fields.fireMode"], select[name="fireMode"], .field[data-path="fireMode"] select'
+      );
+
+      // collect strings used exclusively for suppression
+      const $supRows = $([
+        '.field[data-path="zoneWidth"]',
+        '.field[data-path="roundsFired"]',
+        '.field[data-path="targetsCount"]',
+        'input[name="fields.zoneWidth"], input[name="zoneWidth"]',
+        'input[name="fields.roundsFired"], input[name="roundsFired"]',
+        'input[name="fields.targetsCount"], input[name="targetsCount"]'
+      ].join(','), html)
+        .map((i, el) => $(el).closest('.field, .form-group')[0])
+        .get()
+        .reduce((jq, el) => jq.add(el), $());
+
+      const updateVisibility = () => {
+        const isSup = $fireMode.val() === fireModes.suppressive;
+        $supRows.toggle(isSup);
+      };
+
+      updateVisibility();
+      $fireMode.on('change', updateVisibility);
     }
   
     /** @override */
-    _updateObject(event, formData) {
-      const updateData = formData;
-      // Update the object
-      this.object = updateData;
-      this.submit().then((form) => {
-        // We don't need to use .values
-        let result = this.object;
-        this.options.onConfirm(result);
-      });
+    async _updateObject(event, formData) {
+      this.object = formData;
+      const fired = await this.options.onConfirm(this.object);
+      if (fired !== false) this.close();
     }
  }

@@ -26,7 +26,7 @@ export let attackSkills = {
 }
 
 export function getStatNames() {
-    let actorTemplate = game.system.template.Actor;
+    const actorTemplate = CONFIG.Actor.template;
     // v11 and earlier format
     if (actorTemplate.templates) {
         return actorTemplate.templates.stats.stats;
@@ -155,7 +155,7 @@ export let defaultAreaLookup = {
     10: "rLeg"
 }
 export function defaultHitLocations() {
-    return game.system.template.Actor.character.hitLocations;
+    return CONFIG.Actor.template.character.hitLocations;
 }
 
 export function rangedModifiers(weapon, targetTokens=[]) {
@@ -179,9 +179,8 @@ export function rangedModifiers(weapon, targetTokens=[]) {
                 {value:"RangeLong", localData: {range: range}},
                 {value:"RangeExtreme", localData: {range: range*2}}
             ]
-         }],
-
-         [{
+        }],
+        [{
             localKey: "Aiming",
             dataPath: "aimRounds",
             defaultValue: 0,
@@ -197,12 +196,6 @@ export function rangedModifiers(weapon, targetTokens=[]) {
             choices: defaultTargetLocations,
             allowBlank: true
         },
-        {
-            localKey: "TargetsCount",
-            dataPath: "targetsCount",
-            defaultValue: targetTokens.length,
-            readOnly: targetTokens.length != 0,
-        },
         {localKey:"Ambush", dataPath:"ambush",defaultValue: false},
         {localKey:"Blinded", dataPath:"blinded",defaultValue: false},
         {localKey:"DualWield", dataPath:"dualWield",defaultValue: false},
@@ -210,7 +203,16 @@ export function rangedModifiers(weapon, targetTokens=[]) {
         {localKey:"Hipfire", dataPath:"hipfire",defaultValue: false},
         {localKey:"Ricochet", dataPath:"ricochet",defaultValue: false},
         {localKey:"Running", dataPath:"running",defaultValue: false},
-        {localKey:"TurnFace", dataPath:"turningToFace",defaultValue: false}]
+        {localKey:"TurnFace", dataPath:"turningToFace",defaultValue: false},
+        {localKey:"FireZoneWidth",  dataPath:"zoneWidth",  dtype:"Number", defaultValue: 2},
+        {localKey:"RoundsFiredLbl", dataPath:"roundsFired", dtype:"Number", defaultValue: weapon.system.rof},
+        {
+            localKey: "TargetsCount",
+            dataPath:"targetsCount",
+            dtype:"Number",
+            defaultValue: Math.max(1, targetTokens.length)
+        },
+        ]
     ];
 }
 
