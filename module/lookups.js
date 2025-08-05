@@ -26,15 +26,28 @@ export let attackSkills = {
 }
 
 export function getStatNames() {
-    const actorTemplate = CONFIG.Actor.template;
-    // v11 and earlier format
-    if (actorTemplate.templates) {
-        return actorTemplate.templates.stats.stats;
-    }
-    // v12 onwards
-    else {
-        return Object.keys(actorTemplate.character.stats);
-    }
+  // v13+
+  const docTypes = game?.system?.documentTypes?.Actor;
+  if (docTypes) {
+    // Format: { character: { stats: { int:{}, ref:{}, … } } }
+    if (docTypes.character?.stats)
+      return Object.keys(docTypes.character.stats);
+
+    // Fallback: support legacy "templates" subnode
+    if (docTypes.templates?.stats?.stats)
+      return Object.keys(docTypes.templates.stats.stats);
+  }
+
+  // v11–v12
+  const tpl = CONFIG?.Actor?.template;
+  if (tpl?.templates?.stats?.stats)
+    return Object.keys(tpl.templates.stats.stats);
+
+  if (tpl?.character?.stats)
+    return Object.keys(tpl.character.stats);
+
+  // Fallback
+  return ["int", "ref", "tech", "cool", "attr", "luck", "ma", "bt", "emp"];
 }
 
 // How a weapon attacks. Something like pistol or an SMG have rigid rules on how they can attack, but shotguns can be regular or auto shotgun, exotic can be laser, etc. So this is for weird and special stuff that isn't necessarily covered by the weapon's type or other information
