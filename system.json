@@ -2,7 +2,7 @@
   "id": "cyberpunk2020",
   "title": "Cyberpunk 2020",
   "description": "R. Talsorian Games' Cyberpunk 2020 System",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "compatibility": {
     "minimum": "12",
     "verified": "13",
@@ -230,6 +230,6 @@
   "secondaryTokenAttribute": null,
   "url": "https://github.com/SuperCoon666/cyberpunk2020",
   "manifest": "https://raw.githubusercontent.com/SuperCoon666/cyberpunk2020/main/system.json",
-  "download": "https://github.com/SuperCoon666/cyberpunk2020/archive/v1.0.1.zip"
+  "download": "https://github.com/SuperCoon666/cyberpunk2020/archive/v1.0.2.zip"
 }
   
