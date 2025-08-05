@@ -138,5 +138,4 @@ export class CyberpunkItemSheet extends ItemSheet {
       cyber.sheet.render(true);
     });
   }
-  
 }
