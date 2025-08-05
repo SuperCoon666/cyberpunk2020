@@ -232,14 +232,19 @@ export class CyberpunkActorSheet extends ActorSheet {
       await this.actor.update({ "system.CombatSenseMod": Number(combatSenseItemFind) });
     });    
     // Toggle skill chipped
-    html.find(".chip-toggle").click(ev => {
-      let skill = this.actor.items.get(ev.currentTarget.dataset.skillId);
-      this.actor.updateEmbeddedDocuments("Item", [{
+    html.find(".chip-toggle").click(async ev => {
+      const skill = this.actor.items.get(ev.currentTarget.dataset.skillId);
+      const toggled = !skill.system.isChipped;
+
+      await this.actor.updateEmbeddedDocuments("Item", [{
         _id: skill.id,
-        "system.isChipped": !skill.system.isChipped
+        // новое единое свойство
+        "system.isChipped": toggled,
+        // подчистим устаревшее поле, если оно было
+        "-=system.chipped": null
       }]);
     });
-
+    
     // Skill sorting
     html.find(".skill-sort > select").change(ev => {
       let sort = ev.currentTarget.value;
