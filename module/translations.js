@@ -6,6 +6,6 @@ export function getMartialKeyByName(name){
     }
 }
 
-export function localize(key, data = {}) {
-  return game.i18n.format("CYBERPUNK." + key, data);
+export function localize(str) {
+    return game.i18n.localize("CYBERPUNK." + str);
 }

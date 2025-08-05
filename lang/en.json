@@ -9,6 +9,7 @@
     "CYBERPUNK.TabCyber": "Cyberware",
     "CYBERPUNK.TabGear": "Gear",
     "CYBERPUNK.TotalEBVal": "Total EB Value",
+
     "CYBERPUNK.Int": "INT",
     "CYBERPUNK.IntFull": "Intelligence",
     "CYBERPUNK.Ref": "REF",
@@ -28,6 +29,7 @@
     "CYBERPUNK.Emp": "EMP",
     "CYBERPUNK.EmpFull": "Empathy",
     "CYBERPUNK.Special": "Special",
+
     "CYBERPUNK.BTM": "Body Type Modifier",
     "CYBERPUNK.BTMShort": "BTM",
     "CYBERPUNK.Carry": "Carry",
@@ -36,15 +38,18 @@
     "CYBERPUNK.Leap": "Leap",
     "CYBERPUNK.Humanity": "Humanity",
     "CYBERPUNK.HumanityShort": "Hum.",
+
     "CYBERPUNK.Uninjured": "Uninjured",
     "CYBERPUNK.Light": "Light",
     "CYBERPUNK.Critical": "Critical",
     "CYBERPUNK.Serious": "Serious",
     "CYBERPUNK.Mortal": "Mortal {mortality}",
+
     "CYBERPUNK.Life": "Life",
     "CYBERPUNK.SortBy": "Sort By",   
     "CYBERPUNK.Name": "Name",
     "CYBERPUNK.Stat": "Stat",
+
     "CYBERPUNK.Level": "Value",
     "CYBERPUNK.LevelChipped": "Value (chipped)",
     "CYBERPUNK.ImprovementPoints": "Improvement Points",
@@ -52,7 +57,6 @@
     "CYBERPUNK.ImprovementPointsShort": "IP",
     "CYBERPUNK.IsRoleSkill": "Is Role Skill",
     "CYBERPUNK.Chipped": "Chipped",
-
     "CYBERPUNK.SkillAuthority": "Authority",
     "CYBERPUNK.SkillCharismaticLeadership": "Charismatic Leadership",
     "CYBERPUNK.SkillCombatSense": "Combat Sense",
@@ -63,16 +67,20 @@
     "CYBERPUNK.SkillMedicalTech": "Medical Tech",
     "CYBERPUNK.SkillResources": "Resources",
     "CYBERPUNK.SkillStreetdeal": "Streetdeal",
+
     "CYBERPUNK.SkillPersonalGrooming": "Personal Grooming",
     "CYBERPUNK.SkillWardrobeStyle": "Wardrobe & Style",
+
     "CYBERPUNK.SkillEndurance": "Endurance",
     "CYBERPUNK.SkillStrengthFeat": "Strength Feat",
     "CYBERPUNK.SkillSwimming": "Swimming",
+
     "CYBERPUNK.SkillInterrogation": "Interrogation",
     "CYBERPUNK.SkillIntimidate": "Intimidate",
     "CYBERPUNK.SkillOratory": "Oratory",
     "CYBERPUNK.SkillResistTortureDrugs": "Resist Torture/Drugs",
     "CYBERPUNK.SkillStreetwise": "Streetwise",
+
     "CYBERPUNK.SkillHumanPerception": "Human Perception",
     "CYBERPUNK.SkillInterview": "Interview",
     "CYBERPUNK.SkillLeadership": "Leadership",
@@ -80,6 +88,7 @@
     "CYBERPUNK.SkillSocial": "Social",
     "CYBERPUNK.SkillPersuasionFastTalk": "Persuasion & Fast Talk",
     "CYBERPUNK.SkillPerform": "Perform",
+
     "CYBERPUNK.SkillAccounting": "Accounting",
     "CYBERPUNK.SkillAnthropology": "Anthropology",
     "CYBERPUNK.SkillAwarenessNotice": "Awareness/Notice",
@@ -104,7 +113,8 @@
     "CYBERPUNK.SkillSystemKnowledge": "System Knowledge",
     "CYBERPUNK.SkillTeaching": "Teaching",
     "CYBERPUNK.SkillWildernessSurvival": "Wilderness Survival",
-    "CYBERPUNK.SkillZoology": "Zoology",    
+    "CYBERPUNK.SkillZoology": "Zoology",
+    
     "CYBERPUNK.SkillArchery": "Archery",
     "CYBERPUNK.SkillAthletics": "Athletics",
     "CYBERPUNK.SkillBrawling": "Brawling",
@@ -136,7 +146,8 @@
     "CYBERPUNK.SkillVectoredThrustVehicle": "Vectored Thrust Vehicle(3)",
     "CYBERPUNK.SkillRifle": "Rifle",
     "CYBERPUNK.SkillStealth": "Stealth(2)",
-    "CYBERPUNK.SkillSubmachinegun": "Submachinegun",    
+    "CYBERPUNK.SkillSubmachinegun": "Submachinegun",
+    
     "CYBERPUNK.SkillAeroTech": "Aero Tech(2)",
     "CYBERPUNK.SkillAVTech": "AV Tech(3)",
     "CYBERPUNK.SkillBasicTech": "Basic Tech(2)",
@@ -163,7 +174,6 @@
     "CYBERPUNK.Accuracy": "Accuracy",
     "CYBERPUNK.Damage": "Damage",
     "CYBERPUNK.DamageShort": "Dmg",
-    "CYBERPUNK.Penetration": "Penetration",
     "CYBERPUNK.Shots": "Shots",
     "CYBERPUNK.ShotsLeft": "Shots Left",
     "CYBERPUNK.AP": "AP",
@@ -187,6 +197,7 @@
     "CYBERPUNK.Advanced": "Advanced",
     "CYBERPUNK.Reload": "Reload",
     "CYBERPUNK.Reloaded": "Weapon reloaded!",
+
     "CYBERPUNK.Pistol": "Pistol",
     "CYBERPUNK.SMG": "SMG",
     "CYBERPUNK.Shotgun": "Shotgun",
@@ -194,6 +205,7 @@
     "CYBERPUNK.Heavy": "Heavy",
     "CYBERPUNK.Melee": "Melee",
     "CYBERPUNK.Exotic": "Exotic",
+
     "CYBERPUNK.Gun": "Gun",
     "CYBERPUNK.Auto": "Auto",
     "CYBERPUNK.Paint": "Paint",
@@ -215,9 +227,11 @@
     "CYBERPUNK.RPG": "RPG",
     "CYBERPUNK.Missile": "Missile",
     "CYBERPUNK.Explocharge": "Explosive Charge",
+
     "CYBERPUNK.Martial": "Martial",
     "CYBERPUNK.Mono": "Mono",
     "CYBERPUNK.Beast": "Cyberbeast",
+
     "CYBERPUNK.Head": "Head",
     "CYBERPUNK.Torso": "Torso",
     "CYBERPUNK.lArm": "Left Arm",
@@ -233,6 +247,7 @@
     "CYBERPUNK.HitLoc": "Hit Location",
     "CYBERPUNK.Ablate": "Ablate",
     "CYBERPUNK.Repair": "Repair",
+
     "CYBERPUNK.Gear": "Gear",
     "CYBERPUNK.Weapon": "Weapon",
     "CYBERPUNK.Weapons": "Weapons",
@@ -240,6 +255,7 @@
     "CYBERPUNK.Cyberware": "Cyberware",
     "CYBERPUNK.Misc": "Misc",
     "CYBERPUNK.Eurobucks": "Eurobucks",
+
     "CYBERPUNK.Equipped": "Equipped",
     "CYBERPUNK.Details": "Details",
     "CYBERPUNK.Notes": "Notes",
@@ -257,8 +273,6 @@
     "CYBERPUNK.Spaces": "Spaces",
     "CYBERPUNK.Source": "Source",
     "CYBERPUNK.Weight": "Weight",
-    "CYBERPUNK.Advantage": "Advantage",
-    "CYBERPUNK.Disadvantage": "Disadvantage",
     "CYBERPUNK.Encumbrance": "Encumbrance",
 
     "CYBERPUNK.MartialArt": "Martial Art",
@@ -284,19 +298,20 @@
     "CYBERPUNK.Grapple": "Grapple",
     "CYBERPUNK.GrappleText": "Succeed? Great, now you can try to Hold, Choke or Throw your opponent.",
     "CYBERPUNK.MartialTitle": "{action} ({martialArt})",
+
     "CYBERPUNK.Location": "Location",
     "CYBERPUNK.WeaponType": "Weapon Type",
     "CYBERPUNK.AttackType": "Attack Type",
+
     "CYBERPUNK.FullAuto": "Full Auto",
     "CYBERPUNK.ThreeRoundBurst": "Three-round Burst",
     "CYBERPUNK.Suppressive": "Suppressive Fire",
     "CYBERPUNK.SemiAuto": "Semi-Auto",
+
     "CYBERPUNK.AttackModifiers": "Attack Modifiers",
-    "CYBERPUNK.ModifiersSkillTitle": "Skill Modifiers",
     "CYBERPUNK.ExtraModifiers": "Extra Modifiers",
     "CYBERPUNK.FireMode": "Fire Mode",
     "CYBERPUNK.Aiming": "Aiming",
-    "CYBERPUNK.AimingAt": "Aiming at",
     "CYBERPUNK.Target": "Target",
     "CYBERPUNK.Targets": "Targets",
     "CYBERPUNK.TargetArea": "Target Area",
@@ -310,28 +325,27 @@
     "CYBERPUNK.Running": "Running",
     "CYBERPUNK.Hipfire": "Hipfire",
     "CYBERPUNK.Ricochet": "Ricochet",
+
     "CYBERPUNK.Autofire": "Autofire",
     "CYBERPUNK.ToHit": "To Hit",
     "CYBERPUNK.AutofireHitTally": "{hits} hit",
     "CYBERPUNK.AutofireFiredTally": "of {fired} fired",
     "CYBERPUNK.NoHits": "No Hits",
-    "CYBERPUNK.SuppressiveFire": "Suppressive Fire",
-    "CYBERPUNK.FireZoneWidth": "Fire-zone width (m)",
-    "CYBERPUNK.RoundsFiredLbl": "Rounds: Suppressive",
-    "CYBERPUNK.SuppressiveDesc": "Each creature inside or crossing the fire-zone rolls Athletics + REF + 1d10 vs DC ({save}).",
-    "CYBERPUNK.SuppressiveHitsDesc":"On failure the target suffers 1D6 hits; each hit deals {dmg} damage to a random location.",
 
     "CYBERPUNK.ConcealPocket": "Pocket/Pants Leg/Sleeve",
     "CYBERPUNK.ConcealJacket": "Jacket/Coat/Shoulder Rig",
     "CYBERPUNK.ConcealLongcoat": "Long Coat",
     "CYBERPUNK.ConcealNoHide": "Can't be hidden",
+
     "CYBERPUNK.Excellent": "Excellent",
     "CYBERPUNK.Common": "Common",
     "CYBERPUNK.Poor": "Poor",
     "CYBERPUNK.Rare": "Rare",
+
     "CYBERPUNK.VeryReliable": "Very Reliable",
     "CYBERPUNK.Standard": "Standard",
     "CYBERPUNK.Unreliable": "Unreliable",
+
     "CYBERPUNK.Speed": "Speed",
     "CYBERPUNK.MPH": "mph",
     "CYBERPUNK.Accel": "Accel",
@@ -345,42 +359,35 @@
     "CYBERPUNK.SDPFull": "Structural Damage Points",
     "CYBERPUNK.Maneuverability": "Maneuv.",
     "CYBERPUNK.ManeuverabilityFull": "Maneuverability",
+
     "CYBERPUNK.Action": "Action",
     "CYBERPUNK.Rolls": "Rolls",
     "CYBERPUNK.Initiative": "Initiative",
     "CYBERPUNK.StunDeathSave": "Stun/Death Save",
     "CYBERPUNK.UnderThresholdMessage": "Roll under the thresholds to succeed",
     "CYBERPUNK.Save": "Save",
+    
     "CYBERPUNK.Description": "Description",
-
     "CYBERPUNK.Settings": "Settings",
+
     "CYBERPUNK.Yes": "Yes",
     "CYBERPUNK.No": "No",
     "CYBERPUNK.OK": "OK",
     "CYBERPUNK.ItemDeleteConfirmTitle": "Delete Item?",
     "CYBERPUNK.ItemDeleteConfirmText": "Are you sure you want to delete {itemName}?",
     "CYBERPUNK.DragItemsPrompt": "Drag items here to add (for now)",
+
     "CYBERPUNK.InitiativeTrackerWarning": "At the moment, rolling initiative from the sheet doesn't add to the encounter's combat tracker.",
     "CYBERPUNK.KeyTechniqueWarning": "Key technique bonuses for martial arts aren't implemented yet",
     "CYBERPUNK.MigrateMessage": "Migrating data of {target}",
+
     "CYBERPUNK.NPC": "NPC",
+
     "SETTINGS.SysMigration": "System Migration Version",
     "SETTINGS.TrainedSkillsFirst": "Trained Skills First",
-    "SETTINGS.TrainedSkillsFirstHint": "Whether trained skills always come first in the skills list",    
+    "SETTINGS.TrainedSkillsFirstHint": "Whether trained skills always come first in the skills list",
+    
     "CYBERPUNK.NoCombatError": "There's currently no combat encounter present; you'll need to start one",
-    "CYBERPUNK.NoAmmo": "Cannot fire: magazine empty. Reload first.",
-    "CYBERPUNK.MigrateError": "Only the GM can migrate the world",
-    "CYBERPUNK.MigrationComplete": "Cyberpunk2020 System Migration to version {version} completed!",
-    "CYBERPUNK.MigrationFailed": "Cyberpunk2020 System Migration failed :( Please see console log for details",
-    "CYBERPUNK.SkillNotFound": "Skill not found",
-    "CYBERPUNK.UpdateAskModsError": "Can't update askMods flag",
-    "CYBERPUNK.InterfaceSkillNotFound": "Interface skill not found - no skill to roll.",
-    "CYBERPUNK.ProgramDeactivated": "The program has been taken off the active ones.",
-    "CYBERPUNK.NotAProgram": "It's not a program: {name}",
-    "CYBERPUNK.ProgramAlreadyExists": "The program ‘{name}’ is already in the list.",
-    "CYBERPUNK.OnlyProgramsCanBeActivated": "Only programs can be activated. This is not a program: {name}",
-    "CYBERPUNK.NotEnoughRAM": "Not enough free RAM to load “{name}” — {used}/{max} MU already in use.",
-    "CYBERPUNK.NoCombatantForActor": "No combatant found for this actor.",
 
     "CYBERPUNK.martials.Martial Arts: Aikido": "Martial Arts: Aikido(3)",
     "CYBERPUNK.martials.Martial Arts: AnimalKungFu": "Martial Arts: Animal Kung Fu(3)",
@@ -392,7 +399,6 @@
     "CYBERPUNK.martials.Martial Arts: TaeKwonDo": "Martial Arts: Tae Kwon Do(3)",
     "CYBERPUNK.martials.Martial Arts: ThaiKickBoxing": "Martial Arts: Thai Kickboxing(4)",
     "CYBERPUNK.martials.Martial Arts: Wrestling": "Martial Arts: Wrestling",
-    "CYBERPUNK.martials.Martial Arts: Savate": "Martial Arts: Savate",
 
     "CYBERPUNK.NoCyberlimb": "No Cyberlimb / Unenhanced Cyberlimb",
     "CYBERPUNK.CyberTerminusX2": "Cyber-terminus with X2 damage",

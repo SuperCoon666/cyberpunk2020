@@ -2,12 +2,13 @@
   "id": "cyberpunk2020",
   "title": "Cyberpunk 2020",
   "description": "R. Talsorian Games' Cyberpunk 2020 System",
-  "version": "1.0.1",
+  "version": "1.0.0",
   "compatibility": {
-    "minimum": "12",
-    "verified": "13",
-    "maximum": "13"
+    "minimum": "10",
+    "verified": "11",
+    "maximum": "12"
   },
+  "templateVersion": 2,
   "authors": [
     {
       "name": "Tilt",
@@ -16,7 +17,9 @@
     {
       "name": "OctarineSourceror",
       "discord": "octarinesorcerer"
-    }
+    },
+    { "name": "cybersmily" },
+    { "name": "drowzero0" }
   ],
   "scripts": [],
   "esmodules": ["module/cyberpunk2020.js"],
@@ -222,14 +225,12 @@
   ],
   "socket": false,
   "initiative": "1d10 + @stats.ref.total + @CombatSenseMod + @initiativeMod",
-  "grid": {
-    "distance": 5,
-    "units": "m"
-  },
+  "gridDistance": 5,
+  "gridUnits": "m",
   "primaryTokenAttribute": null,
   "secondaryTokenAttribute": null,
   "url": "https://github.com/SuperCoon666/cyberpunk2020",
   "manifest": "https://raw.githubusercontent.com/SuperCoon666/cyberpunk2020/main/system.json",
-  "download": "https://github.com/SuperCoon666/cyberpunk2020/archive/v1.0.1.zip"
+  "download": "https://github.com/SuperCoon666/cyberpunk2020/archive/v1.0.0.zip"
 }
   

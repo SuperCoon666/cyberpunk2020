@@ -15,15 +15,9 @@
             <input type="checkbox" data-skill-id="{{../skill.id}}" {{checked isChipped}}/>
         </label>
 
-    <span class="item-controls">
-        <span class="skill-mod-toggle">
-        <input type="checkbox"
-                class="skill-ask-mod"
-                data-skill-id="{{../skill.id}}"
-                {{checked askMods}}>
-        </span>
-        <i class="fas fa-edit item-edit"   data-item-id="{{../skill.id}}"></i>
+    <span>
         <i class="fas fa-trash item-delete" data-item-id="{{../skill.id}}"></i>
+        <i class="fas fa-edit item-edit" data-item-id="{{../skill.id}}"></i>
     </span>
 
     <input type="number" data-skill-id="{{../skill.id}}" class="skill-level smallnumber nogrow" value="{{#if isChipped}}{{chipLevel}}{{else}}{{level}}{{/if}}"/>
