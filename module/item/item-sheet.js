@@ -141,7 +141,6 @@ export class CyberpunkItemSheet extends ItemSheet {
 
   /** @override */
   async _updateObject(event, formData) {
-    // превратим плоскую FormData в иерархический объект
     const data = foundry.utils.expandObject(formData);
 
     if (this.item.type === "skill") {
@@ -149,19 +148,16 @@ export class CyberpunkItemSheet extends ItemSheet {
         const n = parseInt(v ?? 0, 10);
         return isNaN(n) ? 0 : n;
       };
-      // level и chipLevel всегда должны быть числами ≥0
       foundry.utils.setProperty(data, "system.level",     fixNum(foundry.utils.getProperty(data,"system.level")));
       foundry.utils.setProperty(data, "system.chipLevel", fixNum(foundry.utils.getProperty(data,"system.chipLevel")));
     }
 
     const legacy = foundry.utils.getProperty(data, "system.chipped");
     if (legacy !== undefined) {
-      // переносим значение и удаляем устаревшее свойство
       foundry.utils.setProperty(data, "system.isChipped", !!legacy);
       if (data.system && "chipped" in data.system) delete data.system.chipped;
     }
 
-    // передаём дальше уже очищенные данные
     await this.item.update(data);
   }
 }
