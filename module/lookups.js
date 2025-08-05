@@ -167,8 +167,24 @@ export let defaultAreaLookup = {
     9: "rLeg",
     10: "rLeg"
 }
+
 export function defaultHitLocations() {
-    return CONFIG.Actor.template.character.hitLocations;
+  const actorDocs = game?.system?.documentTypes?.Actor;
+
+  const tpl = actorDocs?.templates?.hitLocations?.hitLocations;
+  if (tpl) return tpl;
+
+  const chr = actorDocs?.character?.hitLocations;
+  if (chr) return chr;
+
+  return {
+    Head: { location: [1], stoppingPower: 0, ablation: 0},
+    Torso: { location: [2, 4], stoppingPower: 0, ablation: 0},
+    lArm: { location: [6], stoppingPower: 0, ablation: 0},
+    rArm: { location: [5], stoppingPower: 0, ablation: 0},
+    lLeg: { location: [7, 8], stoppingPower: 0, ablation: 0},
+    rLeg: { location: [9, 10], stoppingPower: 0, ablation: 0}
+  };
 }
 
 export function rangedModifiers(weapon, targetTokens=[]) {
