@@ -243,7 +243,7 @@ export class CyberpunkActorSheet extends ActorSheet {
       await this.actor.updateEmbeddedDocuments("Item", [{
         _id: skill.id,
         "system.isChipped": toggled,
-        "-=system.chipped": null
+        "system.-=chipped": null
       }]);
     });
     
