@@ -726,25 +726,73 @@ div.statderive .value.rightborder {
   border-top: 0px;
   margin-top: -2px;
 }
+
+/* The cleanup button in the skill search */
+.field.skill-search-field { position: relative; }
+
+.field.skill-search-field > input.skill-search {
+  padding-right: 1.9rem;
+  box-sizing: border-box;
+}
+
+
+.field.skill-search-field > .skill-search-clear {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  border: 0;
+  background: rgba(0,0,0,0.08);
+  color: rgba(0,0,0,0.7);
+  font: inherit;
+  line-height: 22px;
+  text-align: center;
+  padding: 0;
+  cursor: pointer;
+  user-select: none;
+
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.field.skill-search-field > .skill-search-clear:hover {
+  background: rgba(0,0,0,0.16);
+  color: rgba(0,0,0,0.9);
+}
+
+.field.skill-search-field > .skill-search-clear.is-visible {
+  display: inline-block;
+}
+
+.cyberpunk .field.skill-search-field > .skill-search-clear {
+  background: rgba(0,0,0,0.08) !important;
+  font-variant: normal !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
 /* -- Skill modifier checkbox ------------------------------------ */
 .skill-mod-toggle input[type=checkbox] {
   display: inline-block !important;
   margin: 0 4px;
 }
 /* -----------------------------------------------------------------
- *  Weapon‑modifier dialog — убираем внутренний scroll
- *  и разрешаем окну подстраиваться под контент
+ *  Weapon‑modifier dialog
  * ----------------------------------------------------------------- */
 #weapon-modifier,
 #weapon-modifier form,
 #weapon-modifier .window-content {
-  height: auto !important;      /* Foundry ставит px-значение инлайном */
-  max-height: none !important;  /* снимаем любые max-height */
+  height: auto !important;
+  max-height: none !important;
 }
 
 #weapon-modifier .window-content {
-  overflow-y: visible !important;   /* вместо scroll/auto */
-  padding-right: 8 !important;      /* убираем «дорожку» под скроллбар */
+  overflow-y: visible !important;
+  padding-right: 8 !important;
 }
 
 

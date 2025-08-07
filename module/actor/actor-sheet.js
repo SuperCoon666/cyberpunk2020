@@ -253,6 +253,58 @@ export class CyberpunkActorSheet extends ActorSheet {
       this.actor.sortSkills(sort);
     });
 
+    // Skill search: auto-filter + clear button
+    const $skillSearch = html.find('input.skill-search[name="system.transient.skillFilter"]');
+    const $skillClear  = html.find('.skill-search-clear');
+
+    const toggleClear = () => $skillClear.toggleClass('is-visible', !!$skillSearch.val());
+
+    // Restore caret position after re-render (so typing continues without jumping)
+    if (this._restoreSkillCaret != null) {
+      const el = $skillSearch[0];
+      if (el) {
+        el.focus();
+        const pos = Math.min(this._restoreSkillCaret, el.value.length);
+        try { el.setSelectionRange(pos, pos); } catch(_) {}
+      }
+      this._restoreSkillCaret = null;
+    }
+
+    toggleClear();
+
+    // Auto-search while typing
+    let searchTypingTimer;
+    $skillSearch.on('input', (ev) => {
+      const val = ev.currentTarget.value || "";
+      toggleClear();
+
+      // Remember cursor position before re-render
+      this._restoreSkillCaret = ev.currentTarget.selectionStart ?? val.length;
+
+      // Update the "transient" filter in memory (without actor.update)
+      foundry.utils.setProperty(this.actor.system, "transient.skillFilter", val);
+
+      // Soft re-render of the sheet
+      clearTimeout(searchTypingTimer);
+      searchTypingTimer = setTimeout(() => this.render(false), 120);
+    });
+
+    html.on('pointerdown mousedown', '[data-action="clear-skill-search"]', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+    });
+
+    // Clear the field and instantly reset the filter
+    html.on('click', '[data-action="clear-skill-search"]', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+
+      $skillSearch.val('');
+      this._restoreSkillCaret = 0;
+      foundry.utils.setProperty(this.actor.system, "transient.skillFilter", "");
+      this.render(false);
+    });
+
     // Prompt for modifiers
     html.find(".skill-ask-mod")
       .on("click",  ev => ev.stopPropagation())
