@@ -228,9 +228,13 @@ export class CyberpunkActorSheet extends ActorSheet {
       updateData[target] = parseInt(event.target.value, 10);
       // Mild hack to make sheet refresh and re-sort: the ability to do that should just be put in 
       await this.actor.updateEmbeddedDocuments("Item", [updateData]);
-      let combatSenseItemFind = this.actor.items.find(item => item.type === 'skill' && item.name.includes('Combat'))?.system.level || 0;
+      // let combatSenseItemFind = this.actor.items.find(item => item.type === 'skill' && item.name.includes('Combat'))?.system.level || 0;
+      let combatSenseItemFind = 
+        this.actor.items.find(item => item.type === 'skill' && item.name.includes('Combat'))?.system.level
+        ?? this.actor.items.find(item => item.type === 'skill' && item.name.includes('Боя'))?.system.level
+        ?? 0;
       await this.actor.update({ "system.CombatSenseMod": Number(combatSenseItemFind) });
-    });    
+    });
     // Toggle skill chipped
     html.find(".chip-toggle").click(async ev => {
       const skill = this.actor.items.get(ev.currentTarget.dataset.skillId);
