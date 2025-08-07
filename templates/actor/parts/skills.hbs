@@ -1,12 +1,22 @@
 {{!-- Skills tab contents --}}
 <div class="skill-top-matter">
-    {{!-- Search bar --}}
-    <div class="field">
-        <div class="field-image search-icon"></div>
-        <input class="skill-search" name="system.transient.skillFilter" value="{{system.transient.skillFilter}}"></input>
-    </div>
+  {{!-- Search bar --}}
+  <div class="field skill-search-field">
+    <div class="field-image search-icon"></div>
+    <input
+      class="skill-search"
+      name="system.transient.skillFilter"
+      value="{{system.transient.skillFilter}}"
+      autocomplete="off"
+    />
+    <button type="button" class="skill-search-clear" data-action="clear-skill-search">×</button>
+  </div>
 
-    {{> (template "fields/select") label="SortBy" edit="system.skillsSortedBy" choices=skillsSortChoices extraClasses="skill-sort"}}
+  {{> (template "fields/select")
+      label="SortBy"
+      edit="system.skillsSortedBy"
+      choices=skillsSortChoices
+      extraClasses="skill-sort"}}
 </div>
 
 {{!-- Actual skills --}}

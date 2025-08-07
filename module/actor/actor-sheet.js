@@ -228,9 +228,13 @@ export class CyberpunkActorSheet extends ActorSheet {
       updateData[target] = parseInt(event.target.value, 10);
       // Mild hack to make sheet refresh and re-sort: the ability to do that should just be put in 
       await this.actor.updateEmbeddedDocuments("Item", [updateData]);
-      let combatSenseItemFind = this.actor.items.find(item => item.type === 'skill' && item.name.includes('Combat'))?.system.level || 0;
+      // let combatSenseItemFind = this.actor.items.find(item => item.type === 'skill' && item.name.includes('Combat'))?.system.level || 0;
+      let combatSenseItemFind = 
+        this.actor.items.find(item => item.type === 'skill' && item.name.includes('Combat'))?.system.level
+        ?? this.actor.items.find(item => item.type === 'skill' && item.name.includes('Боя'))?.system.level
+        ?? 0;
       await this.actor.update({ "system.CombatSenseMod": Number(combatSenseItemFind) });
-    });    
+    });
     // Toggle skill chipped
     html.find(".chip-toggle").click(async ev => {
       const skill = this.actor.items.get(ev.currentTarget.dataset.skillId);
@@ -239,7 +243,7 @@ export class CyberpunkActorSheet extends ActorSheet {
       await this.actor.updateEmbeddedDocuments("Item", [{
         _id: skill.id,
         "system.isChipped": toggled,
-        "-=system.chipped": null
+        "system.-=chipped": null
       }]);
     });
     
@@ -247,6 +251,58 @@ export class CyberpunkActorSheet extends ActorSheet {
     html.find(".skill-sort > select").change(ev => {
       let sort = ev.currentTarget.value;
       this.actor.sortSkills(sort);
+    });
+
+    // Skill search: auto-filter + clear button
+    const $skillSearch = html.find('input.skill-search[name="system.transient.skillFilter"]');
+    const $skillClear  = html.find('.skill-search-clear');
+
+    const toggleClear = () => $skillClear.toggleClass('is-visible', !!$skillSearch.val());
+
+    // Restore caret position after re-render (so typing continues without jumping)
+    if (this._restoreSkillCaret != null) {
+      const el = $skillSearch[0];
+      if (el) {
+        el.focus();
+        const pos = Math.min(this._restoreSkillCaret, el.value.length);
+        try { el.setSelectionRange(pos, pos); } catch(_) {}
+      }
+      this._restoreSkillCaret = null;
+    }
+
+    toggleClear();
+
+    // Auto-search while typing
+    let searchTypingTimer;
+    $skillSearch.on('input', (ev) => {
+      const val = ev.currentTarget.value || "";
+      toggleClear();
+
+      // Remember cursor position before re-render
+      this._restoreSkillCaret = ev.currentTarget.selectionStart ?? val.length;
+
+      // Update the "transient" filter in memory (without actor.update)
+      foundry.utils.setProperty(this.actor.system, "transient.skillFilter", val);
+
+      // Soft re-render of the sheet
+      clearTimeout(searchTypingTimer);
+      searchTypingTimer = setTimeout(() => this.render(false), 120);
+    });
+
+    html.on('pointerdown mousedown', '[data-action="clear-skill-search"]', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+    });
+
+    // Clear the field and instantly reset the filter
+    html.on('click', '[data-action="clear-skill-search"]', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+
+      $skillSearch.val('');
+      this._restoreSkillCaret = 0;
+      foundry.utils.setProperty(this.actor.system, "transient.skillFilter", "");
+      this.render(false);
     });
 
     // Prompt for modifiers
