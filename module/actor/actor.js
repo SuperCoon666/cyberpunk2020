@@ -84,6 +84,27 @@ export class CyberpunkActor extends Actor {
       return item.system.equipped;
     });
 
+    // Cyberware (Characteristic): apply stat bonuses
+    Object.values(stats).forEach(s => { s.cyberMod = 0; });
+
+    const charCw = equippedItems
+      .filter(i => i.type === "cyberware" && i.system?.CyberWorkType?.Type === "Characteristic");
+
+    for (const cw of charCw) {
+      const add = cw.system?.CyberWorkType?.Stat || {};
+      for (const [key, val] of Object.entries(add)) {
+        const n = Number(val) || 0;
+        if (!n) continue;
+        if (!stats[key]) continue;
+
+        stats[key].cyberMod += n;
+
+        if (key !== "emp") {
+          stats[key].total += n;
+        }
+      }
+    }
+
     // Reflex is affected by encumbrance values too
     stats.ref.armorMod = 0;
     equippedItems.filter(i => i.type === "armor").forEach(armor => {
@@ -134,7 +155,7 @@ export class CyberpunkActor extends Actor {
       }
 
     });
-    stats.ref.total = stats.ref.base + stats.ref.tempMod + stats.ref.armorMod;
+    stats.ref.total = stats.ref.base + stats.ref.tempMod + (stats.ref.cyberMod || 0) + stats.ref.armorMod;
 
     const move = stats.ma;
     move.run = move.total * 3;
@@ -168,20 +189,31 @@ export class CyberpunkActor extends Actor {
     else if(woundState == 2) {
       woundStat(stats.ref, total => total - 2);
     }
-    // calculate and configure the humanity
+    // calculate humanity & EMP (include cyberware and temp mods before loss)
     const emp = stats.emp;
-    emp.humanity = {base: emp.base * 10};
-    // calculate total HL from cyberware
+
+    const preLossEmp =
+      (emp.base || 0) +
+      (emp.tempMod || 0) +
+      (emp.cyberMod || 0);
+
+    emp.humanity = { base: preLossEmp * 10 };
+
     let hl = 0;
-    equippedItems.filter(i => i.type === "cyberware").forEach(cyberware => {
-      const cyber = cyberware.system;
-      hl += (cyber.humanityLoss) ? cyber.humanityLoss : 0;
-    });
+    equippedItems
+      .filter(i => i.type === "cyberware")
+      .forEach(cyberware => {
+        hl += Number(cyberware.system?.humanityLoss || 0);
+      });
 
     emp.humanity.loss = hl;
-    // calculate current Humanity and current EMP
-    emp.humanity.total = emp.humanity.base - emp.humanity.loss;
-    emp.total = emp.base + emp.tempMod - Math.floor(emp.humanity.loss/10);
+
+    emp.humanity.total = Math.max(0, emp.humanity.base - emp.humanity.loss);
+    emp.total = preLossEmp - Math.floor(hl / 10);
+
+    const cwCheckMods = this._getCharacteristicChecksMods();
+    system.initiativeImplantMod = Number(cwCheckMods.initiative || 0);
+    system._cwChecks = { saveStun: Number(cwCheckMods.saveStun || 0) };
   }
 
   /**
@@ -280,6 +312,10 @@ export class CyberpunkActor extends Actor {
       extraMod || null
     ].filter(Boolean);
 
+    // Roll modifier from implants (Characteristic)
+    const cMod = this._getCharacteristicSkillMod(skill.name);
+    if (cMod) parts.push(cMod);
+
     const makeRoll = () => makeD10Roll(parts, this.system);   // d10 + parts
 
     // if both are accidentally marked — ignore
@@ -309,6 +345,53 @@ export class CyberpunkActor extends Actor {
     new Multiroll(skill.name)
       .addRoll(makeRoll())
       .defaultExecute();
+  }
+
+  /**
+   * Sum of skill roll modifiers from equipped implants of type Characteristic.
+   * Keys in the implant are the displayed (localized) skill names, same as skill.name.
+   * @param {string} skillName
+   * @returns {number}
+  */
+  _getCharacteristicSkillMod(skillName) {
+    let total = 0;
+
+    for (const it of this.items) {
+      if (it.type !== "cyberware") continue;
+
+      const sys = it.system;
+      if (!sys?.equipped) continue;
+
+      const cwt = sys.CyberWorkType;
+      if (!cwt || cwt.Type !== "Characteristic") continue;
+
+      const table = cwt.Skill || {};
+      const v = Number(table[skillName]) || 0;
+      if (!Number.isNaN(v)) total += v;
+    }
+
+    return total;
+  }
+
+  /**
+   * Sum check modifiers from equipped implants of type "Characteristic".
+   * Returns { initiative, saves, stun }.
+  */
+  _getCharacteristicChecksMods() {
+    const mods = { initiative: 0, saveStun: 0 };
+
+    for (const it of this.items) {
+      if (it.type !== "cyberware") continue;
+      const sys = it.system || {};
+      if (!sys.equipped) continue;
+      if (sys?.CyberWorkType?.Type !== "Characteristic") continue;
+
+      const checks = sys.CyberWorkType?.Checks || {};
+      mods.initiative += Number(checks.Initiative || 0) || 0;
+      mods.saveStun += Number(checks.SaveStun || 0) || 0;
+    }
+
+    return mods;
   }
 
   rollStat(statName) {
@@ -358,8 +441,15 @@ export class CyberpunkActor extends Actor {
       return
     }
 
-    const rollType = "1d10"
-    rolls.addRoll(new Roll(modificator ? `${rollType} + ${modificator}` : rollType), {
+    const fromImplants = Number(this.system?._cwChecks?.saveStun || 0);
+
+    const userMod = modificator ? parseInt(modificator, 10) : 0;
+    const totalMod = userMod + fromImplants;
+
+    const rollType = "1d10";
+    const formula = totalMod ? `${rollType} + ${totalMod}` : rollType;
+
+    rolls.addRoll(new Roll(formula), {
       name: localize("Save")
     });
     rolls.addRoll(new Roll(`${this.stunThreshold()}`), {

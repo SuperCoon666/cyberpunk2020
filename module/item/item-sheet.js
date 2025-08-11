@@ -126,8 +126,7 @@ export class CyberpunkItemSheet extends ItemSheet {
 
     const CHECK_KEYS = [
       { key: "Initiative", label: L("CWT_Checks_Initiative") },
-      { key: "Save", label: L("CWT_Checks_Save") },
-      { key: "Stun", label: L("CWT_Checks_Stun") }
+      { key: "SaveStun", label: L("CWT_Checks_SaveStun") }
     ];
 
     const findLabel = (list, key) => list.find((i) => i.key === key)?.label ?? key;
@@ -277,8 +276,11 @@ export class CyberpunkItemSheet extends ItemSheet {
     html.on("change", "select.cw-add-check", async ev => {
       const key = ev.currentTarget.value;
       if (!key) return;
-      await this._cwAddKey("CyberWorkType.Checks", key, 0);
-      ev.currentTarget.value = "";
+
+      const checks = foundry.utils.duplicate(this.item.system?.CyberWorkType?.Checks || {});
+      if (checks[key] == null) checks[key] = 0;
+
+      await this.item.update({ "system.CyberWorkType.Checks": checks });
     });
 
     // Locations

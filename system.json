@@ -222,7 +222,7 @@
     }
   ],
   "socket": false,
-  "initiative": "1d10 + @stats.ref.total + @CombatSenseMod + @initiativeMod",
+  "initiative": "1d10 + @stats.ref.total + @CombatSenseMod + @initiativeMod + @initiativeImplantMod",
   "grid": {
     "distance": 5,
     "units": "m"
