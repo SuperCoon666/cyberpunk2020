@@ -107,69 +107,75 @@ export class CyberpunkActor extends Actor {
 
     // Reflex is affected by encumbrance values too
     stats.ref.armorMod = 0;
+    let totalEncumbrance = 0;
+
+    const combineSP = (curr, add) => {
+      const a = Number(curr) || 0;
+      const b = Number(add) || 0;
+      if (!a || !b) return a + b;
+      const diff = Math.abs(a - b);
+      const max = Math.max(a, b);
+      let mod = 0;
+      if (diff >= 27) mod = 0;
+      else if (diff >= 21) mod = 2;
+      else if (diff >= 15) mod = 3;
+      else if (diff >= 9) mod = 3;
+      else if (diff >= 5) mod = 4;
+      else mod = 5;
+      return max + mod;
+    };
+
+    // Equipped cyber-armor implants (once)
+    const cwArmorItems = (equippedItems || [])
+      .filter(i => i.type === "cyberware" && i.system?.CyberWorkType?.Type === "Armor");
+
+    // Inventory armor: accumulate EV and layer SP
     equippedItems.filter(i => i.type === "armor").forEach(armor => {
-      let armorData = armor.system;
-      if(armorData.encumbrance != null) {
-        stats.ref.armorMod -= armorData.encumbrance;
+      const armorData = armor.system;
+      totalEncumbrance += Number(armorData.encumbrance || 0);
+
+      for (const armorArea in armorData.coverage) {
+        const location = system.hitLocations[armorArea];
+        if (!location) continue;
+        const addSP = Number(armorData.coverage[armorArea].stoppingPower) || 0;
+        location.stoppingPower = combineSP(location.stoppingPower, addSP);
       }
+    });
 
-      // While we're looping through armor, might as well modify hit locations' armor
-      // I. Version of the direct addition of armor. In the future, can add it as an additional option in the settings
-      // for(let armorArea in armorData.coverage) {
-      //   let location = system.hitLocations[armorArea];
-      //   if(location !== undefined) {
-      //     armorArea = armorData.coverage[armorArea];
-      //     // Converting both values to numbers before adding
-      //     location.stoppingPower = Number(location.stoppingPower) + Number(armorArea.stoppingPower);
-      //   }
-      // }
-      
-      // II. The version of the addition of armor according to the rule book
-      for(let armorArea in armorData.coverage) {
-        let location = system.hitLocations[armorArea];
-        if(location !== undefined) {
-          let armorValue = armorData.coverage[armorArea].stoppingPower;
-            let locationStoppingPower = Number(location.stoppingPower);
-            let armorStoppingPower = Number(armorValue);
-
-            // If there is no armor on one of the zones, just add armor
-            if(locationStoppingPower === 0 || armorStoppingPower === 0) {
-                location.stoppingPower = locationStoppingPower + armorStoppingPower;
-            } else {
-                // If the armor is already on, we count it according to the modification table
-                let difference = Math.abs(locationStoppingPower - armorStoppingPower);
-                let maxValue = Math.max(locationStoppingPower, armorStoppingPower);
-                let modifier = 0;
-
-                if (difference >= 27) modifier = 0;
-                else if (difference >= 21) modifier = 2;
-                else if (difference >= 15) modifier = 3;
-                else if (difference >= 9) modifier = 3;
-                else if (difference >= 5) modifier = 4;
-                else modifier = 5;
-
-                // Adding the modifier to the highest value
-                location.stoppingPower = maxValue + modifier;
-            }
-        }
+    // Cyber-armor: layer SP once after inventory armor
+    for (const cw of cwArmorItems) {
+      const locs = cw.system?.CyberWorkType?.Locations || {};
+      for (const [areaKey, sp] of Object.entries(locs)) {
+        const loc = system.hitLocations[areaKey];
+        const addSP = Number(sp) || 0;
+        if (!loc || addSP <= 0) continue;
+        loc.stoppingPower = combineSP(loc.stoppingPower, addSP);
       }
+    }
 
-    });
-    stats.ref.total = stats.ref.base + stats.ref.tempMod + (stats.ref.cyberMod || 0) + stats.ref.armorMod;
+    // Cyber-armor EV: add to total encumbrance
+    for (const cw of cwArmorItems) {
+      const evImpl = Number(cw.system?.CyberWorkType?.Encumbrance ?? cw.system?.encumbrance ?? 0);
+      totalEncumbrance += evImpl;
+    }
 
-    const move = stats.ma;
-    move.run = move.total * 3;
-    move.leap = Math.floor(move.run / 4); 
+    // Final REF penalty: subtract full total EV
+    stats.ref.armorMod -= totalEncumbrance;
+    stats.ref.total += stats.ref.armorMod;
 
-    const body = stats.bt;
-    body.carry = body.total * 10;
-    body.lift = body.total * 40;
-    body.modifier = btmFromBT(body.total);
-    system.carryWeight = 0;
-    equippedItems.forEach(item => {
-      let weight = item.system.weight || 0;
-      system.carryWeight += parseFloat(weight);
-    });
+    // Penalties from cyber-armor to stats
+    for (const s of Object.values(system.stats)) s.armorImplantMod = 0;
+    for (const cw of cwArmorItems) {
+      const pens = cw.system?.CyberWorkType?.Penalties || {};
+      for (const [statKey, val] of Object.entries(pens)) {
+        const n = Number(val) || 0;
+        if (!n || !system.stats[statKey]) continue;
+        system.stats[statKey].armorImplantMod -= n;
+      }
+    }
+    for (const s of Object.values(system.stats)) {
+      s.total += Number(s.armorImplantMod || 0);
+    }
 
     // Apply wound effects
     // Change stat total, but leave a record of the difference in stats.[statName].woundMod
