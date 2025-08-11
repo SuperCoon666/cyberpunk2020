@@ -875,10 +875,36 @@
 			"humanityCost": "1d6",
 			"cyberwareType": "",
 			"cyberwareSubtype": "",
-			"slots": 0,
-			"spaces": 0,
 			"abbrev": "",
-			"humanityLoss": 0
+			"humanityLoss": 0,
+
+			"CyberBodyType": {
+				"Type": "",
+				"Location": ""
+			},
+
+			"CyberWorkType": {
+				"Type": "Descriptive",
+
+				"Stat": {},
+				"Skill": {},
+				"Checks": {},
+
+				"Locations": {},
+				"Encumbrance": 0,
+				"Penalties": {},
+
+				"Link": "",
+				"ItemId": "",
+
+				"OptionsAvailable": 0,
+				"TakesOptions": 0,
+				"SDP": 0,
+				"MountPolicy": [],
+				"Module": { "AllowedParentCyberwareType": [] },
+
+				"ChipSkills": {}
+			}
 		},
 		"vehicle": {
 			"templates": ["common"],

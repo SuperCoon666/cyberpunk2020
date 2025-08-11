@@ -278,18 +278,52 @@ details[open] summary ~ * {
   padding-left: 0px;
   text-align: center;
 }
-.cyberpunk .field > input[type=number].smallnumber {
-  width: 1.5em;
+/* Uniform small numeric inputs used in item sheets (e.g., cyberware modifiers) */
+.cyberpunk .field-list .field input[type=number].smallnumber {
+  flex: 0 0 2.5em;
+  width: 2.5em;
+  min-width: 2.5em;
+  padding-left: 0;
+  text-align: center;
 }
 .cyberpunk .field > input[type=text] {
   width: 6em;
   min-width: 2em;
 }
+/* Selects in .field: stretch to the row height and remove the "gap" under the arrow */
 .cyberpunk .field select {
-  border-radius: 0px;
+  border-radius: 0;
   border: 1px solid rgb(90, 90, 90);
-  width: 50%;
+  box-sizing: border-box;
+  display: block;
+  padding: 0 6px;
+  margin: 0;
+  flex: 1 1 auto;
+  align-self: stretch;
+  height: 100%;
+  line-height: normal;
+  width: auto;
 }
+/* Text and number inputs — same height as selects */
+.cyberpunk .field input[type="text"],
+.cyberpunk .field input[type="number"] {
+  box-sizing: border-box;
+  height: 24px;
+  line-height: 24px;
+  padding: 0 6px;
+  margin: 0;
+}
+
+.cyberpunk .field input.smallnumber {
+  width: 56px;
+}
+
+.cyberpunk .field .button.danger {
+  height: 24px;
+  line-height: 24px;
+  padding: 0 8px;
+}
+
 .cyberpunk .field p {
   margin: 0px 3px 0px 3px;
 }
@@ -783,16 +817,17 @@ div.statderive .value.rightborder {
 /* -----------------------------------------------------------------
  *  Weapon‑modifier dialog
  * ----------------------------------------------------------------- */
-#weapon-modifier,
-#weapon-modifier form,
-#weapon-modifier .window-content {
-  height: auto !important;
-  max-height: none !important;
+#weapon-modifier {
+  width: fit-content !important;
+  min-width: 780px;
+  max-width: calc(100vw - 60px);
 }
 
 #weapon-modifier .window-content {
-  overflow-y: visible !important;
-  padding-right: 8 !important;
+  height: auto !important;
+  max-height: calc(100vh - 160px) !important;
+  overflow-y: auto !important;
+  padding-right: 8px !important;
 }
 
 
