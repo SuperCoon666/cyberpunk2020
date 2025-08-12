@@ -486,5 +486,8 @@
     "CYBERPUNK.CWT_SkillNotFound":"Навык не найден у персонажа",
     "CYBERPUNK.CWT_SkillAmbiguous":"Найдено несколько совпадений: {{count}}. Уточните запрос.",
     "CYBERPUNK.CWT_NoActorForSkills":"Нет персонажа: откройте имплант с листа персонажа, чтобы выбрать из его навыков.",
-    "CYBERPUNK.CWT_Weapon_Select":"Выбрать оружие"
+    "CYBERPUNK.CWT_Weapon_Select":"Выбрать оружие",
+    "CYBERPUNK.CWT_IsModule": "Модуль",
+    "CYBERPUNK.CWT_Module_SlotsTaken": "Модуль: занимает слотов",
+    "CYBERPUNK.CWT_Module_MountZone": "Модуль: зона установки"
 }

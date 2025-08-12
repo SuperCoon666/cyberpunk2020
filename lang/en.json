@@ -485,5 +485,8 @@
     "CYBERPUNK.CWT_SkillNotFound":"Skill not found on this actor",
     "CYBERPUNK.CWT_SkillAmbiguous":"Multiple matches found: {{count}}. Please be more specific.",
     "CYBERPUNK.CWT_NoActorForSkills":"No actor context: open this item from a character sheet to pick from their skills.",
-    "CYBERPUNK.CWT_Weapon_Select":"Select weapon"
+    "CYBERPUNK.CWT_Weapon_Select":"Select weapon",
+    "CYBERPUNK.CWT_IsModule": "Module",
+    "CYBERPUNK.CWT_Module_SlotsTaken": "Module: slots taken",
+    "CYBERPUNK.CWT_Module_MountZone": "Module: mount zone"
 }

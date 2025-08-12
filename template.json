@@ -878,6 +878,12 @@
 			"abbrev": "",
 			"humanityLoss": 0,
 
+			"Module": {
+				"IsModule": false,
+				"AllowedParentCyberwareType": [],
+				"TakesOptions": 0
+			},
+
 			"CyberBodyType": {
 				"Type": "",
 				"Location": ""
@@ -898,10 +904,8 @@
 				"ItemId": "",
 
 				"OptionsAvailable": 0,
-				"TakesOptions": 0,
 				"SDP": 0,
 				"MountPolicy": [],
-				"Module": { "AllowedParentCyberwareType": [] },
 
 				"ChipSkills": {}
 			}

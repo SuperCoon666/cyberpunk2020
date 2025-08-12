@@ -1,3 +1,5 @@
+{{!-- templates/item/parts/cyberware/settings.hbs --}}
+
 <div class="field-list">
   {{> (template "fields/string") label="CyberwareType" edit="system.cyberwareType"}}
   {{> (template "fields/string") label="CyberwareSubtype" edit="system.cyberwareSubtype"}}
@@ -12,7 +14,44 @@
 
   {{> (template "fields/number") label="HumanityLoss" edit="system.humanityLoss"}}
   {{> (template "fields/string") label="Abbrev" edit="system.abbrev"}}
+
+  {{!-- Module toggle --}}
+  {{> (template "fields/boolean") label="CWT_IsModule" edit="system.Module.IsModule"}}
 </div>
+
+{{!-- Module block (outside of CyberWorkType) --}}
+{{#if (lookup (lookup system "Module") "IsModule")}}
+<div class="field-list">
+  <div class="field span-two-cells">
+    <label class="larger">{{CPLocal "CWT_IsModule"}}</label>
+    <span class="flex-pad"></span>
+  </div>
+
+  {{> (template "fields/number") label="CWT_Module_SlotsTaken" edit="system.Module.SlotsTaken"}}
+
+  <div class="field">
+    <label>{{CPLocal "CWT_Module_MountZone"}}</label>
+    <span class="flex-pad"></span>
+    <select name="system.Module.MountZone">
+      <option value=""></option>
+      {{#each cw.bodyZones as |b|}}
+        <option value="{{b.key}}" {{#if (equals ../system.Module.MountZone b.key)}}selected{{/if}}>{{b.label}}</option>
+      {{/each}}
+    </select>
+  </div>
+
+  <div class="field">
+    <label>{{CPLocal "CWT_Implant_ModuleAllowedParentCWType"}}</label>
+    <span class="flex-pad"></span>
+    <select name="system.Module.AllowedParentCyberwareType">
+      <option value=""></option>
+      {{#each cw.parentCwTypeOptions as |o|}}
+        <option value="{{o.key}}" {{#if (equals ../system.Module.AllowedParentCyberwareType o.key)}}selected{{/if}}>{{o.label}}</option>
+      {{/each}}
+    </select>
+  </div>
+</div>
+{{/if}}
 
 <div class="field-list">
   <div class="field span-two-cells">
@@ -236,17 +275,6 @@
         <option value=""></option>
         {{#each cw.bodyZones as |b|}}
           <option value="{{b.key}}" {{#if (equals ../system.CyberWorkType.MountPolicy b.key)}}selected{{/if}}>{{b.label}}</option>
-        {{/each}}
-      </select>
-    </div>
-
-    <div class="field">
-      <label>{{CPLocal "CWT_Implant_ModuleAllowedParentCWType"}}</label>
-      <span class="flex-pad"></span>
-      <select name="system.CyberWorkType.Module.AllowedParentCyberwareType">
-        <option value=""></option>
-        {{#each cw.parentCwTypeOptions as |o|}}
-          <option value="{{o.key}}" {{#if (equals ../system.CyberWorkType.Module.AllowedParentCyberwareType o.key)}}selected{{/if}}>{{o.label}}</option>
         {{/each}}
       </select>
     </div>
