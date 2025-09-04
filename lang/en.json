@@ -488,5 +488,6 @@
     "CYBERPUNK.CWT_Weapon_Select":"Select weapon",
     "CYBERPUNK.CWT_IsModule": "Module",
     "CYBERPUNK.CWT_Module_SlotsTaken": "Module: slots taken",
-    "CYBERPUNK.CWT_Module_MountZone": "Module: mount zone"
+    "CYBERPUNK.CWT_Module_MountZone": "Module: mount zone",
+    "CYBERPUNK.CWT_Implant_SlotsLeft": "Slots remaining"
 }

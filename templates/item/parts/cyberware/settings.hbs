@@ -1,7 +1,7 @@
 {{!-- templates/item/parts/cyberware/settings.hbs --}}
 
 <div class="field-list">
-  {{> (template "fields/string") label="CyberwareType" edit="system.cyberwareType"}}
+  {{> (template "fields/select") label="CyberwareType" edit="system.cyberwareType" choices=cw.cyberwareTypeOptions noTranslateChoices=true}}
   {{> (template "fields/string") label="CyberwareSubtype" edit="system.cyberwareSubtype"}}
   {{> (template "fields/string") label="SurgeryCode" edit="system.surgCode"}}
 
@@ -265,7 +265,13 @@
   {{!-- ===== Implant ===== --}}
   {{#if (equals system.CyberWorkType.Type "Implant")}}
     {{> (template "fields/number") label="CWT_Implant_OptionsAvailable" edit="system.CyberWorkType.OptionsAvailable"}}
-    {{> (template "fields/number") label="CWT_Implant_TakesOptions" edit="system.CyberWorkType.TakesOptions"}}
+
+    <div class="field">
+      <label>{{CPLocal "CWT_Implant_SlotsLeft"}}</label>
+      <span class="flex-pad"></span>
+      <input type="number" class="smallnumber" value="{{cw.implantSlotsLeft}}" readonly>
+    </div>
+
     {{> (template "fields/number") label="CWT_Implant_SDP" edit="system.CyberWorkType.SDP"}}
 
     <div class="field">

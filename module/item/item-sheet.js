@@ -200,15 +200,37 @@ _prepareCyberware(sheet) {
   ];
   sheet.cw.bodyZones = bodyAll;
 
-  // Allowed parent cyberware type
+  // Allowed parent cyberware type + список для редактируемого cyberwareType
   const defaults = ["CYBEROPTIC", "CYBEREAR", "CYBERARM", "CYBERHAND", "CYBERLEG", "CYBERFOOT", "IMPLANT"];
+
   const worldTypes = Array.from(game.items ?? [])
-    .filter((i) => i.type === "cyberware")
-    .map((i) => i.system?.cyberwareType)
-    .filter((t) => !!t);
-  const actorTypes = this.actor ? (this.actor.itemTypes.cyberware ?? []).map((i) => i.system?.cyberwareType).filter((t) => !!t) : [];
-  const uniq = Array.from(new Set([...defaults, ...worldTypes, ...actorTypes])).sort((a, b) => a.localeCompare(b));
-  sheet.cw.parentCwTypeOptions = uniq.map((t) => ({ key: t, label: t }));
+    .filter(i => i.type === "cyberware")
+    .map(i => i.system?.cyberwareType)
+    .filter(Boolean);
+
+  const actorTypes = this.actor
+    ? (this.actor.itemTypes.cyberware ?? [])
+        .map(i => i.system?.cyberwareType)
+        .filter(Boolean)
+    : [];
+
+  const availableTypes = Array.from(new Set([...defaults, ...worldTypes, ...actorTypes]))
+    .sort((a, b) => a.localeCompare(b));
+
+  // Включаем текущий тип, если вдруг его нет в сборке
+  const curType = this.item.system?.cyberwareType;
+  if (curType && !availableTypes.includes(curType)) availableTypes.unshift(curType);
+
+  // Для селекта "Type" partial ждёт МАССИВ СТРОК (иначе будут [object Object] и/или .split-ошибка)
+  sheet.cw.cyberwareTypeOptions = availableTypes;
+
+  // Где нужно выводить «value/label» отдельными полями — оставляем массив объектов
+  sheet.cw.parentCwTypeOptions = availableTypes.map(t => ({ key: t, label: t }));
+
+  // Implant: «slots remaining» (пока без авто-учёта модулей)
+  const provided = Number(this.item.system?.CyberWorkType?.OptionsAvailable) || 0;
+  const used = 0; // автоучёт модулей добавим позже
+  sheet.cw.implantSlotsLeft = Math.max(0, provided - used);
 }
 
   async _cwSet(path, value) {
@@ -403,6 +425,11 @@ _prepareCyberware(sheet) {
       }
       cyber.system.humanityLoss = loss;
       cyber.sheet.render(true);
+    });
+
+    // Пересчитывать свободные слоты при смене "Slots provided"
+    html.find('input[name="system.CyberWorkType.OptionsAvailable"]').on('change', (ev) => {
+      this._onSubmit(ev);     // сохраняем новое значение и перерендериваем
     });
   }
 

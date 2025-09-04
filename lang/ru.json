@@ -489,5 +489,6 @@
     "CYBERPUNK.CWT_Weapon_Select":"Выбрать оружие",
     "CYBERPUNK.CWT_IsModule": "Модуль",
     "CYBERPUNK.CWT_Module_SlotsTaken": "Модуль: занимает слотов",
-    "CYBERPUNK.CWT_Module_MountZone": "Модуль: зона установки"
+    "CYBERPUNK.CWT_Module_MountZone": "Модуль: зона установки",
+    "CYBERPUNK.CWT_Implant_SlotsLeft": "Осталось слотов"
 }
