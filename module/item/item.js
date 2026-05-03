@@ -2,6 +2,7 @@ import { weaponTypes, rangedAttackTypes, meleeAttackTypes, fireModes, rangedModi
 import { Multiroll, makeD10Roll } from "../dice.js"
 import { properCase, replaceIn, localize, localizeParam, rollLocation, cwHasType, cwIsEnabled, isFumbleRoll, buildRangedCombatFumbleData, buildSkillFumbleData, clamp} from "../utils.js";
 import { CyberpunkActor } from "../actor/actor.js";
+import { createCyberpunkChatMessage } from "../compat.js";
 
 /**
  * Extend the basic Item with some very simple modifications.
@@ -629,7 +630,7 @@ export class CyberpunkItem extends Item {
       { weaponName: this.name, rounds, width, saveDC, dmgFormula, results }
     );
 
-    ChatMessage.create({
+    await createCyberpunkChatMessage({
       speaker: ChatMessage.getSpeaker({ actor: this.actor }),
       content: html,
       flags : { cyberpunk2020: { fireMode: "suppressive" } }

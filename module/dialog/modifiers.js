@@ -1,5 +1,6 @@
 import { deepSet, localize, localizeParam } from "../utils.js"
 import { defaultTargetLocations, fireModes } from "../lookups.js"
+import { createCyberpunkChatMessage } from "../compat.js";
 
 /**
  * A specialized form used to select the modifiers for shooting with a weapon
@@ -142,8 +143,7 @@ import { defaultTargetLocations, fireModes } from "../lookups.js"
 
             const shotsText = `${shotsLeftAfter}/${capacity}`;
 
-            await ChatMessage.create({
-              type: CONST.CHAT_MESSAGE_TYPES.OTHER,
+            await createCyberpunkChatMessage({
               speaker: ChatMessage.getSpeaker({ actor }),
               whisper: gmRecipients,
               content: localizeParam("Chat.Reload", {

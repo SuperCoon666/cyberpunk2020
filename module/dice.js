@@ -1,3 +1,4 @@
+import { createCyberpunkChatMessage, rollToCyberpunkChatMessage } from "./compat.js";
 export const BaseDie = "1d10x10";
 export const DefaultRollTemplate = "systems/cyberpunk2020/templates/chat/default-roll.hbs";
 
@@ -153,7 +154,7 @@ export function classifyRollDice(roll) {
             sound: "sounds/dice.wav",
             content: await renderTemplate(templatePath, fullTemplateData)
         };
-        await ChatMessage.create(chatData);
+        await createCyberpunkChatMessage(chatData);
         return this;
     }
 
@@ -198,7 +199,7 @@ async function d10Roll({
     let roll = await new Roll(terms.join(" + "), rollData).evaluate();
 
     if(useRollMessage) {
-        await roll.toMessage({
+        await rollToCyberpunkChatMessage(roll, {
             speaker: speaker,
             flavor: flavor
         });

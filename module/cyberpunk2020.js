@@ -18,6 +18,7 @@ import { preloadHandlebarsTemplates } from "./templates.js";
 import { registerHandlebarsHelpers } from "./handlebars-helpers.js"
 import * as migrations from "./migrate.js";
 import { registerSystemSettings } from "./settings.js"
+import { getHtmlElement } from "./compat.js";
 
 Hooks.once('init', async function () {
 
@@ -35,8 +36,8 @@ Hooks.once('init', async function () {
     CONFIG.Actor.documentClass = CyberpunkActor;
     CONFIG.Item.documentClass = CyberpunkItem;
 
-    // Register v13/v14 System DataModels
-    // These replace legacy system-template initialization for Actor/Item system data
+    // Register v13/v14 System DataModels.
+    // These replace legacy system-template initialization for Actor/Item system data.
     CONFIG.Actor.dataModels.character = CyberpunkCharacterData;
     CONFIG.Actor.dataModels.npc = CyberpunkNpcData;
 
@@ -65,7 +66,7 @@ Hooks.once('init', async function () {
 
     // Fumble inline results
     Hooks.on("renderChatMessage", (message, html) => {
-      const root = html?.[0] ?? html;
+      const root = getHtmlElement(html);
       if (!root?.querySelectorAll) return;
 
       for (const el of root.querySelectorAll("a.cp-inline-roll")) {

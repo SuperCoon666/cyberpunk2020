@@ -2,6 +2,7 @@ import { weaponTypes, meleeAttackTypes, rangedAttackTypes, attackSkills, conceal
 import { formulaHasDice } from "../dice.js";
 import { deleteFieldUpdate, localize, cwHasType, getSkillIndex } from "../utils.js";
 import { getMartialKeyByName } from '../translations.js'
+import { createCyberpunkChatMessage, getPublicRollMode, rollToCyberpunkChatMessage } from "../compat.js";
 
 /**
  * Extend the basic ItemSheet with some very simple modifications
@@ -893,10 +894,11 @@ async _prepareCyberware(sheet) {
       // Public chat message so players can't reroll silently
       const actor = cyber.actor ?? null;
       const speaker = ChatMessage.getSpeaker(actor ? { actor } : {});
-      const rollMode = CONST?.DICE_ROLL_MODES?.PUBLIC ?? "roll";
+      const rollMode = getPublicRollMode();
 
       if (roll) {
-        await roll.toMessage(
+        await rollToCyberpunkChatMessage(
+          roll,
           {
             speaker,
             flavor: game.i18n.format("CYBERPUNK.Chat.HumanityRollFlavor", {
@@ -907,8 +909,7 @@ async _prepareCyberware(sheet) {
           { rollMode }
         );
       } else {
-        await ChatMessage.create({
-          type: CONST.CHAT_MESSAGE_TYPES.OTHER,
+        await createCyberpunkChatMessage({
           speaker,
           content: game.i18n.format("CYBERPUNK.Chat.HumanityLossSet", {
             actor: actor?.name ?? game.user.name,
@@ -1104,17 +1105,17 @@ async _prepareCyberware(sheet) {
           if (typeof this._cp_syncActiveFlagsToSkills === "function") {
             await this._cp_syncActiveFlagsToSkills();
           }
-          } else {
-            // No real chip implant: allow manual chip mode on the skill item itself.
-            await updateThisSkill({
-              "system.isChipped": checked,
-              ...deleteFieldUpdate("system.chipped")
-            });
-          }
+        } else {
+          // No real chip implant: allow manual chip mode on the skill item itself.
+          await updateThisSkill({
+            "system.isChipped": checked,
+            ...deleteFieldUpdate("system.chipped")
+          });
+        }
 
-          if (actor?.sheet?.rendered) actor.sheet.render(true);
-          for (const ch of chips) if (ch.sheet?.rendered) ch.sheet.render(true);
-          this.render(true);
+        if (actor?.sheet?.rendered) actor.sheet.render(true);
+        for (const ch of chips) if (ch.sheet?.rendered) ch.sheet.render(true);
+        this.render(true);
       });
 
       // Changing “Level (with chip)” always persists the skill's own chipLevel.

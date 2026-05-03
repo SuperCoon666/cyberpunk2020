@@ -2,6 +2,7 @@ import { martialOptions, meleeAttackTypes, meleeBonkOptions, rangedModifiers, we
 import { deleteFieldUpdate, localize, localizeParam, cwHasType, cwIsEnabled } from "../utils.js"
 import { ModifiersDialog } from "../dialog/modifiers.js"
 import { SortOrders, sortSkills } from "./skill-sort.js";
+import { getHtmlElement, itemFromDropData } from "../compat.js";
 
 /**
  * Extend the basic ActorSheet with some very simple modifications
@@ -393,19 +394,21 @@ export class CyberpunkActorSheet extends ActorSheet {
         });
 
         if (chips.length) {
-          const updates = chips.map(ch => ({
-            _id: ch.id,
-            "system.CyberWorkType.ChipActive": checked
-          }));
+          const updates = [];
+          for (const ch of chips) {
+            const map = ch.system?.CyberWorkType?.ChipSkills || {};
+            const key =
+              (skillId && Object.prototype.hasOwnProperty.call(map, skillId)) ? skillId : skillName;
+
+            updates.push({
+              _id: ch.id,
+              [`system.CyberWorkType.ChipSkills.${key}`]: safeValue
+            });
+          }
+
           await this.actor.updateEmbeddedDocuments("Item", updates, { render: false });
 
-          await this._cp_syncChipLevelsToSkills();
-          await this._cp_syncActiveFlagsToSkills();
-        } else {
-          await skill.update({
-            "system.isChipped": checked,
-            ...deleteFieldUpdate("system.chipped")
-          }, { render: false });
+          for (const ch of chips) if (ch.sheet?.rendered) ch.sheet.render(true);
         }
       }
 
@@ -795,7 +798,7 @@ export class CyberpunkActorSheet extends ActorSheet {
       });
     }
 
-    attachChipwareTooltips(html[0] ?? document);
+    attachChipwareTooltips(getHtmlElement(html) ?? document);
     ["drop", "dragend", "click", "mousedown", "mouseup"].forEach(eventName => {
       document.addEventListener(eventName, hideTooltip); 
     });
@@ -830,14 +833,11 @@ export class CyberpunkActorSheet extends ActorSheet {
         await this._cp_syncChipLevelsToSkills();
         await this._cp_syncActiveFlagsToSkills();
       } else {
-        await this.actor.updateEmbeddedDocuments("Item", [
-          { _id: skill.id, "system.isChipped": checked }
-        ], { render: false });
+        await skill.update({
+          "system.isChipped": checked,
+          ...deleteFieldUpdate("system.chipped")
+        }, { render: false });
       }
-
-      await this.actor.updateEmbeddedDocuments("Item", [
-        { _id: skill.id, ...deleteFieldUpdate("system.chipped") }
-      ], { render: false });
 
       if (this.rendered) this.render(true);
       for (const ch of chips) if (ch.sheet?.rendered) ch.sheet.render(true);
@@ -870,7 +870,7 @@ export class CyberpunkActorSheet extends ActorSheet {
       this._onActiveUnequip(e);
     });
 
-    makeDraggable(html[0] ?? html);
+    makeDraggable(getHtmlElement(html) ?? html);
   }
 
   async _onActiveUnequip(event) {
@@ -913,11 +913,7 @@ export class CyberpunkActorSheet extends ActorSheet {
     if (!dropTarget) return super._onDropItem(event, data);
 
     // Drop to “program-list”
-    const fromDrop = async () => {
-      if (Item?.fromDropData) return await Item.fromDropData(data);
-      if (Item?.implementation?.fromDropData) return await Item.implementation.fromDropData(data);
-      return data?.data ?? data;
-    };
+    const fromDrop = async () => itemFromDropData(data);
 
     const ensureLocalCopy = async (itemData) => {
       let item = this.actor.items.get(itemData._id);
