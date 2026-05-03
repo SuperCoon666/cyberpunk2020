@@ -12,8 +12,7 @@
                 {{~/if~}}
             </div>
             <div class="chip-icon {{#unless isChipped}}inactive{{/unless}}"></div>
-            <input type="checkbox" data-skill-id="{{../skill.id}}" {{checked isChipped}} {{#if autoChipped}}title="{{CPLocal 'ControlledByChip'}}"{{/if}} />
-            <input type="checkbox" data-skill-id="{{../skill.id}}" {{checked isChipped}}/>
+            <input class="chip-toggle-checkbox" type="checkbox" data-skill-id="{{../skill.id}}" {{checked isChipped}} {{#if autoChipped}}title="{{CPLocal 'ControlledByChip'}}"{{/if}} />
         </label>
 
     <span class="item-controls">

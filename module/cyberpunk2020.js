@@ -2,6 +2,17 @@ import { CyberpunkActor } from "./actor/actor.js";
 import { CyberpunkActorSheet } from "./actor/actor-sheet.js";
 import { CyberpunkItem } from "./item/item.js";
 import { CyberpunkItemSheet } from "./item/item-sheet.js";
+import { CyberpunkCharacterData, CyberpunkNpcData } from "./data/actor-data.js";
+import {
+    CyberpunkAmmoData,
+    CyberpunkArmorData,
+    CyberpunkCyberwareData,
+    CyberpunkMiscData,
+    CyberpunkProgramData,
+    CyberpunkSkillData,
+    CyberpunkVehicleData,
+    CyberpunkWeaponData
+} from "./data/item-data.js";
 
 import { preloadHandlebarsTemplates } from "./templates.js";
 import { registerHandlebarsHelpers } from "./handlebars-helpers.js"
@@ -23,6 +34,20 @@ Hooks.once('init', async function () {
     // Define custom Document classes
     CONFIG.Actor.documentClass = CyberpunkActor;
     CONFIG.Item.documentClass = CyberpunkItem;
+
+    // Register v13/v14 System DataModels
+    // These replace legacy system-template initialization for Actor/Item system data
+    CONFIG.Actor.dataModels.character = CyberpunkCharacterData;
+    CONFIG.Actor.dataModels.npc = CyberpunkNpcData;
+
+    CONFIG.Item.dataModels.skill = CyberpunkSkillData;
+    CONFIG.Item.dataModels.program = CyberpunkProgramData;
+    CONFIG.Item.dataModels.weapon = CyberpunkWeaponData;
+    CONFIG.Item.dataModels.ammo = CyberpunkAmmoData;
+    CONFIG.Item.dataModels.armor = CyberpunkArmorData;
+    CONFIG.Item.dataModels.cyberware = CyberpunkCyberwareData;
+    CONFIG.Item.dataModels.vehicle = CyberpunkVehicleData;
+    CONFIG.Item.dataModels.misc = CyberpunkMiscData;
 
     // Register sheets, unregister original core sheets
     Actors.unregisterSheet("core", ActorSheet);

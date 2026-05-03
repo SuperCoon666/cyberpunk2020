@@ -4,9 +4,9 @@
   "description": "R. Talsorian Games' Cyberpunk 2020 System",
   "version": "1.1.0",
   "compatibility": {
-    "minimum": "12",
-    "verified": "13",
-    "maximum": "13"
+    "minimum": 13,
+    "verified": 14,
+    "maximum": 14
   },
   "authors": [
     {
@@ -471,6 +471,48 @@
       "path": "lang/ru.json"
     }
   ],
+  "documentTypes": {
+    "Actor": {
+      "character": {
+        "htmlFields": ["notes"],
+        "filePathFields": {
+          "icon": ["IMAGE"]
+        }
+      },
+      "npc": {
+        "htmlFields": ["notes"],
+        "filePathFields": {
+          "icon": ["IMAGE"]
+        }
+      }
+    },
+    "Item": {
+      "skill": {
+        "htmlFields": ["notes"]
+      },
+      "program": {
+        "htmlFields": ["notes"]
+      },
+      "weapon": {
+        "htmlFields": ["notes"]
+      },
+      "ammo": {
+        "htmlFields": ["notes"]
+      },
+      "armor": {
+        "htmlFields": ["notes"]
+      },
+      "cyberware": {
+        "htmlFields": ["notes"]
+      },
+      "vehicle": {
+        "htmlFields": ["notes"]
+      },
+      "misc": {
+        "htmlFields": ["notes"]
+      }
+    }
+  },
   "socket": false,
   "initiative": "1d10 + @stats.ref.total + @CombatSenseMod + @initiativeMod + @initiativeImplantMod",
   "grid": {

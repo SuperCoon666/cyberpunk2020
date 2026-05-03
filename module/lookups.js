@@ -1,7 +1,6 @@
 // This is where all the magic values go, because cyberpunk has SO many of those
 // Any given string value is the same as its key in the localization file, and will be used for translation
-import { getMartialKeyByName } from './translations.js'
-import { localize } from './translations.js';
+import { cloneSystemDefault, DEFAULT_HIT_LOCATIONS, STAT_KEYS } from "./constants.js";
 
 export let weaponTypes = {
     pistol: "Pistol",
@@ -26,28 +25,7 @@ export let attackSkills = {
 }
 
 export function getStatNames() {
-  // v13+
-  const docTypes = game?.system?.documentTypes?.Actor;
-  if (docTypes) {
-    // Format: { character: { stats: { int:{}, ref:{}, … } } }
-    if (docTypes.character?.stats)
-      return Object.keys(docTypes.character.stats);
-
-    // Fallback: support legacy "templates" subnode
-    if (docTypes.templates?.stats?.stats)
-      return Object.keys(docTypes.templates.stats.stats);
-  }
-
-  // v11–v12
-  const tpl = CONFIG?.Actor?.template;
-  if (tpl?.templates?.stats?.stats)
-    return Object.keys(tpl.templates.stats.stats);
-
-  if (tpl?.character?.stats)
-    return Object.keys(tpl.character.stats);
-
-  // Fallback
-  return ["int", "ref", "tech", "cool", "attr", "luck", "ma", "bt", "emp"];
+  return [...STAT_KEYS];
 }
 
 // How a weapon attacks. Something like pistol or an SMG have rigid rules on how they can attack, but shotguns can be regular or auto shotgun, exotic can be laser, etc. So this is for weird and special stuff that isn't necessarily covered by the weapon's type or other information
@@ -373,22 +351,7 @@ export let defaultAreaLookup = {
 }
 
 export function defaultHitLocations() {
-  const actorDocs = game?.system?.documentTypes?.Actor;
-
-  const tpl = actorDocs?.templates?.hitLocations?.hitLocations;
-  if (tpl) return tpl;
-
-  const chr = actorDocs?.character?.hitLocations;
-  if (chr) return chr;
-
-  return {
-    Head: { location: [1], stoppingPower: 0, ablation: 0},
-    Torso: { location: [2, 4], stoppingPower: 0, ablation: 0},
-    lArm: { location: [6], stoppingPower: 0, ablation: 0},
-    rArm: { location: [5], stoppingPower: 0, ablation: 0},
-    lLeg: { location: [7, 8], stoppingPower: 0, ablation: 0},
-    rLeg: { location: [9, 10], stoppingPower: 0, ablation: 0}
-  };
+  return cloneSystemDefault(DEFAULT_HIT_LOCATIONS);
 }
 
 export function rangedModifiers(weapon, targetTokens=[]) {

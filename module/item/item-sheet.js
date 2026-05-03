@@ -1,6 +1,6 @@
 import { weaponTypes, meleeAttackTypes, rangedAttackTypes, attackSkills, concealability, availability, reliability, getStatNames } from "../lookups.js";
 import { formulaHasDice } from "../dice.js";
-import { localize, cwHasType, getSkillIndex } from "../utils.js";
+import { deleteFieldUpdate, localize, cwHasType, getSkillIndex } from "../utils.js";
 import { getMartialKeyByName } from '../translations.js'
 
 /**
@@ -611,8 +611,7 @@ async _prepareCyberware(sheet) {
     this.render(false);
   }
   async _cwDelete(objPath, key) {
-    const update = {};
-    update[`${objPath}.-=${key}`] = null;
+    const update = deleteFieldUpdate(`${objPath}.${key}`);
     await this.item.update(update);
     this.render(false);
   }
@@ -1032,19 +1031,32 @@ async _prepareCyberware(sheet) {
       this.render(true);
     });
 
-    // SKILL SHEET: enabling/disabling the “chip” for a skill
+    // SKILL SHEET: persist skill levels and chip mode immediately.
     if (this.item.type === "skill") {
-      html.on("change", "input[name='system.isChipped']", async (ev) => {
-        const checked = !!ev.currentTarget.checked;
+      const parseSkillNumber = (value) => {
+        const n = Number.parseInt(value ?? 0, 10);
+        return Number.isFinite(n) ? n : 0;
+      };
 
-        const prev = !!this.item.system?.isChipped;
-        if (prev === checked) return;
-
+      const updateThisSkill = async (patch) => {
         const actor = this.item.actor;
+        if (actor) {
+          await actor.updateEmbeddedDocuments("Item", [
+            { _id: this.item.id, ...patch }
+          ], { render: false });
+        } else {
+          await this.item.update(patch, { render: false });
+        }
+      };
+
+      const findChipsForThisSkill = () => {
+        const actor = this.item.actor;
+        if (!actor) return [];
+
         const skillId = this.item.id;
         const skillName = this.item.name;
 
-        const chips = actor ? actor.items.filter(i => {
+        return actor.items.filter(i => {
           if (i.type !== "cyberware") return false;
           if (!cwHasType(i, "Chip")) return false;
           if (i.system?.equipped === false) return false;
@@ -1053,99 +1065,102 @@ async _prepareCyberware(sheet) {
 
           return (skillId && Object.prototype.hasOwnProperty.call(map, skillId)) ||
                 Object.prototype.hasOwnProperty.call(map, skillName);
-        }) : [];
+        });
+      };
+
+      html.on("change", "input[name='system.level']", async (ev) => {
+        const value = parseSkillNumber(ev.currentTarget.value);
+        const prev = Number(this.item.system?.level || 0);
+        if (prev === value) return;
+
+        await updateThisSkill({ "system.level": value });
+
+        const actor = this.item.actor;
+        if (actor?.sheet?.rendered) actor.sheet.render(true);
+        this.render(true);
+      });
+
+      html.on("change", "input[name='system.isChipped']", async (ev) => {
+        const checked = !!ev.currentTarget.checked;
+
+        const prev = !!this.item.system?.isChipped;
+        if (prev === checked) return;
+
+        const actor = this.item.actor;
+        const skillId = this.item.id;
+        const chips = findChipsForThisSkill();
 
         if (actor && chips.length) {
-          // MOST important: switch ChipActive, otherwise synchronization will “roll back” again.
+          // Switch real chips, then let synchronization derive the skill flag.
           const chipUpdates = chips.map(ch => ({
             _id: ch.id,
             "system.CyberWorkType.ChipActive": checked
           }));
           await actor.updateEmbeddedDocuments("Item", chipUpdates, { render: false });
 
-          // Synchronize levels and flags from active chips
           if (typeof this._cp_syncChipLevelsToSkills === "function") {
             await this._cp_syncChipLevelsToSkills();
           }
           if (typeof this._cp_syncActiveFlagsToSkills === "function") {
             await this._cp_syncActiveFlagsToSkills();
           }
-        } else if (actor) {
-          await actor.updateEmbeddedDocuments("Item", [
-            { _id: skillId, "system.isChipped": checked }
-          ], { render: false });
-        } else {
-          await this.item.update({ "system.isChipped": checked }, { render: false });
+          } else {
+            // No real chip implant: allow manual chip mode on the skill item itself.
+            await updateThisSkill({
+              "system.isChipped": checked,
+              ...deleteFieldUpdate("system.chipped")
+            });
+          }
+
+          if (actor?.sheet?.rendered) actor.sheet.render(true);
+          for (const ch of chips) if (ch.sheet?.rendered) ch.sheet.render(true);
+          this.render(true);
+      });
+
+      // Changing “Level (with chip)” always persists the skill's own chipLevel.
+      // If a real chip implant exists for this skill, mirror the value into that chip as well.
+      html.on("change", "input[name='system.chipLevel']", async (ev) => {
+        const actor = this.item.actor;
+        const skillId = this.item.id;
+        const skillName = this.item.name;
+
+        const value = parseSkillNumber(ev.currentTarget.value);
+        const prev = Number(this.item.system?.chipLevel || 0);
+        if (prev !== value) {
+          await updateThisSkill({ "system.chipLevel": value });
         }
 
-        if (actor) {
-          await actor.updateEmbeddedDocuments("Item", [
-            { _id: skillId, "system.-=chipped": null }
-          ], { render: false });
-          if (actor.sheet?.rendered) actor.sheet.render(true);
-        } else {
-          await this.item.update({ "system.-=chipped": null }, { render: false });
+        const chips = findChipsForThisSkill();
+        if (actor && chips.length) {
+          const updates = chips.map(ch => {
+            const map = ch.system?.CyberWorkType?.ChipSkills || {};
+            const patch = { _id: ch.id };
+
+            // Update keys that actually exist in the document (id — new format, name — legacy)
+            if (skillId && Object.prototype.hasOwnProperty.call(map, skillId)) {
+              patch[`system.CyberWorkType.ChipSkills.${skillId}`] = value;
+            }
+            if (Object.prototype.hasOwnProperty.call(map, skillName)) {
+              patch[`system.CyberWorkType.ChipSkills.${skillName}`] = value;
+            }
+
+            return patch;
+          }).filter(p => Object.keys(p).length > 1);
+
+          if (updates.length) {
+            await actor.updateEmbeddedDocuments("Item", updates, { render: false });
+          }
+
+          if (typeof this._cp_syncChipLevelsToSkills === "function") {
+            await this._cp_syncChipLevelsToSkills();
+          }
         }
 
+        if (actor?.sheet?.rendered) actor.sheet.render(true);
         for (const ch of chips) if (ch.sheet?.rendered) ch.sheet.render(true);
         this.render(true);
       });
     }
-
-    // SKILL SHEET: changing “Level (with chip)” synchronizes the corresponding level in the chips
-    html.on("change", "input[name='system.chipLevel']", async (ev) => {
-      const actor = this.item.actor;
-      if (!actor) return;
-
-      const skillId = this.item.id;
-      const skillName = this.item.name;
-
-      const n = Number(ev.currentTarget.value);
-      const value = Number.isFinite(n) ? n : 0;
-
-      const prev = Number(this.item.system?.chipLevel || 0);
-      if (prev === value) return;
-
-      const chips = actor.items.filter(i => {
-        if (i.type !== "cyberware") return false;
-        if (!cwHasType(i, "Chip")) return false;
-        if (i.system?.equipped === false) return false;
-        const map = i.system?.CyberWorkType?.ChipSkills;
-        if (!map) return false;
-
-        return (skillId && Object.prototype.hasOwnProperty.call(map, skillId)) ||
-              Object.prototype.hasOwnProperty.call(map, skillName);
-      });
-
-      if (!chips.length) return;
-
-      const updates = chips.map(ch => {
-        const map = ch.system?.CyberWorkType?.ChipSkills || {};
-        const patch = { _id: ch.id };
-
-        // Update keys that actually exist in the document (id — new format, name — legacy)
-        if (skillId && Object.prototype.hasOwnProperty.call(map, skillId)) {
-          patch[`system.CyberWorkType.ChipSkills.${skillId}`] = value;
-        }
-        if (Object.prototype.hasOwnProperty.call(map, skillName)) {
-          patch[`system.CyberWorkType.ChipSkills.${skillName}`] = value;
-        }
-
-        return patch;
-      }).filter(p => Object.keys(p).length > 1);
-
-      if (updates.length) {
-        await actor.updateEmbeddedDocuments("Item", updates, { render: false });
-      }
-
-      if (typeof this._cp_syncChipLevelsToSkills === "function") {
-        await this._cp_syncChipLevelsToSkills();
-      }
-
-      if (actor?.sheet?.rendered) actor.sheet.render(true);
-      for (const ch of chips) if (ch.sheet?.rendered) ch.sheet.render(true);
-      this.render(true);
-    });
 
     // Open/close menu
     html.on("click", ".cw-ms-trigger", ev => {
@@ -1363,8 +1378,13 @@ async _prepareCyberware(sheet) {
         const n = parseInt(v ?? 0, 10);
         return isNaN(n) ? 0 : n;
       };
-      foundry.utils.setProperty(data, "system.level", fixNum(foundry.utils.getProperty(data,"system.level")));
-      foundry.utils.setProperty(data, "system.chipLevel", fixNum(foundry.utils.getProperty(data,"system.chipLevel")));
+
+      if (foundry.utils.hasProperty(data, "system.level")) {
+        foundry.utils.setProperty(data, "system.level", fixNum(foundry.utils.getProperty(data, "system.level")));
+      }
+      if (foundry.utils.hasProperty(data, "system.chipLevel")) {
+        foundry.utils.setProperty(data, "system.chipLevel", fixNum(foundry.utils.getProperty(data, "system.chipLevel")));
+      }
     }
 
     const legacy = foundry.utils.getProperty(data, "system.chipped");

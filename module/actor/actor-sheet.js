@@ -1,5 +1,5 @@
 import { martialOptions, meleeAttackTypes, meleeBonkOptions, rangedModifiers, weaponTypes, FNFF2_ONLY_MARTIAL_ART_IDS, isFnff2Enabled } from "../lookups.js"
-import { localize, localizeParam, cwHasType, cwIsEnabled } from "../utils.js"
+import { deleteFieldUpdate, localize, localizeParam, cwHasType, cwIsEnabled } from "../utils.js"
 import { ModifiersDialog } from "../dialog/modifiers.js"
 import { SortOrders, sortSkills } from "./skill-sort.js";
 
@@ -363,18 +363,16 @@ export class CyberpunkActorSheet extends ActorSheet {
     });
     // TODO: Refactor these skill interactivity stuff into their own methods
     // Skill level changes
-    html.find(".skill-level").click((event) => event.target.select()).change(async (event) => {
+    const saveSkillLevel = async (event) => {
       const skill = this.actor.items.get(event.currentTarget.dataset.skillId);
       if (!skill) return;
 
       const isChipped = !!skill.system.isChipped;
-      const value = Number.parseInt(event.target.value, 10);
+      const value = Number.parseInt(event.currentTarget.value, 10);
       const safeValue = Number.isFinite(value) ? value : 0;
 
       const targetKey = isChipped ? "system.chipLevel" : "system.level";
-      await this.actor.updateEmbeddedDocuments("Item", [
-        { _id: skill.id, [targetKey]: safeValue }
-      ], { render: false });
+      await skill.update({ [targetKey]: safeValue }, { render: false });
 
       if (isChipped) {
         const skillId = skill.id;
@@ -395,21 +393,19 @@ export class CyberpunkActorSheet extends ActorSheet {
         });
 
         if (chips.length) {
-          const updates = [];
-          for (const ch of chips) {
-            const map = ch.system?.CyberWorkType?.ChipSkills || {};
-            const key =
-              (skillId && Object.prototype.hasOwnProperty.call(map, skillId)) ? skillId : skillName;
-
-            updates.push({
-              _id: ch.id,
-              [`system.CyberWorkType.ChipSkills.${key}`]: safeValue
-            });
-          }
-
+          const updates = chips.map(ch => ({
+            _id: ch.id,
+            "system.CyberWorkType.ChipActive": checked
+          }));
           await this.actor.updateEmbeddedDocuments("Item", updates, { render: false });
 
-          for (const ch of chips) if (ch.sheet?.rendered) ch.sheet.render(true);
+          await this._cp_syncChipLevelsToSkills();
+          await this._cp_syncActiveFlagsToSkills();
+        } else {
+          await skill.update({
+            "system.isChipped": checked,
+            ...deleteFieldUpdate("system.chipped")
+          }, { render: false });
         }
       }
 
@@ -422,62 +418,18 @@ export class CyberpunkActorSheet extends ActorSheet {
       if (this.rendered) this.render(true);
 
       if (skill.sheet?.rendered) skill.sheet.render(true);
-    });
-    // Toggle skill chipped
-    html.find(".chip-toggle").click(async ev => {
-      // IMPORTANT: if you clicked on the checkbox inside .chip-toggle — let the change handler below handle it,
-      // otherwise you will get a double toggle and visually “nothing happens”
-      if (ev.target?.closest?.("input")) return;
+    };
 
-      const skill = this.actor.items.get(ev.currentTarget.dataset.skillId);
-      if (!skill) return;
-
-      const toggled = !skill.system.isChipped;
-      const skillId = skill.id;
-      const skillName = skill.name;
-
-      // Search for chips by ID (new format) + fallback by name (old format)
-      const chips = this.actor.items.filter(i => {
-        if (i.type !== "cyberware") return false;
-        if (!cwHasType(i, "Chip")) return false;
-        if (i.system?.equipped === false) return false;
-        const map = i.system?.CyberWorkType?.ChipSkills;
-        if (!map) return false;
-
-        return (skillId && Object.prototype.hasOwnProperty.call(map, skillId)) ||
-              Object.prototype.hasOwnProperty.call(map, skillName);
-      });
-
-      if (chips.length) {
-        // If there are real chips, switch ChipActive for all chips affecting this skill.
-        const chipUpdates = chips.map(ch => ({
-          _id: ch.id,
-          "system.CyberWorkType.ChipActive": toggled
-        }));
-        await this.actor.updateEmbeddedDocuments("Item", chipUpdates, { render: false });
-
-        // Synchronize flags and skill levels from active chips
-        await this._cp_syncChipLevelsToSkills();
-        await this._cp_syncActiveFlagsToSkills();
-      } else {
-        // If there are no chips, leave manual mode isChipped
-        await this.actor.updateEmbeddedDocuments("Item", [{
-          _id: skill.id,
-          "system.isChipped": toggled
-        }], { render: false });
+    html.find(".skill-level").click((event) => event.target.select());
+    html.on("change", ".skill-level", saveSkillLevel);
+    html.on("keydown", ".skill-level", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        event.currentTarget.blur();
       }
-
-      await this.actor.updateEmbeddedDocuments("Item", [{
-        _id: skill.id,
-        "system.-=chipped": null
-      }], { render: false });
-
-      if (this.rendered) this.render(true);
-      for (const ch of chips) if (ch.sheet?.rendered) ch.sheet.render(true);
-      if (skill.sheet?.rendered) skill.sheet.render(true);
     });
+    // Skill chipped state is handled by the delegated change handler below.
 
-    
     // Skill sorting
     html.find(".skill-sort > select").change(ev => {
       let sort = ev.currentTarget.value;
@@ -884,7 +836,7 @@ export class CyberpunkActorSheet extends ActorSheet {
       }
 
       await this.actor.updateEmbeddedDocuments("Item", [
-        { _id: skill.id, "system.-=chipped": null }
+        { _id: skill.id, ...deleteFieldUpdate("system.chipped") }
       ], { render: false });
 
       if (this.rendered) this.render(true);
@@ -1199,12 +1151,12 @@ export class CyberpunkActorSheet extends ActorSheet {
 
       if (Object.prototype.hasOwnProperty.call(patch, "isChipped")) {
         const $cb = html.find('input[name="system.isChipped"]');
-        if ($cb.length) $cb.prop('checked', !!patch.isChipped).trigger('change');
+        if ($cb.length) $cb.prop('checked', !!patch.isChipped);
       }
 
       if (Object.prototype.hasOwnProperty.call(patch, "chipLevel")) {
         const $in = html.find('input[name="system.chipLevel"], select[name="system.chipLevel"]');
-        if ($in.length) $in.val(String(patch.chipLevel)).trigger('change');
+        if ($in.length) $in.val(String(patch.chipLevel));
       }
     }
   }

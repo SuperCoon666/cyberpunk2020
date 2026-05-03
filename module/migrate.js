@@ -1,4 +1,4 @@
-import { getDefaultSkills, localize, tryLocalize, cwHasType } from "./utils.js";
+import { deleteFieldUpdate, getDefaultSkills, localize, tryLocalize, cwHasType } from "./utils.js";
 
 /**
  * Migration entrypoint.
@@ -293,7 +293,7 @@ export async function migrateItem(item) {
     const rangeDamage = foundry.utils.getProperty(itemData, "system.rangeDamage");
     if (rangeDamage !== undefined) {
       updateData["system.rangeDamages"] = [rangeDamage];
-      updateData["system.-=rangeDamage"] = null;
+      Object.assign(updateData, deleteFieldUpdate("system.rangeDamage"));
     }
   }
 
