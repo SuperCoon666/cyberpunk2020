@@ -12,10 +12,14 @@ export class CyberpunkActor extends Actor {
 
 
   /** @override */
-  async _onCreate(data, options={}) {
-    const updates = { _id: data._id };
+  async _preCreate(data, options = {}, user) {
+    const allowed = await super._preCreate(data, options, user);
+    if (allowed === false) return false;
 
-    if (data.type === "character") {
+    const actorType = data?.type ?? this.type;
+    const updates = {};
+
+    if (actorType === "character") {
       updates["img"] = "systems/cyberpunk2020/img/edgerunner.svg";
       updates["prototypeToken.texture.src"] = "systems/cyberpunk2020/img/edgerunner.svg";
       updates["prototypeToken.actorLink"] = true;
@@ -23,32 +27,20 @@ export class CyberpunkActor extends Actor {
       updates["system.icon"] = "systems/cyberpunk2020/img/edgerunner.svg";
     }
 
-    // Build a working items array for initial creation patching
-    updates.items = Array.isArray(data.items) ? data.items.slice() : [];
-
-    // Helper: extract base id either from sourceId or from _id
-    const getBaseId = (it) => {
-      const src = it?.flags?.core?.sourceId;
-      if (src && typeof src === "string") return src.split(".").pop();
-      return it?._id ? String(it._id) : null;
-    };
-
-    const hasItemWithBaseId = (items, baseId) => {
-      return items.some((it) => getBaseId(it) === baseId);
-    };
+    const items = this._getInitialItemsSource(data);
 
     // Default skills
-    const firstSkill = updates.items.find((item) => item.type === "skill");
+    const firstSkill = items.find((item) => item.type === "skill");
     if (!firstSkill) {
-      // Using toObject is important - foundry REALLY doesn't like creating new documents from documents themselves
+      // Using toObject is important - Foundry does not like creating new documents from documents themselves.
       const skillsData = sortSkills(await getDefaultSkills(), SortOrders.Name)
         .map((item) => item.toObject());
-      updates.items = updates.items.concat(skillsData);
+      items.push(...skillsData);
       updates["system.skillsSortedBy"] = "Name";
     }
 
     // Default unarmed melee weapons: Kick + Strike
-    if (data.type === "character" || data.type === "npc") {
+    if (actorType === "character" || actorType === "npc") {
       const UNARMED_WEAPON_IDS = [
         "TF0nBrjofPX2RiuG", // Kick
         "TZoiQuE8fUzJ8Jta"  // Strike
@@ -58,22 +50,59 @@ export class CyberpunkActor extends Actor {
 
       if (meleePack) {
         for (const wid of UNARMED_WEAPON_IDS) {
-          if (hasItemWithBaseId(updates.items, wid)) continue;
+          if (CyberpunkActor._hasItemWithBaseId(items, wid)) continue;
 
           const doc = await meleePack.getDocument(wid);
           if (!doc) continue;
 
           const obj = doc.toObject();
-
           obj.system = obj.system ?? {};
           obj.system.equipped = true;
 
-          updates.items.push(obj);
+          items.push(obj);
         }
       }
     }
 
-    await this.update(updates);
+    updates.items = items;
+    this.updateSource(updates);
+  }
+
+  /**
+   * Return a mutable initial embedded-items source array for _preCreate.
+   * Keeping this as plain source data avoids a post-create Actor.update call.
+   *
+   * @param {object} data
+   * @returns {object[]}
+   * @private
+   */
+  _getInitialItemsSource(data) {
+    const sourceItems = this._source?.items ?? data?.items ?? [];
+    const deepClone = foundry.utils.deepClone ?? ((value) => JSON.parse(JSON.stringify(value)));
+    return Array.isArray(sourceItems) ? deepClone(sourceItems) : [];
+  }
+
+  /**
+   * Extract the original compendium/base id used to avoid adding duplicate defaults.
+   *
+   * @param {object} itemData
+   * @returns {string|null}
+   * @private
+   */
+  static _getItemBaseId(itemData) {
+    const sourceId = itemData?.flags?.core?.sourceId;
+    if (sourceId && typeof sourceId === "string") return sourceId.split(".").pop();
+    return itemData?._id ? String(itemData._id) : null;
+  }
+
+  /**
+   * @param {object[]} items
+   * @param {string} baseId
+   * @returns {boolean}
+   * @private
+   */
+  static _hasItemWithBaseId(items, baseId) {
+    return items.some((item) => CyberpunkActor._getItemBaseId(item) === baseId);
   }
 
   /**
