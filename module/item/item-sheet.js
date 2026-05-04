@@ -1,7 +1,6 @@
 import { weaponTypes, meleeAttackTypes, rangedAttackTypes, attackSkills, concealability, availability, reliability, getStatNames } from "../lookups.js";
 import { formulaHasDice } from "../dice.js";
 import { deleteFieldUpdate, localize, cwHasType, getSkillIndex } from "../utils.js";
-import { getMartialKeyByName } from '../translations.js'
 import { createCyberpunkChatMessage, getHtmlElement, getPublicMessageMode, getRichEditorHTML, saveRichEditorHTML, rollToCyberpunkChatMessage } from "../compat.js";
 
 /**
@@ -667,12 +666,14 @@ async _prepareCyberware(sheet) {
 
     const root = getHtmlElement(html);
 
+    const editable = this.isEditable ?? this.options?.editable ?? false;
+
     // Notes editor autosave must be registered while the sheet is editable,
     // but it is independent from the item controls below.
-    if (this.options.editable) this._cpSetupNotesAutosave(root);
+    if (editable) this._cpSetupNotesAutosave(root);
 
     // Everything below here is only needed if the sheet is editable
-    if (!this.options.editable) return;
+    if (!editable) return;
 
     // Roll handlers, click handlers, etc. would go here, same as actor sheet.
     html.find(".item-roll").click(this.item.roll.bind(this));
@@ -1348,7 +1349,8 @@ async _prepareCyberware(sheet) {
 
   _cpSetupNotesAutosave(root) {
     if (!root) return;
-    if (!this.options?.editable) return;
+    const editable = this.isEditable ?? this.options?.editable ?? false;
+    if (!editable) return;
 
     if (!this._cpNotesAutosaveState) {
       this._cpNotesAutosaveState = {

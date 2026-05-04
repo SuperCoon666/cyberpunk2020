@@ -462,7 +462,6 @@ export async function migrateItem(item) {
       updateData.img = tpl.img;
       updateData.type = tpl.type;
       updateData.system = newSystem;
-      updateData.effects = foundry.utils.duplicate(tpl.effects ?? []);
 
       // Flags: keep existing ones, add template flags.
       const oldFlags = itemData.flags ?? {};

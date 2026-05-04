@@ -41,11 +41,9 @@ export class CyberpunkActorSheet extends ActorSheet {
 
     // Only proceed with character or NPC types
     if (actor.type === 'character' || actor.type === 'npc') {
-      // If transient data doesn't exist, initialize it.
-      // Transient data is used for temporary things like skill search filters.
-      if (system.transient == null) {
-        system.transient = { skillFilter: "" };
-      }
+      // Sheet-only search state. Do not mutate actor.system from getData;
+      // DataModel instances are validated document data, not transient UI state.
+      sheetData.skillFilter = this._cpSkillFilter ?? "";
 
       // Prepare character-related items and data
       this._prepareCharacterItems(sheetData);
@@ -164,30 +162,19 @@ export class CyberpunkActorSheet extends ActorSheet {
     return sortSkills(currentSkills, SortOrders[sortOrder]).map(s => s.id);
   }
 
-  // Handle searching skills
+  // Handle searching skills. The filter is intentionally sheet-local:
+  // it must not be written into actor.system or submitted with the form.
   _filterSkills(sheetData) {
-    const transient = sheetData.system.transient ??= {};
-
-    transient.skillFilter ??= "";
-    const upperSearch = String(transient.skillFilter).toUpperCase();
-
-    let listToFilter = this._getSortedSkillIDs(sheetData);
+    const upperSearch = String(this._cpSkillFilter ?? "").toUpperCase();
+    const listToFilter = this._getSortedSkillIDs(sheetData);
 
     if (upperSearch === "") return listToFilter;
 
-    const oldSearch = String(transient.oldSearch ?? "").toUpperCase();
-    if (oldSearch && Array.isArray(sheetData.filteredSkillIDs) && upperSearch.startsWith(oldSearch)) {
-      listToFilter = sheetData.filteredSkillIDs;
-    }
-
-    const result = listToFilter.filter(id => {
+    return listToFilter.filter(id => {
       const skill = this.actor.items.get(id);
       if (!skill) return false;
       return String(skill.name).toUpperCase().includes(upperSearch);
     });
-
-    transient.oldSearch = upperSearch;
-    return result;
   }
 
   _addWoundTrack(sheetData) {
@@ -279,7 +266,7 @@ export class CyberpunkActorSheet extends ActorSheet {
   activateListeners(html) {
     const root = getHtmlElement(html);
 
-    if (this._cpAvatarCapture) {
+    if (root && this._cpAvatarCapture) {
       try {
         root.removeEventListener("pointerdown", this._cpAvatarCapture, { capture: true });
         root.removeEventListener("click", this._cpAvatarCapture, { capture: true });
@@ -307,14 +294,15 @@ export class CyberpunkActorSheet extends ActorSheet {
       }, 0);
     };
 
-    root.addEventListener("pointerdown", cpAvatarCapture, { capture: true });
-    root.addEventListener("click", cpAvatarCapture, { capture: true });
-    this._cpAvatarCapture = cpAvatarCapture;
+    if (root) {
+      root.addEventListener("pointerdown", cpAvatarCapture, { capture: true });
+      root.addEventListener("click", cpAvatarCapture, { capture: true });
+      this._cpAvatarCapture = cpAvatarCapture;
+    }
 
     super.activateListeners(html);
     // Life tab (system.notes) autosave
     this._cpSetupNotesAutosave(root);
-    html.find('.item[draggable=true]').on('dragstart', (e) => this._onDragStart(e.originalEvent ?? e));
     html.find('[data-drop-target]').on('dragover', (ev) => ev.preventDefault());
 
     /**
@@ -442,7 +430,7 @@ export class CyberpunkActorSheet extends ActorSheet {
     });
 
     // Skill search: auto-filter + clear button
-    const $skillSearch = html.find('input.skill-search[name="system.transient.skillFilter"]');
+    const $skillSearch = html.find('input.skill-search');
     const $skillClear = html.find('.skill-search-clear');
 
     const toggleClear = () => $skillClear.toggleClass('is-visible', !!$skillSearch.val());
@@ -469,8 +457,8 @@ export class CyberpunkActorSheet extends ActorSheet {
       // Remember cursor position before re-render
       this._restoreSkillCaret = ev.currentTarget.selectionStart ?? val.length;
 
-      // Update the "transient" filter in memory (without actor.update)
-      foundry.utils.setProperty(this.actor.system, "transient.skillFilter", val);
+      // Update sheet-local filter state only; do not write UI search into actor.system.
+      this._cpSkillFilter = val;
 
       // Soft re-render of the sheet
       clearTimeout(searchTypingTimer);
@@ -489,7 +477,7 @@ export class CyberpunkActorSheet extends ActorSheet {
 
       $skillSearch.val('');
       this._restoreSkillCaret = 0;
-      foundry.utils.setProperty(this.actor.system, "transient.skillFilter", "");
+      this._cpSkillFilter = "";
       this.render(false);
     });
 
@@ -671,15 +659,10 @@ export class CyberpunkActorSheet extends ActorSheet {
         const item = this.actor.items.get(itemId);
         if ( !item ) return;
 
-        // Form dragData - object to be read in _onDropItem(event, data)
-        const dragData = {
-          type: "Item",
-          actorId: this.actor.id,
-          data: item.toObject()
-        };
-
-        // Write dragData to the event
-        ev.dataTransfer.setData("text/plain", JSON.stringify(dragData));
+        // Owned Item drops must carry uuid/itemId instead of only raw data,
+        // otherwise ActorSheet's default drop handler treats same-actor drops as
+        // new external Items and creates duplicates.
+        this._cpWriteOwnedItemDragData(ev, item);
 
         // You can add an “is-dragging” class or any visual highlighting class
         programElem.classList.add("is-dragging");
@@ -847,19 +830,34 @@ export class CyberpunkActorSheet extends ActorSheet {
     });
 
 
-    // Drag sources for cyberware
+    // Drag sources for owned Actor Items.
+    // Do not attach drag handlers to every [data-item-id] descendant: edit/delete
+    // icons also carry data-item-id and should not become item drag sources.
     const makeDraggable = (root) => {
-      const el = root?.[0] || root;
-      el.querySelectorAll('[data-item-id]').forEach((node) => {
+      const el = getHtmlElement(root);
+      if (!el?.querySelectorAll) return;
+
+      const selector = [
+        '.field[data-item-id]',
+        '.item[data-item-id]',
+        '.skill[data-item-id]',
+        '.gear[data-item-id]',
+        '.fire-weapon[data-item-id]',
+        '.netrun-program[data-item-id]',
+        '.chipware[data-item-id]'
+      ].join(',');
+
+      el.querySelectorAll(selector).forEach((node) => {
         if (node.dataset.draggableInit === '1') return;
+        if (node.closest?.('.item-delete, .item-unequip, .item-controls')) return;
+
         node.dataset.draggableInit = '1';
         node.setAttribute('draggable', 'true');
         node.addEventListener('dragstart', (ev) => {
           const id = node.dataset.itemId;
           const it = this.actor.items.get(id);
           if (!it) return;
-          const dragData = { type: "Item", actorId: this.actor.id, data: it.toObject() };
-          ev.dataTransfer.setData("text/plain", JSON.stringify(dragData));
+          this._cpWriteOwnedItemDragData(ev, it);
         });
       });
     };
@@ -873,6 +871,163 @@ export class CyberpunkActorSheet extends ActorSheet {
     });
 
     makeDraggable(getHtmlElement(html) ?? html);
+  }
+
+  /**
+ * Build drag payload for an Item already owned by this Actor.
+ *
+ * Foundry's default ActorSheet drop handler creates embedded Item copies for
+ * raw Item data. For same-actor drags we must preserve identity through
+ * uuid/actorId/itemId so _onDropItem can distinguish a move/state-change from
+ * importing a new external item.
+ *
+ * @param {Item} item
+ * @returns {object}
+ * @private
+ */
+_cpOwnedItemDragData(item) {
+  const dragData = (typeof item?.toDragData === "function")
+    ? item.toDragData()
+    : { type: "Item", uuid: item?.uuid };
+
+  dragData.type = dragData.type || "Item";
+  dragData.uuid = dragData.uuid || item?.uuid;
+  dragData.actorId = this.actor.id;
+  dragData.actorUuid = this.actor.uuid;
+  dragData.itemId = item.id;
+
+  return dragData;
+}
+
+/**
+ * @param {DragEvent} event
+ * @param {Item} item
+ * @private
+ */
+_cpWriteOwnedItemDragData(event, item) {
+  const dragData = this._cpOwnedItemDragData(item);
+  event.dataTransfer?.setData("text/plain", JSON.stringify(dragData));
+}
+
+/**
+ * Extract possible Item ids from Foundry v13/v14 drag data.
+ *
+ * @param {object} data
+ * @returns {string[]}
+ * @private
+ */
+_cpDropItemIdCandidates(data) {
+  const ids = [];
+  const add = (value) => {
+    if (value == null || value === "") return;
+    const id = String(value);
+    if (!ids.includes(id)) ids.push(id);
+  };
+
+  add(data?.itemId);
+  add(data?.data?._id);
+  add(data?._id);
+
+  const uuid = String(data?.uuid ?? data?.documentUuid ?? data?.itemUuid ?? "");
+  const marker = ".Item.";
+  const idx = uuid.indexOf(marker);
+  if (idx >= 0) add(uuid.slice(idx + marker.length).split(".")[0]);
+
+  return ids;
+}
+
+/**
+ * Does the drop payload represent an Item already owned by this same Actor?
+ *
+ * @param {object} data
+ * @returns {boolean}
+ * @private
+ */
+_cpIsSameActorItemDrop(data) {
+  if (!data || data.type !== "Item") return false;
+
+  if (data.actorId && String(data.actorId) === String(this.actor.id)) return true;
+  if (data.actorUuid && String(data.actorUuid) === String(this.actor.uuid)) return true;
+
+  const uuid = String(data.uuid ?? data.documentUuid ?? data.itemUuid ?? "");
+  if (!uuid) return false;
+
+  if (uuid.startsWith(`${this.actor.uuid}.Item.`)) return true;
+  if (uuid.includes(`Actor.${this.actor.id}.Item.`)) return true;
+
+  return false;
+}
+
+/**
+ * Resolve a same-actor drop to the existing owned Item without creating a copy.
+ *
+ * @param {object} data
+ * @returns {Item|null}
+ * @private
+ */
+_cpGetOwnedDropItem(data) {
+  for (const id of this._cpDropItemIdCandidates(data)) {
+    const item = this.actor.items.get(id);
+    if (item) return item;
+  }
+  return null;
+}
+
+/**
+ * Normalize an Item document or plain Item source object to source data.
+ *
+ * @param {Item|object} itemOrData
+ * @returns {object}
+ * @private
+ */
+_cpToItemSource(itemOrData) {
+  if (typeof itemOrData?.toObject === "function") return itemOrData.toObject();
+  return foundry.utils.deepClone(itemOrData ?? {});
+}
+
+  /**
+   * Resolve dropped Item data. Same-actor drops return the existing owned Item;
+   * external drops are resolved through Foundry and may later be imported.
+   *
+   * @param {object} data
+   * @returns {Promise<{item: Item|null, itemData: object, sameActor: boolean}>}
+   * @private
+   */
+  async _cpResolveDroppedItem(data) {
+    const sameActor = this._cpIsSameActorItemDrop(data);
+    const owned = sameActor ? this._cpGetOwnedDropItem(data) : null;
+    if (owned) return { item: owned, itemData: owned.toObject(), sameActor: true };
+
+    const resolved = await itemFromDropData(data);
+    const resolvedSameActor = !!(resolved?.parent && resolved.parent === this.actor);
+    const item = resolvedSameActor ? resolved : null;
+    const itemData = this._cpToItemSource(resolved);
+
+    return { item, itemData, sameActor: sameActor || resolvedSameActor };
+  }
+
+  /**
+   * Return an owned Item for a drop target. Same-actor drops reuse the existing
+   * Item; external drops create a new embedded Item only after the target-specific
+   * validation has passed.
+   *
+   * @param {object} data
+   * @param {{item: Item|null, itemData: object, sameActor: boolean}|null} resolved
+   * @returns {Promise<{item: Item|null, itemData: object, sameActor: boolean}>}
+   * @private
+   */
+  async _cpEnsureDroppedItemOwned(data, resolved = null) {
+    const drop = resolved ?? await this._cpResolveDroppedItem(data);
+    if (drop.item) return drop;
+
+    const existing = drop.itemData?._id ? this.actor.items.get(drop.itemData._id) : null;
+    if (existing) {
+      return { item: existing, itemData: existing.toObject(), sameActor: drop.sameActor };
+    }
+
+    const created = await this.actor.createEmbeddedDocuments("Item", [drop.itemData]);
+    const item = created[0] ?? null;
+    return { item, itemData: item?.toObject() ?? drop.itemData, sameActor: false };
   }
 
   async _onActiveUnequip(event) {
@@ -902,111 +1057,102 @@ export class CyberpunkActorSheet extends ActorSheet {
   }
 
   /**
-   * Overridden method of Drag&Drop processing
-   * When dropping, we check where exactly we dropped to (data-drop-target).
-   * If on “program-list” - add program to inventory.
-   * If on “active-programs” - activate the program.
+   * Overridden method of Drag&Drop processing.
+   *
+   * Same-actor Item drops are never imports. They either change state in a
+   * supported drop target (activate program/chip, install cyberware, return
+   * cyberware to inventory) or do nothing. New embedded Items are created only
+   * for drops from outside this Actor.
    */
   async _onDropItem(event, data) {
     event.preventDefault();
 
-    // Search for the parent element with the data-drop-target attribute
     const dropTarget = event.target.closest("[data-drop-target]");
-    if (!dropTarget) return super._onDropItem(event, data);
+    const sameActorDrop = this._cpIsSameActorItemDrop(data);
 
-    // Drop to “program-list”
-    const fromDrop = async () => itemFromDropData(data);
+    // Dropping an already-owned Item onto a regular sheet area used to fall
+    // through to ActorSheet._onDropItem, which created a duplicate. Treat it as
+    // a no-op. External drops still use Foundry's default import behavior.
+    if (!dropTarget) {
+      if (sameActorDrop) return false;
+      return super._onDropItem(event, data);
+    }
 
-    const ensureLocalCopy = async (itemData) => {
-      let item = this.actor.items.get(itemData._id);
-      if (!item) {
-        const created = await this.actor.createEmbeddedDocuments("Item", [itemData]);
-        item = created[0];
-      }
-      return item;
-    };
-
+    const target = dropTarget.dataset.dropTarget;
     const warn = (msg) => ui.notifications?.warn(msg);
 
-    if (dropTarget.dataset.dropTarget === "program-list") {
-      const itemData = await fromDrop();
+    if (target === "program-list") {
+      const resolved = await this._cpResolveDroppedItem(data);
+      const { itemData, sameActor } = resolved;
 
       if (itemData.type !== "program") {
         return ui.notifications.warn(localize("NotAProgram", { name: itemData.name }));
       }
 
-      // If a person pulls a program that the same actor already has,
-      // and drops it in the program-list, - do nothing (to avoid duplicating)
-      const sameActor = (data.actorId === this.actor.id);
-      const existingItem = sameActor ? this.actor.items.get(itemData._id) : null;
-      if (existingItem) {
-        ui.notifications.warn(localize("ProgramAlreadyExists", { name: existingItem.name }));
-        return;
+      // Same-actor program drops into the inventory list are no-ops: the program
+      // is already there and must not be copied.
+      if (sameActor) {
+        const existing = resolved.item ?? this._cpGetOwnedDropItem(data) ?? this.actor.items.get(itemData._id);
+        if (existing) ui.notifications.warn(localize("ProgramAlreadyExists", { name: existing.name }));
+        return false;
       }
 
-      // Otherwise (pulling from another actor, or from compendium, or it's another program) - create a copy
-      return this.actor.createEmbeddedDocuments("Item", [ itemData ]);
+      return this.actor.createEmbeddedDocuments("Item", [itemData]);
     }
 
-    // Drop in active-programs
-    if (dropTarget.dataset.dropTarget === "active-programs") {
-      const itemData = await fromDrop();
+    if (target === "active-programs") {
+      const resolved = await this._cpResolveDroppedItem(data);
+      const { itemData } = resolved;
 
       if (itemData.type !== "program") {
         return ui.notifications.warn(localize("OnlyProgramsCanBeActivated", { name: itemData.name }));
       }
 
-      // Check if the item is already in your inventory; if not, copy it
-      let item = this.actor.items.get(itemData._id);
-      if (!item) {
-        const [created] = await this.actor.createEmbeddedDocuments("Item", [itemData]);
-        item = created;
-      }
+      const { item } = await this._cpEnsureDroppedItemOwned(data, resolved);
+      if (!item) return;
 
-      // Current list of active programs (ID)
-      const currentActive = this.actor.system.activePrograms || [];
+      const currentActive = [...(this.actor.system.activePrograms || [])];
       const newMu = Number(item.system.mu) || 0;
 
-      // Count the already occupied MU
       const usedMu = currentActive.reduce((sum, id) => {
         const p = this.actor.items.get(id);
         return sum + (Number(p?.system.mu) || 0);
       }, 0);
 
       const ramMax = Number(this.actor.system.ramMax) || 0;
-
-      // If we exceed the limit after adding, we reject it
       if (ramMax && (usedMu + newMu) > ramMax) {
         return ui.notifications.warn(
           localize("NotEnoughRAM", { name: item.name, used: usedMu, max: ramMax })
         );
       }
 
-      // Add to active, if not already there
       if (!currentActive.includes(item.id)) {
         currentActive.push(item.id);
 
-        const totalMu = usedMu + newMu;
         await this.actor.update({
           "system.activePrograms": currentActive,
-          "system.ramUsed": totalMu
+          "system.ramUsed": usedMu + newMu
         });
 
         this.render(true);
       }
+
       return;
     }
 
-    // CHIPS: top plate
-    if (dropTarget.dataset.dropTarget === "active-chips") {
-      const itemData = await fromDrop();
+    if (target === "active-chips") {
+      const resolved = await this._cpResolveDroppedItem(data);
+      const { itemData } = resolved;
+
       if (itemData.type !== "cyberware") return warn(localize("ChipwareOnlyHere"));
 
       const cwt = itemData.system?.CyberWorkType ?? {};
       const types = Array.isArray(cwt.Types) ? cwt.Types : (cwt.Type ? [cwt.Type] : []);
       if (!types.includes("Chip")) return warn(localize("OnlyChipsHere"));
 
-      const item = await ensureLocalCopy(itemData);
+      const { item } = await this._cpEnsureDroppedItemOwned(data, resolved);
+      if (!item) return;
+
       await item.update({
         "system.equipped": true,
         "system.CyberWorkType.ChipActive": true
@@ -1020,12 +1166,15 @@ export class CyberpunkActorSheet extends ActorSheet {
       return;
     }
 
-    // Return to inventory (bottom)
-    if (dropTarget.dataset.dropTarget === "cyber-inventory") {
-      const itemData = await fromDrop();
+    if (target === "cyber-inventory") {
+      const resolved = await this._cpResolveDroppedItem(data);
+      const { itemData } = resolved;
+
       if (itemData.type !== "cyberware") return warn(localize("OnlyCyberwareHere"));
 
-      const item = await ensureLocalCopy(itemData);
+      const { item } = await this._cpEnsureDroppedItemOwned(data, resolved);
+      if (!item) return;
+
       await item.update({
         "system.equipped": false,
         "system.CyberBodyType.Location": "",
@@ -1040,31 +1189,32 @@ export class CyberpunkActorSheet extends ActorSheet {
       return;
     }
 
-    // Installation by zone (auto-route to item's mount)
-    if (dropTarget.dataset.dropTarget?.startsWith("zone:")) {
-      const zoneKey = dropTarget.dataset.dropTarget.split(":")[1];
+    if (target?.startsWith("zone:")) {
+      const zoneKey = target.split(":")[1];
+      const resolved = await this._cpResolveDroppedItem(data);
+      const { itemData } = resolved;
 
-      const itemData = await fromDrop();
       if (itemData.type !== "cyberware") return warn(localize("OnlyCyberwareHere"));
-        {
-          const cwt = itemData.system?.CyberWorkType ?? {};
-          const types = Array.isArray(cwt.Types) ? cwt.Types : (cwt.Type ? [cwt.Type] : []);
-          if (types.includes("Chip")) {
-            const item = await ensureLocalCopy(itemData);
-            await item.update({
-              "system.equipped": true,
-              "system.CyberWorkType.ChipActive": true,
-              "system.CyberBodyType.Location": ""
-            }, { render: false });
 
-            await this._cp_syncChipLevelsToSkills();
-            await this._cp_syncActiveFlagsToSkills();
+      const cwt = itemData.system?.CyberWorkType ?? {};
+      const types = Array.isArray(cwt.Types) ? cwt.Types : (cwt.Type ? [cwt.Type] : []);
+      const { item } = await this._cpEnsureDroppedItemOwned(data, resolved);
+      if (!item) return;
 
-            if (item.sheet?.rendered) item.sheet.render(true);
-            this.render(true);
-            return;
-          }
-        }
+      if (types.includes("Chip")) {
+        await item.update({
+          "system.equipped": true,
+          "system.CyberWorkType.ChipActive": true,
+          "system.CyberBodyType.Location": ""
+        }, { render: false });
+
+        await this._cp_syncChipLevelsToSkills();
+        await this._cp_syncActiveFlagsToSkills();
+
+        if (item.sheet?.rendered) item.sheet.render(true);
+        this.render(true);
+        return;
+      }
 
       const mount = String(itemData.system?.MountZone || itemData.system?.CyberBodyType?.Type || "");
       const updates = { "system.equipped": true };
@@ -1082,11 +1232,11 @@ export class CyberpunkActorSheet extends ActorSheet {
         updates["system.CyberBodyType.Location"] = "";
       }
 
-      const item = await ensureLocalCopy(itemData);
       await item.update(updates);
       return this.render(true);
     }
 
+    if (sameActorDrop) return false;
     return super._onDropItem(event, data);
   }
   async _cp_syncChipLevelsToSkills() {
@@ -1207,7 +1357,8 @@ export class CyberpunkActorSheet extends ActorSheet {
 
   _cpSetupNotesAutosave(root) {
     if (!root) return;
-    if (!this.options?.editable) return;
+    const editable = this.isEditable ?? this.options?.editable ?? false;
+    if (!editable) return;
 
     if (!this._cpNotesAutosaveState) {
       this._cpNotesAutosaveState = {

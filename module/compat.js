@@ -23,13 +23,26 @@ export function isFoundryV14Plus() {
 
 export function getHtmlElement(html) {
   if (!html) return null;
-  if (globalThis.HTMLElement && html instanceof HTMLElement) return html;
-  if (globalThis.HTMLElement && html[0] instanceof HTMLElement) return html[0];
-  if (globalThis.HTMLElement && html.element instanceof HTMLElement) return html.element;
-  if (Array.isArray(html) && globalThis.HTMLElement) {
-    return html.find((el) => el instanceof HTMLElement) ?? null;
+
+  const HTMLElementCtor = globalThis.HTMLElement;
+  const isHTMLElement = (value) => !!(HTMLElementCtor && value instanceof HTMLElementCtor);
+
+  if (isHTMLElement(html)) return html;
+
+  if (isHTMLElement(html.element)) return html.element;
+
+  // jQuery, Foundry's legacy wrapped HTML, arrays, NodeLists, and HTMLCollections.
+  const first = html[0] ?? (typeof html.item === "function" ? html.item(0) : null);
+  if (isHTMLElement(first)) return first;
+
+  if (typeof html.toArray === "function") {
+    const found = html.toArray().find(isHTMLElement);
+    if (found) return found;
   }
-  return html;
+
+  if (Array.isArray(html)) return html.find(isHTMLElement) ?? null;
+
+  return html?.querySelector ? html : null;
 }
 
 function readHTMLFromEditorInstance(editor) {
