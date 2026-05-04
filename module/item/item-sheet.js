@@ -202,12 +202,9 @@ export class CyberpunkItemSheet extends ItemSheet {
       { value: "spread", localKey: "AmmoSpreadModeSpread" }
     ];
 
-    if (!Array.isArray(sys.effectTypes) && !sys.effectTypes) {
-      sys.effectTypes = ["None"];
-    }
-    if (!Array.isArray(sys.effectTypes) && sys.effectTypes) {
-      sys.effectTypes = [sys.effectTypes];
-    }
+    const effectTypes = Array.isArray(sys.effectTypes)
+      ? sys.effectTypes
+      : (sys.effectTypes ? [sys.effectTypes] : ["None"]);
 
     const effectKeyMap = {
       None: "AmmoEffect_None",
@@ -219,7 +216,7 @@ export class CyberpunkItemSheet extends ItemSheet {
     };
 
     sheet.ammoFx = {
-      typeLabels: (sys.effectTypes?.length ? sys.effectTypes : ["None"])
+      typeLabels: (effectTypes.length ? effectTypes : ["None"])
         .map(t => localize(effectKeyMap[t] ?? "AmmoEffect_None"))
     };
   }
@@ -261,10 +258,8 @@ export class CyberpunkItemSheet extends ItemSheet {
     sheet.attackSkills = [...baseKeys, ...martialKeys].map(k => localize("Skill"+k));
 
     // TODO: Be not so inefficient for this
-    if(!sheet.attackSkills.length && this.actor) {
-      if(this.actor) {
-        sheet.attackSkills = this.actor.itemTypes.skill.map(skill => skill.name).sort();
-      }
+    if (!sheet.attackSkills.length && actor?.itemTypes?.skill) {
+      sheet.attackSkills = actor.itemTypes.skill.map(skill => skill.name).sort();
     }
   }
 
@@ -1440,18 +1435,6 @@ async _prepareCyberware(sheet) {
   async _updateObject(event, formData) {
     const data = foundry.utils.expandObject(formData);
 
-    if (this.item.type === "cyberware") {
-      const pickLastString = (v) => Array.isArray(v) ? String(v[v.length - 1] ?? "") : String(v ?? "");
-
-      const t = foundry.utils.getProperty(data, "system.cyberwareType");
-      if (t !== undefined) foundry.utils.setProperty(data, "system.cyberwareType", pickLastString(t));
-
-      const ap = foundry.utils.getProperty(data, "system.Module.AllowedParentCyberwareType");
-      if (ap !== undefined) foundry.utils.setProperty(data, "system.Module.AllowedParentCyberwareType", pickLastString(ap));
-
-      const slots = Number(foundry.utils.getProperty(data, "system.Module.SlotsTaken"));
-      if (!Number.isFinite(slots)) foundry.utils.setProperty(data, "system.Module.SlotsTaken", 0);
-    }
     if (this.item.type === "cyberware") {
       const pickLastString = (v) => {
         if (Array.isArray(v)) return v.length ? String(v[v.length - 1] ?? "") : "";

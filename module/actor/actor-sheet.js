@@ -753,9 +753,19 @@ export class CyberpunkActorSheet extends ActorSheet {
       fp.render(true);
     });
 
+    // Chipware tooltips are attached on each render. Clean up the previous
+    // document-level listeners/tooltip first, otherwise repeated sheet renders
+    // accumulate hidden DOM nodes and global listeners.
+    if (this._cpChipTooltipCleanup) {
+      try { this._cpChipTooltipCleanup(); } catch (_) {}
+      this._cpChipTooltipCleanup = null;
+    }
+
     const tooltip = document.createElement("div");
     tooltip.className = "chip-tooltip";
     document.body.appendChild(tooltip);
+
+    const documentTooltipListeners = [];
 
     function hideTooltip() {
       tooltip.style.display = "none";
@@ -785,8 +795,17 @@ export class CyberpunkActorSheet extends ActorSheet {
 
     attachChipwareTooltips(getHtmlElement(html) ?? document);
     ["drop", "dragend", "click", "mousedown", "mouseup"].forEach(eventName => {
-      document.addEventListener(eventName, hideTooltip); 
+      document.addEventListener(eventName, hideTooltip);
+      documentTooltipListeners.push(eventName);
     });
+
+    this._cpChipTooltipCleanup = () => {
+      hideTooltip();
+      tooltip.remove();
+      for (const eventName of documentTooltipListeners) {
+        document.removeEventListener(eventName, hideTooltip);
+      }
+    };
     
     // Skill list: switching the “chip” synchronizes implants (ChipActive) and updates all open sheets
     html.on("change", ".chip-toggle input[data-skill-id]", async (ev) => {
@@ -1443,6 +1462,11 @@ _cpToItemSource(itemOrData) {
     try {
       const root = getHtmlElement(this.element);
       await this._cpFlushNotesAutosave(root, { force: true, serialize: true });
+    } catch (_) {}
+
+    try {
+      this._cpChipTooltipCleanup?.();
+      this._cpChipTooltipCleanup = null;
     } catch (_) {}
 
     return super.close(options);
