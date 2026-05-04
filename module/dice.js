@@ -1,4 +1,4 @@
-import { createCyberpunkChatMessage, rollToCyberpunkChatMessage } from "./compat.js";
+import { createCyberpunkRollCard, evaluateCyberpunkRoll, rollToCyberpunkChatMessage } from "./compat.js";
 export const BaseDie = "1d10x10";
 export const DefaultRollTemplate = "systems/cyberpunk2020/templates/chat/default-roll.hbs";
 
@@ -121,11 +121,7 @@ export function classifyRollDice(roll) {
      * }
      */
     async execute(speaker, templatePath, extraTemplateData={}) {
-        await Promise.all(this.rolls.map(async (r) => {
-            if (!r._evaluated) {
-                return await r.evaluate();
-            }
-        }));
+        await Promise.all(this.rolls.map((r) => evaluateCyberpunkRoll(r)));
         
         const fullTemplateData = foundry.utils.mergeObject({
             user: game.user.id,
@@ -145,16 +141,13 @@ export function classifyRollDice(roll) {
         }, extraTemplateData || {});
 
 
-        // Filter chat rolls to only those that actually have dice, for Dice So Nice. Doesn't seem to work without this filter if something "rolls" just a number
-        let chatData = {
-            rolls: this.rolls.filter(r => r.dice.length > 0),
-
-            user: game.user.id,
-            speaker: speaker,
-            sound: "sounds/dice.wav",
+        // Filter chat rolls to only those that actually have dice, for Dice So Nice.
+        // Deterministic helper rolls remain displayed in the template but are not attached as ChatMessage rolls.
+        await createCyberpunkRollCard({
+            rolls: this.rolls,
+            speaker,
             content: await renderTemplate(templatePath, fullTemplateData)
-        };
-        await createCyberpunkChatMessage(chatData);
+        });
         return this;
     }
 
@@ -196,7 +189,7 @@ async function d10Roll({
     if(terms) {
         terms = [initialTerm, ...terms]
     }
-    let roll = await new Roll(terms.join(" + "), rollData).evaluate();
+    let roll = await evaluateCyberpunkRoll(new Roll(terms.join(" + "), rollData));
 
     if(useRollMessage) {
         await rollToCyberpunkChatMessage(roll, {

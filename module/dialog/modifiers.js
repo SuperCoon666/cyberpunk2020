@@ -1,6 +1,6 @@
 import { deepSet, localize, localizeParam } from "../utils.js"
 import { defaultTargetLocations, fireModes } from "../lookups.js"
-import { createCyberpunkChatMessage } from "../compat.js";
+import { createCyberpunkChatMessage, getGMUserIds } from "../compat.js";
 
 /**
  * A specialized form used to select the modifiers for shooting with a weapon
@@ -138,7 +138,7 @@ import { createCyberpunkChatMessage } from "../compat.js";
 
           // Only players (non-GM) and only Characters (not NPC)
           if (actor && actor.type !== "npc" && !game.user.isGM) {
-            const gmRecipients = ChatMessage.getWhisperRecipients("GM")?.map(u => u.id) ?? [];
+            const gmRecipients = getGMUserIds();
             if (!gmRecipients.length) return;
 
             const shotsText = `${shotsLeftAfter}/${capacity}`;

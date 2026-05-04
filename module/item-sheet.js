@@ -2,7 +2,7 @@ import { weaponTypes, meleeAttackTypes, rangedAttackTypes, attackSkills, conceal
 import { formulaHasDice } from "../dice.js";
 import { deleteFieldUpdate, localize, cwHasType, getSkillIndex } from "../utils.js";
 import { getMartialKeyByName } from '../translations.js'
-import { createCyberpunkChatMessage, getHtmlElement, getPublicMessageMode, getRichEditorHTML, saveRichEditorHTML, rollToCyberpunkChatMessage } from "../compat.js";
+import { createCyberpunkChatMessage, getHtmlElement, getPublicMessageMode, getRichEditorHTML, saveRichEditorHTML, rollToCyberpunkChatMessage, syncRichEditorHTML } from "../compat.js";
 
 /**
  * Extend the basic ItemSheet with some very simple modifications
@@ -1344,7 +1344,7 @@ async _prepareCyberware(sheet) {
     });
   }
 
-  // Notes tab (system.notes) save-on-editor-save/close
+  // Notes tab (system.notes) autosave
 
   _cpSetupNotesAutosave(root) {
     if (!root) return;
@@ -1352,6 +1352,7 @@ async _prepareCyberware(sheet) {
 
     if (!this._cpNotesAutosaveState) {
       this._cpNotesAutosaveState = {
+        timer: null,
         saving: false,
         pending: false,
         lastSaved: String(this.item.system?.notes ?? "")
@@ -1359,18 +1360,23 @@ async _prepareCyberware(sheet) {
     }
 
     if (this._cpNotesAutosaveHandler) {
-      try { root.removeEventListener("save", this._cpNotesAutosaveHandler, true); } catch (_) {}
+      try {
+        root.removeEventListener("save", this._cpNotesAutosaveHandler, true);
+      } catch (_) {}
     }
 
     const handler = (ev) => {
-      const target = ev?.target;
-      if (!target?.closest) return;
-      if (!target.closest('.tab[data-tab="notes"]')) return;
-      if (!target.closest(".cp-notes-editor")) return;
+      const editor = ev?.target?.closest?.("prose-mirror") ?? (ev?.target?.matches?.("prose-mirror") ? ev.target : null);
+      if (!editor) return;
+      if (!editor.closest?.('.tab[data-tab="notes"]')) return;
+      if (!editor.closest?.(".cp-notes-editor")) return;
 
-      // The native <prose-mirror> has already serialized its active editor by
-      // the time the save event is dispatched. Do not call save() here again.
-      setTimeout(() => this._cpFlushNotesAutosave(root, { force: true, serialize: false }), 0);
+      // Do not save on live editor changes/open toggles. Updating the document
+      // while the native ProseMirror element is open can leave the editor in a
+      // disabled visual state. Save only after the element has completed its
+      // own save cycle.
+      if (ev.type !== "save") return;
+      setTimeout(() => this._cpFlushNotesAutosave(root, { force: true }), 0);
     };
 
     root.addEventListener("save", handler, true);
@@ -1404,31 +1410,41 @@ async _prepareCyberware(sheet) {
     st.saving = true;
     try {
       await this.item.update({ "system.notes": html }, { render: false });
+      syncRichEditorHTML(this, root, "system.notes", html);
       st.lastSaved = html;
     } catch (err) {
-      console.warn("CP2020: item notes save failed", err);
+      console.warn("CP2020: item notes autosave failed", err);
     } finally {
       st.saving = false;
       if (st.pending) {
         st.pending = false;
-        await this._cpFlushNotesAutosave(root, { force: true, serialize: false });
+        await this._cpFlushNotesAutosave(root);
       }
     }
   }
 
   /** @override */
   _getSubmitData(updateData = {}) {
-    // Do not force prose-mirror.save() from the generic FormApplication submit
-    // path. Native <prose-mirror> handles its own value; forcing save() here can
-    // break the toggled editor while it is inactive or being disconnected.
-    return super._getSubmitData(updateData);
+    const data = super._getSubmitData(updateData);
+
+    try {
+      const root = getHtmlElement(this.element);
+      const html = this._cpReadNotesHTML(root, { serialize: true });
+      if (html != null) data["system.notes"] = html;
+    } catch (_) {}
+
+    return data;
   }
 
   /** @override */
   async close(options = {}) {
     try {
       const root = getHtmlElement(this.element);
-      await this._cpFlushNotesAutosave(root, { force: true, serialize: true });
+      if (this._cpNotesAutosaveState?.timer) {
+        clearTimeout(this._cpNotesAutosaveState.timer);
+        this._cpNotesAutosaveState.timer = null;
+      }
+      await this._cpFlushNotesAutosave(root, { serialize: true, force: true });
     } catch (_) {}
 
     return super.close(options);
@@ -1437,6 +1453,12 @@ async _prepareCyberware(sheet) {
   /** @override */
   async _updateObject(event, formData) {
     const data = foundry.utils.expandObject(formData);
+
+    try {
+      const root = getHtmlElement(this.element);
+      const notesHTML = this._cpReadNotesHTML(root, { serialize: true });
+      if (notesHTML != null) foundry.utils.setProperty(data, "system.notes", notesHTML);
+    } catch (_) {}
 
     if (this.item.type === "cyberware") {
       const pickLastString = (v) => Array.isArray(v) ? String(v[v.length - 1] ?? "") : String(v ?? "");

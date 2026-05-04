@@ -634,7 +634,7 @@ export class CyberpunkItem extends Item {
       speaker: ChatMessage.getSpeaker({ actor: this.actor }),
       content: html,
       flags : { cyberpunk2020: { fireMode: "suppressive" } }
-    });
+    }, { useDefaultRollMode: true });
   }
 
   async __semiAuto(attackMods) {

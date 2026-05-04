@@ -90,9 +90,7 @@ export class CyberpunkActor extends Actor {
    * @private
    */
   static _getItemBaseId(itemData) {
-    const sourceId = itemData?.flags?.core?.sourceId;
-    if (sourceId && typeof sourceId === "string") return sourceId.split(".").pop();
-    return itemData?._id ? String(itemData._id) : null;
+    return CyberpunkActor._getItemIdCandidates(itemData).find(id => id) ?? null;
   }
 
   /**
@@ -540,12 +538,124 @@ export class CyberpunkActor extends Actor {
 
   trainedMartials() {
     const fnff2 = isFnff2Enabled();
+    const trained = [];
 
-    return this.itemTypes.skill
-      .filter(skill => (MARTIAL_ART_KEY_BY_ID[skill._id] || null))
-      .filter(skill => (skill.system?.level ?? 0) > 0)
-      .filter(skill => fnff2 || !FNFF2_ONLY_MARTIAL_ART_IDS.has(skill._id))
-      .map(skill => MARTIAL_ART_KEY_BY_ID[skill._id]);
+    for (const [martialKey, martialId] of Object.entries(MARTIAL_ART_ID_BY_KEY)) {
+      if (!fnff2 && FNFF2_ONLY_MARTIAL_ART_IDS.has(martialId)) continue;
+
+      const skill = this._getSkillByStableId(martialId);
+      if (!skill) continue;
+      if (!CyberpunkActor._hasAnyPositiveSkillValue(skill)) continue;
+
+      trained.push(martialKey);
+    }
+
+    return trained;
+  }
+
+  /**
+   * Find an owned skill by the stable id used in system lookup tables.
+   *
+   * Do not resolve martial arts by localized names. Localized packs must keep the
+   * same _id/source id, so the id table is the single source of truth.
+   *
+   * @param {string} stableId
+   * @returns {Item|null}
+   * @private
+   */
+  _getSkillByStableId(stableId) {
+    if (!stableId) return null;
+
+    const direct = this.items.get(stableId);
+    if (direct?.type === "skill") return direct;
+
+    return this.items.find(item => {
+      if (item.type !== "skill") return false;
+      return CyberpunkActor._getItemIdCandidates(item).includes(stableId);
+    }) ?? null;
+  }
+
+  /**
+   * Normalize skill names for non-martial fallback lookups only.
+   * Martial arts must be resolved by stable ids/source ids.
+   *
+   * @param {string} value
+   * @returns {string}
+   * @private
+   */
+  static _normalizeSkillName(value) {
+    return String(value ?? "")
+      .replace(/\s*~\s*/g, "")
+      .replace(/\s*\(\d+\)\s*$/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  /**
+   * Return all stable ids that can identify an Item, including embedded item id
+   * and compendium source id. Names are intentionally ignored.
+   *
+   * @param {Item|object} itemData
+   * @returns {string[]}
+   * @private
+   */
+  static _getItemIdCandidates(itemData) {
+    const ids = new Set();
+
+    const add = (value) => {
+      if (value == null || value === "") return;
+      ids.add(String(value));
+    };
+
+    const addSourceId = (sourceId) => {
+      if (!sourceId || typeof sourceId !== "string") return;
+      add(sourceId.split(".").pop());
+    };
+
+    add(itemData?.id);
+    add(itemData?._id);
+    add(itemData?._source?._id);
+
+    addSourceId(itemData?.flags?.core?.sourceId);
+    addSourceId(itemData?._source?.flags?.core?.sourceId);
+
+    return [...ids];
+  }
+
+  /**
+   * Resolve a skill Item to a martial-art lookup key.
+   *
+   * This deliberately uses only stable ids/source ids. Localized item names are
+   * not part of martial-art identity because different languages share the same
+   * _id by system convention.
+   *
+   * @param {Item|object} skill
+   * @returns {string|null}
+   * @private
+   */
+  static _getMartialKeyForSkill(skill) {
+    for (const id of CyberpunkActor._getItemIdCandidates(skill)) {
+      const martialKey = MARTIAL_ART_KEY_BY_ID[id];
+      if (martialKey) return martialKey;
+    }
+
+    return null;
+  }
+
+  /**
+   * Used only to decide whether a martial-art skill should appear in the attack
+   * dialog. A manually entered base level should still make the art selectable
+   * even if a stale chip toggle currently makes the effective value zero.
+   *
+   * @param {Item|object} skill
+   * @returns {boolean}
+   * @private
+   */
+  static _hasAnyPositiveSkillValue(skill) {
+    const data = skill?.system ?? skill ?? {};
+    return (Number(data.level) || 0) > 0
+      || (Number(data.chipLevel) || 0) > 0
+      || CyberpunkActor.realSkillValue(skill) > 0;
   }
 
   // TODO: Make this doable with just skill name
@@ -562,15 +672,9 @@ export class CyberpunkActor extends Actor {
   getSkillVal(skillName) {
     const martialId = MARTIAL_ART_ID_BY_KEY?.[skillName];
     if (martialId) {
-      const byId = this.itemTypes.skill.find(s => s._id === martialId);
+      const byId = this._getSkillByStableId(martialId);
       return byId ? CyberpunkActor.realSkillValue(byId) : 0;
     }
-
-    const normalize = (s) => String(s ?? "")
-      .replace(/\s*~\s*/g, "")
-      .replace(/\s*\(\d+\)\s*$/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
 
     const nameLoc = localize("Skill" + skillName);
     const prefixLoc = localize("SkillMartialArts");
@@ -578,11 +682,13 @@ export class CyberpunkActor extends Actor {
     const shortName = nameLoc.includes("Skill") ? null : nameLoc;
     const candidates = new Set();
 
-    if (shortName) candidates.add(normalize(shortName));
-    if (shortName && !prefixLoc.includes("Skill")) candidates.add(normalize(`${prefixLoc}: ${shortName}`));
-    candidates.add(normalize(skillName));
+    if (shortName) candidates.add(CyberpunkActor._normalizeSkillName(shortName));
+    if (shortName && !prefixLoc.includes("Skill")) {
+      candidates.add(CyberpunkActor._normalizeSkillName(`${prefixLoc}: ${shortName}`));
+    }
+    candidates.add(CyberpunkActor._normalizeSkillName(skillName));
 
-    const skillItem = this.itemTypes.skill.find(s => candidates.has(normalize(s.name)));
+    const skillItem = this.itemTypes.skill.find(s => candidates.has(CyberpunkActor._normalizeSkillName(s.name)));
     if (!skillItem) return 0;
 
     return CyberpunkActor.realSkillValue(skillItem);

@@ -2,7 +2,7 @@ import { martialOptions, meleeAttackTypes, meleeBonkOptions, rangedModifiers, we
 import { deleteFieldUpdate, localize, localizeParam, cwHasType, cwIsEnabled } from "../utils.js"
 import { ModifiersDialog } from "../dialog/modifiers.js"
 import { SortOrders, sortSkills } from "./skill-sort.js";
-import { getHtmlElement, itemFromDropData } from "../compat.js";
+import { getHtmlElement, getRichEditorHTML, itemFromDropData, saveRichEditorHTML } from "../compat.js";
 
 /**
  * Extend the basic ActorSheet with some very simple modifications
@@ -36,6 +36,8 @@ export class CyberpunkActorSheet extends ActorSheet {
 
     // Store a reference to the system data for easier access in templates and other methods
     sheetData.system = system;
+    sheetData.owner = this.actor.isOwner;
+    sheetData.editable = this.isEditable ?? this.options?.editable ?? false;
 
     // Only proceed with character or NPC types
     if (actor.type === 'character' || actor.type === 'npc') {
@@ -275,7 +277,7 @@ export class CyberpunkActorSheet extends ActorSheet {
 
   /** @override */
   activateListeners(html) {
-    const root = html?.[0] || html;
+    const root = getHtmlElement(html);
 
     if (this._cpAvatarCapture) {
       try {
@@ -1201,92 +1203,55 @@ export class CyberpunkActorSheet extends ActorSheet {
     }
   }
 
-  // Life tab (system.notes) autosave
+  // Life tab (system.notes) save-on-editor-save/close
 
   _cpSetupNotesAutosave(root) {
     if (!root) return;
     if (!this.options?.editable) return;
 
-    // Init state once per sheet instance
     if (!this._cpNotesAutosaveState) {
       this._cpNotesAutosaveState = {
-        timer: null,
         saving: false,
         pending: false,
-        lastSaved: null
+        lastSaved: String(this.actor.system?.notes ?? "")
       };
-      // baseline to reduce unnecessary writes
-      this._cpNotesAutosaveState.lastSaved = String(this.actor.system?.notes ?? "");
     }
 
-    // Remove previous handler (re-render safe)
     if (this._cpNotesAutosaveHandler) {
-      try {
-        root.removeEventListener("input", this._cpNotesAutosaveHandler, true);
-        root.removeEventListener("paste", this._cpNotesAutosaveHandler, true);
-        root.removeEventListener("keyup", this._cpNotesAutosaveHandler, true);
-        root.removeEventListener("blur", this._cpNotesAutosaveHandler, true);
-      } catch (_) {}
+      try { root.removeEventListener("save", this._cpNotesAutosaveHandler, true); } catch (_) {}
     }
 
     const handler = (ev) => {
-      const t = ev?.target;
-      if (!t?.closest) return;
+      const target = ev?.target;
+      if (!target?.closest) return;
 
-      // Only life tab editor
-      const inLife = t.closest('.tab.life[data-tab="life"]') || t.closest('.tab.life');
+      const inLife = target.closest('.tab.life[data-tab="life"]') || target.closest('.tab.life');
       if (!inLife) return;
+      if (!target.closest(".cp-notes-editor")) return;
 
-      // Only editor content area (covers v12/v13 variations)
-      const inEditor = t.closest(".editor-content") || t.closest(".ProseMirror") || t.closest('[contenteditable="true"]');
-      if (!inEditor) return;
-
-      this._cpQueueNotesAutosave(root);
+      // The native <prose-mirror> has already serialized its active editor by
+      // the time the save event is dispatched. Do not call save() here again.
+      setTimeout(() => this._cpFlushNotesAutosave(root, { force: true, serialize: false }), 0);
     };
 
-    // Capture=true catches rich-editor events more reliably
-    root.addEventListener("input", handler, true);
-    root.addEventListener("paste", handler, true);
-    root.addEventListener("keyup", handler, true);
-    root.addEventListener("blur", handler, true);
-
+    root.addEventListener("save", handler, true);
     this._cpNotesAutosaveHandler = handler;
   }
 
-  _cpQueueNotesAutosave(root) {
-    const st = this._cpNotesAutosaveState;
-    if (!st) return;
+  _cpReadNotesHTML(root, { serialize = false } = {}) {
+    const selectors = [
+      '.tab.life[data-tab="life"] .editor-content',
+      '.tab.life .editor-content',
+      '.tab.life[data-tab="life"] [contenteditable="true"]',
+      '.tab.life [contenteditable="true"]'
+    ];
 
-    if (st.timer) clearTimeout(st.timer);
-    st.timer = setTimeout(() => {
-      st.timer = null;
-      this._cpFlushNotesAutosave(root);
-    }, 900);
+    return serialize
+      ? saveRichEditorHTML(this, root, "system.notes", selectors)
+      : getRichEditorHTML(this, root, "system.notes", selectors);
   }
 
-  _cpReadNotesHTML(root) {
-    const ed = this.editors?.["system.notes"];
-    const inst = ed?.editor;
-
-    if (inst) {
-      try {
-        if (typeof inst.getHTML === "function") return String(inst.getHTML() ?? "");
-        if (typeof inst.getData === "function") return String(inst.getData() ?? "");
-        if (typeof inst.getContent === "function") return String(inst.getContent() ?? "");
-      } catch (_) {}
-    }
-
-    const el =
-      root?.querySelector?.('.tab.life[data-tab="life"] .editor-content') ||
-      root?.querySelector?.('.tab.life .editor-content') ||
-      root?.querySelector?.('.tab.life[data-tab="life"] .ProseMirror') ||
-      root?.querySelector?.('.tab.life .ProseMirror');
-
-    if (!el) return null;
-    return String(el.innerHTML ?? "");
-  }
-
-  async _cpFlushNotesAutosave(root) {
+  async _cpFlushNotesAutosave(root, { force = false, serialize = false } = {}) {
     const st = this._cpNotesAutosaveState;
     if (!st) return;
 
@@ -1295,37 +1260,38 @@ export class CyberpunkActorSheet extends ActorSheet {
       return;
     }
 
-    const html = this._cpReadNotesHTML(root);
+    const html = this._cpReadNotesHTML(root, { serialize });
     if (html == null) return;
-
-    if (st.lastSaved === html) return;
+    if (!force && st.lastSaved === html) return;
 
     st.saving = true;
     try {
       await this.actor.update({ "system.notes": html }, { render: false });
       st.lastSaved = html;
     } catch (err) {
-      console.warn("CP2020: notes autosave failed", err);
+      console.warn("CP2020: notes save failed", err);
     } finally {
       st.saving = false;
       if (st.pending) {
         st.pending = false;
-        // If something changed while we were saving, flush once more
-        await this._cpFlushNotesAutosave(root);
+        await this._cpFlushNotesAutosave(root, { force: true, serialize: false });
       }
     }
   }
 
   /** @override */
+  _getSubmitData(updateData = {}) {
+    // Do not force prose-mirror.save() from the generic FormApplication submit
+    // path. Native <prose-mirror> handles its own value; forcing save() here can
+    // break the toggled editor while it is inactive or being disconnected.
+    return super._getSubmitData(updateData);
+  }
+
+  /** @override */
   async close(options = {}) {
-    // Flush pending autosave before closing sheet
     try {
-      const root = this.element?.[0] || this.element;
-      if (this._cpNotesAutosaveState?.timer) {
-        clearTimeout(this._cpNotesAutosaveState.timer);
-        this._cpNotesAutosaveState.timer = null;
-      }
-      await this._cpFlushNotesAutosave(root);
+      const root = getHtmlElement(this.element);
+      await this._cpFlushNotesAutosave(root, { force: true, serialize: true });
     } catch (_) {}
 
     return super.close(options);
