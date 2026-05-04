@@ -31,7 +31,7 @@ export function getHtmlElement(html) {
 
   if (isHTMLElement(html.element)) return html.element;
 
-  // jQuery, Foundry's legacy wrapped HTML, arrays, NodeLists, and HTMLCollections.
+  // jQuery, legacy wrappers, arrays, NodeLists, and HTMLCollections.
   const first = html[0] ?? (typeof html.item === "function" ? html.item(0) : null);
   if (isHTMLElement(first)) return first;
 
@@ -162,46 +162,6 @@ export function getRichEditorHTML(app, root, target = "system.notes", selectors 
 }
 
 /**
- * Keep the editor DOM, form-associated input, and display content synchronized
- * after a manual ProseMirror save. This prevents toggled editors from reopening
- * from an old hidden value after the document was updated with render=false.
- *
- * @param {Application} app
- * @param {HTMLElement|jQuery} root
- * @param {string} target
- * @param {string} html
- */
-export function syncRichEditorHTML(app, root, target = "system.notes", html = "") {
-  const rootEl = getHtmlElement(root);
-  const scope = getEditorScope(rootEl, target);
-  const value = String(html ?? "");
-
-  const proseMirror = getRichEditorElement(rootEl, target);
-  if (proseMirror) {
-    try { proseMirror.value = value; } catch (_) {}
-    try { proseMirror.setAttribute?.("value", value); } catch (_) {}
-  }
-
-  const cssEscape = globalThis.CSS?.escape ?? ((v) => String(v).replace(/"/g, '\"'));
-  for (const field of scope?.querySelectorAll?.(`textarea[name="${cssEscape(target)}"], input[name="${cssEscape(target)}"]`) ?? []) {
-    if (field.value !== value) {
-      field.value = value;
-      try { field.setAttribute("value", value); } catch (_) {}
-    }
-  }
-
-  const content = scope?.querySelector?.(".editor-content");
-  if (content && !content.closest?.("prose-mirror.active")) content.innerHTML = value;
-
-  const editorData = app?.editors?.[target];
-  if (editorData) {
-    for (const key of ["content", "initial", "value"]) {
-      try { editorData[key] = value; } catch (_) {}
-    }
-  }
-}
-
-/**
  * Ask a v14 <prose-mirror> element to serialize its active editor state, then
  * read the stored form value. This is safe for explicit save/close flows.
  *
@@ -218,7 +178,7 @@ export function saveRichEditorHTML(app, root, target = "system.notes", selectors
     try {
       // For toggled editors, save() is only valid while the editor is open.
       // Calling it against a closed or already-disconnected editor can leave the
-      // native control in a broken inactive state in v13/v14.
+      // native control in a broken inactive state.
       if (proseMirror.open && typeof proseMirror.save === "function") proseMirror.save();
     } catch (err) {
       console.warn(`CP2020: failed to serialize rich editor ${target}`, err);
@@ -418,7 +378,6 @@ export async function createCyberpunkChatMessage(data = {}, options = {}) {
   const { rollMode, messageMode, useDefaultRollMode = false, ...createOptions } = options ?? {};
   let chatData = { ...data };
 
-  // In v13/v14 ordinary HTML chat messages do not need the old OTHER type.
   if (chatData.type == null) delete chatData.type;
 
   if (Array.isArray(chatData.rolls)) chatData.rolls = normalizeChatRolls(chatData.rolls);

@@ -1,4 +1,4 @@
-import { deleteFieldUpdate, getDefaultSkills, localize, tryLocalize, cwHasType } from "./utils.js";
+import { deleteFieldUpdate, getDefaultSkills, localize, cwHasType } from "./utils.js";
 
 /**
  * Migration entrypoint.
@@ -73,7 +73,6 @@ export const migrateWorld = async function (targetVersion = game.system.version)
 
   // Mark world as migrated so we don't run again on every restart
   await game.settings.set("cyberpunk2020", "systemMigrationVersion", targetVersion);
-  console.log(`CYBERPUNK: Migration flag set to ${targetVersion}`);
 };
 
 /* -------------------------------------------- */
@@ -500,7 +499,6 @@ export async function migrateCompendium(compendium) {
     return;
   }
 
-  // v13/v14 safe: updateDocuments on the pack itself.
   const docs = await compendium.getDocuments();
   const updates = [];
 

@@ -497,23 +497,12 @@ export class CyberpunkActor extends Actor {
   sortSkills(sortOrder = "Name") {
     let allSkills = this.itemTypes.skill;
     sortOrder = sortOrder || Object.keys(SortOrders)[0];
-    console.log(`Sorting skills by ${sortOrder}`);
     let sortedView = sortSkills(allSkills, SortOrders[sortOrder]).map(skill => skill.id);
 
-    // Technically UI info, but we don't wanna calc every time we open a sheet so store it in the actor.
     this.update({
-      // Why is it that when storing Item: {data: {data: {innerdata}}}, it comes out as {data: {innerdata}}
       "system.sortedSkillIDs": sortedView,
       "system.skillsSortedBy": sortOrder
     });
-  }
-
-  /**
-   * Get a body type modifier from the body type stat (body)
-   * I couldn't figure out a single formula that'd work for it (cos of the weird widths of BT values)
-   */
-  static btm(body) {
-    
   }
 
   // Current wound state. 0 for uninjured, going up by 1 for each new one. 1 for Light, 2 Serious, 3 Critical etc.
@@ -658,9 +647,7 @@ export class CyberpunkActor extends Actor {
       || CyberpunkActor.realSkillValue(skill) > 0;
   }
 
-  // TODO: Make this doable with just skill name
   static realSkillValue(skill) {
-    // Sometimes we use this to sort raw item data before it becomes a full-fledged item. So we use either system or data, as needed
     if (!skill) return 0;
     const data = skill.system ?? skill;
     let value = Number(data.level) || 0;
@@ -851,9 +838,7 @@ export class CyberpunkActor extends Actor {
       ui.notifications.error(localize("NoCombatError"));
       return;
     }
-  
-    console.log(modificator);
-  
+
     const combat = game.combat;
     let combatant = combat.combatants.find(c => c.actorId === this.id);
   

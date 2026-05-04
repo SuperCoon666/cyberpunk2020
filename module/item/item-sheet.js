@@ -3,10 +3,7 @@ import { formulaHasDice } from "../dice.js";
 import { deleteFieldUpdate, localize, cwHasType, getSkillIndex } from "../utils.js";
 import { createCyberpunkChatMessage, getHtmlElement, getPublicMessageMode, getRichEditorHTML, saveRichEditorHTML, rollToCyberpunkChatMessage } from "../compat.js";
 
-/**
- * Extend the basic ItemSheet with some very simple modifications
- * @extends {ItemSheet}
- */
+/** @extends {ItemSheet} */
 export class CyberpunkItemSheet extends ItemSheet {
 
   /** @override */
@@ -21,20 +18,13 @@ export class CyberpunkItemSheet extends ItemSheet {
 
   /** @override */
   get template() {
-    const path = "systems/cyberpunk2020/templates/item";
-    // Return a single sheet for all item types.
-    // return `${path}/item-sheet.hbs`;
-
-    // Alternatively, you could use the following return statement to do a
-    // unique item sheet by type, like `weapon-sheet.hbs`.
-    return `${path}/item-sheet.hbs`;
+    return "systems/cyberpunk2020/templates/item/item-sheet.hbs";
   }
 
   /* -------------------------------------------- */
 
   /** @override */
   async getData() {
-    // This means the handlebars data and the form edit data actually mirror each other
     const data = await super.getData();
     data.system = this.item.system;
     data.owner = this.item.isOwner;
@@ -257,7 +247,6 @@ export class CyberpunkItemSheet extends ItemSheet {
     const martialKeys = includeMartials ? (actor?.trainedMartials?.() || []) : [];
     sheet.attackSkills = [...baseKeys, ...martialKeys].map(k => localize("Skill"+k));
 
-    // TODO: Be not so inefficient for this
     if (!sheet.attackSkills.length && actor?.itemTypes?.skill) {
       sheet.attackSkills = actor.itemTypes.skill.map(skill => skill.name).sort();
     }
@@ -311,7 +300,6 @@ async _prepareCyberware(sheet) {
     });
   }
 
-  // Ensure EffectMode/EffectActive defaults exist (for legacy items)
   if (this.item.system?.EffectMode == null) {
     this.item.updateSource({ "system.EffectMode": "Permanent" });
   }
@@ -390,7 +378,7 @@ async _prepareCyberware(sheet) {
     const byId = this.actor?.items?.get(key);
     if (byId?.type === "skill") return byId.name;
     // Otherwise resolve via compendium index for current UI language
-    return this._cwSkillIdToName.get(key) || key; // legacy name-key fallback
+    return this._cwSkillIdToName.get(key) || key;
   };
 
   sheet.cw.currentSkills = Object.keys(cwt.Skill ?? {})
@@ -503,8 +491,7 @@ async _prepareCyberware(sheet) {
     // Only module-capable implant base types (no dynamic extras)
     sheet.cw.parentCwTypeChoices = TYPE_CHOICES_BASE;
 
-    // Normalize currently selected values (supports legacy aliases like "CYBERARM", "Arm", etc.)
-    sheet.cw.cyberwareTypeSelected = pickType(this.item.system?.cyberwareType) || "";
+      sheet.cw.cyberwareTypeSelected = pickType(this.item.system?.cyberwareType) || "";
     sheet.cw.allowedParentCwTypeSelected =
       pickType(this.item.system?.Module?.AllowedParentCyberwareType) ||
       String(this.item.system?.Module?.AllowedParentCyberwareType || "");
@@ -1030,7 +1017,7 @@ async _prepareCyberware(sheet) {
       const affectedKeys = Object.keys(this.item.system?.CyberWorkType?.ChipSkills || {});
       for (const it of (actor?.items ?? [])) {
         if (it.type !== "skill") continue;
-        if (!(affectedKeys.includes(it.id) || affectedKeys.includes(it.name))) continue; // id + legacy name
+        if (!(affectedKeys.includes(it.id) || affectedKeys.includes(it.name))) continue;
         if (it.sheet?.rendered) it.sheet.render(true);
       }
       this.render(true);
@@ -1141,7 +1128,6 @@ async _prepareCyberware(sheet) {
             const map = ch.system?.CyberWorkType?.ChipSkills || {};
             const patch = { _id: ch.id };
 
-            // Update keys that actually exist in the document (id — new format, name — legacy)
             if (skillId && Object.prototype.hasOwnProperty.call(map, skillId)) {
               patch[`system.CyberWorkType.ChipSkills.${skillId}`] = value;
             }
@@ -1340,8 +1326,6 @@ async _prepareCyberware(sheet) {
     });
   }
 
-  // Notes tab (system.notes) save-on-editor-save/close
-
   _cpSetupNotesAutosave(root) {
     if (!root) return;
     const editable = this.isEditable ?? this.options?.editable ?? false;
@@ -1365,8 +1349,6 @@ async _prepareCyberware(sheet) {
       if (!target.closest('.tab[data-tab="notes"]')) return;
       if (!target.closest(".cp-notes-editor")) return;
 
-      // The native <prose-mirror> has already serialized its active editor by
-      // the time the save event is dispatched. Do not call save() here again.
       setTimeout(() => this._cpFlushNotesAutosave(root, { force: true, serialize: false }), 0);
     };
 
@@ -1411,14 +1393,6 @@ async _prepareCyberware(sheet) {
         await this._cpFlushNotesAutosave(root, { force: true, serialize: false });
       }
     }
-  }
-
-  /** @override */
-  _getSubmitData(updateData = {}) {
-    // Do not force prose-mirror.save() from the generic FormApplication submit
-    // path. Native <prose-mirror> handles its own value; forcing save() here can
-    // break the toggled editor while it is inactive or being disconnected.
-    return super._getSubmitData(updateData);
   }
 
   /** @override */
@@ -1481,32 +1455,32 @@ async _prepareCyberware(sheet) {
     }
 
     if (this.item.type === "cyberware") {
-    const equip = foundry.utils.getProperty(data, "system.equipped");
-    if (equip === true) {
-      const zone = String(
-        foundry.utils.getProperty(data, "system.MountZone") ||
-        foundry.utils.getProperty(data, "system.CyberBodyType.Type") ||
-        this.item.system?.MountZone ||
-        this.item.system?.CyberBodyType?.Type ||
-        ""
-      );
-      const loc = String(
-        foundry.utils.getProperty(data, "system.CyberBodyType.Location") ||
-        this.item.system?.CyberBodyType?.Location ||
-        ""
-      );
-      if ((zone === "Arm" || zone === "Leg") && !loc) {
-        foundry.utils.setProperty(data, "system.CyberBodyType.Location", "Left");
+      const equip = foundry.utils.getProperty(data, "system.equipped");
+      if (equip === true) {
+        const zone = String(
+          foundry.utils.getProperty(data, "system.MountZone") ||
+          foundry.utils.getProperty(data, "system.CyberBodyType.Type") ||
+          this.item.system?.MountZone ||
+          this.item.system?.CyberBodyType?.Type ||
+          ""
+        );
+        const loc = String(
+          foundry.utils.getProperty(data, "system.CyberBodyType.Location") ||
+          this.item.system?.CyberBodyType?.Location ||
+          ""
+        );
+        if ((zone === "Arm" || zone === "Leg") && !loc) {
+          foundry.utils.setProperty(data, "system.CyberBodyType.Location", "Left");
+        }
       }
     }
-  }
 
     await this.item.update(data);
   }
 
   /**
    * Collect the chip level aggregate for all of the actor's chip implants
-   * Take the maximum, key = skill name (as on the sheet)
+   * Take the maximum chip level for each affected skill.
   */
   async _cp_syncChipLevelsToSkills() {
     const actor = this.item.actor;

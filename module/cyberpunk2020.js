@@ -152,10 +152,9 @@ Hooks.once('init', async function () {
 });
 
 /**
- * Once the entire VTT framework is initialized, check to see if we should perform a data migration (nabbed from Foundry's 5e module and adapted)
+ * Check whether this world needs a system data migration.
  */
 Hooks.once("ready", async function () {
-  // Determine whether a system migration is required and feasible
   if (!game.user.isGM) return;
 
   const TARGET_VERSION = game.system.version;
@@ -164,23 +163,17 @@ Hooks.once("ready", async function () {
 
   const worldSystemVersion = game.world?.systemVersion || "";
 
-  // If we never stored migration version, use worldSystemVersion as baseline (prevents migration on fresh worlds)
+  // Use worldSystemVersion as a baseline for worlds that predate the explicit migration marker.
   const baseline = stored || worldSystemVersion || "0";
-
-  console.log(
-    `CYBERPUNK: World systemVersion=${worldSystemVersion || "(none)"}; stored migration=${stored || "(none)"}; baseline=${baseline}`
-  );
 
   const needsMigration = foundry.utils.isNewerVersion(TARGET_VERSION, baseline);
 
   if (!needsMigration) {
     if (!stored) {
       await game.settings.set("cyberpunk2020", "systemMigrationVersion", TARGET_VERSION);
-      console.log(`CYBERPUNK: Migration marker initialized to ${TARGET_VERSION}`);
     }
     return;
   }
 
-  // Run migration once per system version upgrade
   await migrations.migrateWorld(TARGET_VERSION);
 });

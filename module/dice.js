@@ -68,7 +68,6 @@ export function classifyRollDice(roll) {
  * Methods can be chained, e.g bigRoll.addRoll(...).addRoll(...)
  */
  export class Multiroll {
-    //  TODO: Allow for more customisable crit and fumble (eg crits low, fumbles high)
     constructor(title, flavor="") {
         this.title = title;
         this.flavor = flavor;

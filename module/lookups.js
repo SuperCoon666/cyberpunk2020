@@ -388,7 +388,6 @@ export function rangedModifiers(weapon, targetTokens=[]) {
             localKey: "TargetArea",
             dataPath: "targetArea",
             defaultValue: "",
-            // TODO: Have this dependent on target
             choices: defaultTargetLocations,
             allowBlank: true
         },
@@ -479,7 +478,6 @@ export function meleeBonkOptions() {
             localKey: "TargetArea",
             dataPath: "targetArea",
             defaultValue: "",
-            // TODO: Have this dependent on target
             choices: defaultTargetLocations,
             allowBlank: true
         },

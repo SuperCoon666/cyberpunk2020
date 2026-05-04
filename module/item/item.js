@@ -1,15 +1,10 @@
-import { weaponTypes, rangedAttackTypes, meleeAttackTypes, fireModes, rangedModifiers, ranges, rangeDCs, rangeResolve, strengthDamageBonus, getMartialActionBonus, martialActions, isFnff2Enabled, getFnff2DamageBonusSymbol, FNFF2_ONLY_MARTIAL_ART_IDS } from "../lookups.js"
+import { weaponTypes, rangedAttackTypes, meleeAttackTypes, fireModes, ranges, rangeDCs, rangeResolve, strengthDamageBonus, getMartialActionBonus, martialActions, isFnff2Enabled, getFnff2DamageBonusSymbol, FNFF2_ONLY_MARTIAL_ART_IDS } from "../lookups.js"
 import { Multiroll, makeD10Roll } from "../dice.js"
-import { properCase, replaceIn, localize, localizeParam, rollLocation, cwHasType, cwIsEnabled, isFumbleRoll, buildRangedCombatFumbleData, buildSkillFumbleData, clamp} from "../utils.js";
-import { CyberpunkActor } from "../actor/actor.js";
+import { localize, localizeParam, rollLocation, cwHasType, cwIsEnabled, isFumbleRoll, buildRangedCombatFumbleData, buildSkillFumbleData, clamp } from "../utils.js";
 import { createCyberpunkChatMessage } from "../compat.js";
 
-/**
- * Extend the basic Item with some very simple modifications.
- * @extends {Item}
- */
+/** @extends {Item} */
 export class CyberpunkItem extends Item {
-  // This also has preparedata, but we don't have to worry about that so far
 
   /**
    * Cyberpunk 2020: any fractional damage is rounded down
@@ -166,7 +161,6 @@ export class CyberpunkItem extends Item {
         }
       }
       
-      // TODO: Strict bodytypes option?
       // Add any areas the owner has but the armor doesn't.
       for(let ownerLoc in ownerLocs) {
         if(!system.coverage[ownerLoc]) {
@@ -230,7 +224,6 @@ export class CyberpunkItem extends Item {
     };
   }
 
-  // TODO: For 0.8.1, we want to also add flavor text to the different modifiers
   // Get the roll modifiers to add when given a certain set of modifiers
   __shootModTerms({
     aimRounds,

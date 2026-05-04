@@ -1,10 +1,9 @@
 import { deepSet, localize, localizeParam } from "../utils.js"
-import { defaultTargetLocations, fireModes } from "../lookups.js"
+import { fireModes } from "../lookups.js"
 import { createCyberpunkChatMessage, getGMUserIds } from "../compat.js";
 
 /**
- * A specialized form used to select the modifiers for shooting with a weapon
- * This could, I guess, also be done with dialog and FormDataExtended
+ * Dialog used to select attack, range, fire-mode and miscellaneous modifiers.
  * @implements {FormApplication}
  */
  export class ModifiersDialog extends FormApplication {
@@ -30,7 +29,7 @@ import { createCyberpunkChatMessage, getGMUserIds } from "../compat.js";
         hiddenAdvantage: false,
         closeOnSubmit: false,
 
-        onConfirm: (results) => console.log(results)
+        onConfirm: () => {}
       });
     }
   
