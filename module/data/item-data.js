@@ -1,0 +1,417 @@
+import {
+  arrayField,
+  booleanField,
+  htmlField,
+  mergeDefaults,
+  normalizeArray,
+  normalizeBoolean,
+  normalizeNumber,
+  numberField,
+  objectField,
+  stringField
+} from "./schema-helpers.js";
+
+const COMMON_DEFAULTS = {
+  flavor: "",
+  notes: "",
+  cost: 0,
+  weight: 0,
+  equipped: true,
+  source: ""
+};
+
+const DEFAULT_RANGE_DAMAGES = {
+  pointBlank: "",
+  close: "",
+  medium: "",
+  far: "",
+  short: "",
+  extreme: ""
+};
+
+const DEFAULT_COVERAGE = {
+  Head: false,
+  Torso: false,
+  lArm: false,
+  rArm: false,
+  lLeg: false,
+  rLeg: false
+};
+
+function hasOwn(source, key) {
+  return Object.prototype.hasOwnProperty.call(source, key);
+}
+
+function isDeletionOperator(value) {
+  if (!value || typeof value !== "object") return false;
+
+  const ForcedDeletion = globalThis.foundry?.data?.operators?.ForcedDeletion;
+  if (typeof ForcedDeletion === "function" && value instanceof ForcedDeletion) return true;
+
+  const DeleteField = globalThis.foundry?.data?.operations?.DeleteField;
+  if (typeof DeleteField === "function" && value instanceof DeleteField) return true;
+
+  const ctorName = value.constructor?.name;
+  return ctorName === "ForcedDeletion" || ctorName === "DeleteField";
+}
+
+function normalizeNumberIfPresent(source, key, fallback = 0) {
+  if (hasOwn(source, key)) source[key] = normalizeNumber(source[key], fallback);
+}
+
+function normalizeBooleanIfPresent(source, key, fallback = false) {
+  if (hasOwn(source, key)) source[key] = normalizeBoolean(source[key], fallback);
+}
+
+function normalizeArrayIfPresent(source, key, fallback = []) {
+  if (hasOwn(source, key)) source[key] = normalizeArray(source[key], fallback);
+}
+
+const DEFAULT_WEAPON = {
+  weaponType: "Pistol",
+  accuracy: 0,
+  concealability: "P",
+  availability: "common",
+  ammoType: "9mm",
+  ammoItemId: "",
+  damage: "2d6+1",
+  rangeDamages: DEFAULT_RANGE_DAMAGES,
+  ap: false,
+  shotsLeft: 12,
+  shots: 12,
+  rof: 2,
+  reliability: "ST",
+  range: 50,
+  attackType: "",
+  attackSkill: "ref"
+};
+
+const DEFAULT_CYBERWARE = {
+  ...COMMON_DEFAULTS,
+  surgCode: "N",
+  humanityCost: "1d6",
+  cyberwareType: "",
+  cyberwareSubtype: "",
+  abbrev: "",
+  humanityLoss: 0,
+  MountZone: "",
+  EffectMode: "Permanent",
+  EffectActive: false,
+  Module: {
+    IsModule: false,
+    AllowedParentCyberwareType: "",
+    SlotsTaken: 0,
+    ParentId: ""
+  },
+  CyberBodyType: {
+    Type: "",
+    Location: ""
+  },
+  CyberWorkType: {
+    Type: "Descriptive",
+    Stat: {},
+    Skill: {},
+    Checks: {},
+    Locations: {},
+    Encumbrance: 0,
+    Penalties: {},
+    Link: "",
+    ItemId: "",
+    OptionsAvailable: 0,
+    SDP: 0,
+    ChipSkills: {},
+    ChipActive: false,
+    Types: [],
+    Weapon: {
+      ...DEFAULT_WEAPON,
+      shotsLeft: 0,
+      shots: 0,
+      rof: 0,
+      range: 0
+    }
+  },
+  slots: 0,
+  spaces: 0,
+  effectTypes: ["None"]
+};
+
+function commonSchema() {
+  return {
+    flavor: stringField(""),
+    notes: htmlField(""),
+    cost: numberField(0),
+    weight: numberField(0),
+    equipped: booleanField(true),
+    source: stringField(""),
+    lastOwnerId: stringField("")
+  };
+}
+
+class CyberpunkBaseItemData extends foundry.abstract.TypeDataModel {
+  static defineSchema() {
+    return commonSchema();
+  }
+
+  static migrateData(source) {
+    source ??= {};
+
+    if (hasOwn(source, "notes")) source.notes ??= "";
+    if (hasOwn(source, "flavor")) source.flavor ??= "";
+    if (hasOwn(source, "source")) source.source ??= "";
+    normalizeBooleanIfPresent(source, "equipped", true);
+    if (source.cost === null) source.cost = 0;
+    if (source.weight === null) source.weight = 0;
+    if (hasOwn(source, "lastOwnerId")) source.lastOwnerId ??= "";
+    return super.migrateData(source);
+  }
+}
+
+export class CyberpunkSkillData extends foundry.abstract.TypeDataModel {
+  static defineSchema() {
+    return {
+      flavor: stringField(""),
+      notes: htmlField(""),
+      level: numberField(0),
+      chipLevel: numberField(0),
+      ip: numberField(0),
+      IP: numberField(0),
+      diffMod: numberField(1),
+      isChipped: booleanField(false),
+      autoChipped: booleanField(false),
+      isRoleSkill: booleanField(false),
+      trained: booleanField(false),
+      stat: stringField("cool"),
+      askMods: booleanField(false)
+    };
+  }
+
+  static migrateData(source) {
+    source ??= {};
+
+    if (hasOwn(source, "notes")) source.notes ??= "";
+    if (hasOwn(source, "flavor")) source.flavor ??= "";
+
+    if (hasOwn(source, "IP") && !hasOwn(source, "ip")) source.ip = source.IP;
+    if (hasOwn(source, "ip") && !hasOwn(source, "IP")) source.IP = source.ip;
+
+    if (hasOwn(source, "level") || hasOwn(source, "value")) {
+      source.level = normalizeNumber(source.level ?? source.value, 0);
+    }
+    normalizeNumberIfPresent(source, "chipLevel", 0);
+    normalizeNumberIfPresent(source, "ip", 0);
+    normalizeNumberIfPresent(source, "IP", hasOwn(source, "ip") ? source.ip : 0);
+    normalizeNumberIfPresent(source, "diffMod", 1);
+
+    if (hasOwn(source, "isChipped")) {
+      source.isChipped = normalizeBoolean(source.isChipped, false);
+    } else if (hasOwn(source, "chipped") && !isDeletionOperator(source.chipped)) {
+      source.isChipped = normalizeBoolean(source.chipped, false);
+    }
+    if (hasOwn(source, "chipped") && !isDeletionOperator(source.chipped)) delete source.chipped;
+
+    normalizeBooleanIfPresent(source, "isRoleSkill", false);
+    normalizeBooleanIfPresent(source, "trained", false);
+    normalizeBooleanIfPresent(source, "autoChipped", false);
+    normalizeBooleanIfPresent(source, "askMods", false);
+    if (hasOwn(source, "stat")) source.stat ||= "cool";
+    return super.migrateData(source);
+  }
+}
+
+export class CyberpunkProgramData extends CyberpunkBaseItemData {
+  static defineSchema() {
+    return {
+      ...commonSchema(),
+      power: numberField(0),
+      mu: numberField(0),
+      programType: stringField(""),
+      actionFormula: stringField("")
+    };
+  }
+}
+
+export class CyberpunkWeaponData extends CyberpunkBaseItemData {
+  static defineSchema() {
+    return {
+      ...commonSchema(),
+      weaponType: stringField(DEFAULT_WEAPON.weaponType),
+      accuracy: numberField(DEFAULT_WEAPON.accuracy),
+      concealability: stringField(DEFAULT_WEAPON.concealability),
+      availability: stringField(DEFAULT_WEAPON.availability),
+      ammoType: stringField(DEFAULT_WEAPON.ammoType),
+      ammoItemId: stringField(DEFAULT_WEAPON.ammoItemId),
+      damage: stringField(DEFAULT_WEAPON.damage),
+      rangeDamages: objectField(DEFAULT_RANGE_DAMAGES),
+      ap: booleanField(DEFAULT_WEAPON.ap),
+      shotsLeft: numberField(DEFAULT_WEAPON.shotsLeft),
+      shots: numberField(DEFAULT_WEAPON.shots),
+      rof: numberField(DEFAULT_WEAPON.rof),
+      reliability: stringField(DEFAULT_WEAPON.reliability),
+      range: numberField(DEFAULT_WEAPON.range),
+      attackType: stringField(DEFAULT_WEAPON.attackType),
+      attackSkill: stringField(DEFAULT_WEAPON.attackSkill),
+      name: stringField("")
+    };
+  }
+
+  static migrateData(source) {
+    source ??= {};
+    if (hasOwn(source, "rangeDamage") && !hasOwn(source, "rangeDamages")) {
+      source.rangeDamages = source.rangeDamage;
+      delete source.rangeDamage;
+    }
+    if (hasOwn(source, "rangeDamages")) source.rangeDamages = normalizeRangeDamages(source.rangeDamages);
+    normalizeBooleanIfPresent(source, "ap", false);
+    return super.migrateData(source);
+  }
+}
+
+export class CyberpunkAmmoData extends CyberpunkBaseItemData {
+  static defineSchema() {
+    return {
+      ...commonSchema(),
+      ammoType: stringField(""),
+      quantity: numberField(0),
+      armorMultSoft: numberField(1),
+      armorMultHard: numberField(1),
+      rawDamageMult: numberField(1),
+      penDamageMult: numberField(1),
+      bonusDamageFormula: stringField(""),
+      accuracyMod: numberField(0),
+      stunSaveOnHit: booleanField(false),
+      stunSaveMod: numberField(0),
+      dotEnabled: booleanField(false),
+      dotTurns: numberField(0),
+      dotDamageFormula: stringField(""),
+      blastRadius: numberField(0),
+      blastFullDamageWithin: numberField(1),
+      blastZones: numberField(4),
+      blastShrapnel: booleanField(false),
+      blastMultipliers: arrayField(null, [0.5, 0.25, 0.125, 0.0625]),
+      spreadMode: stringField("single"),
+      spreadDistance: numberField(0),
+      spreadDamageShort: stringField(""),
+      spreadDamageMedium: stringField(""),
+      spreadDamageLong: stringField(""),
+      spreadWidthShort: numberField(1),
+      spreadWidthMedium: numberField(2),
+      spreadWidthLong: numberField(3),
+      effectTypes: arrayField(null, ["None"])
+    };
+  }
+
+  static migrateData(source) {
+    source ??= {};
+    normalizeArrayIfPresent(source, "effectTypes", ["None"]);
+    normalizeArrayIfPresent(source, "blastMultipliers", [0.5, 0.25, 0.125, 0.0625]);
+    normalizeBooleanIfPresent(source, "stunSaveOnHit", false);
+    normalizeBooleanIfPresent(source, "dotEnabled", false);
+    normalizeBooleanIfPresent(source, "blastShrapnel", false);
+    return super.migrateData(source);
+  }
+}
+
+export class CyberpunkArmorData extends CyberpunkBaseItemData {
+  static defineSchema() {
+    return {
+      ...commonSchema(),
+      coverage: objectField(DEFAULT_COVERAGE),
+      encumbrance: numberField(0)
+    };
+  }
+
+  static migrateData(source) {
+    source ??= {};
+    if (hasOwn(source, "coverage")) source.coverage = mergeDefaults(source.coverage, DEFAULT_COVERAGE);
+    return super.migrateData(source);
+  }
+}
+
+export class CyberpunkCyberwareData extends CyberpunkBaseItemData {
+  static defineSchema() {
+    return {
+      ...commonSchema(),
+      surgCode: stringField(DEFAULT_CYBERWARE.surgCode),
+      humanityCost: stringField(DEFAULT_CYBERWARE.humanityCost),
+      cyberwareType: stringField(""),
+      cyberwareSubtype: stringField(""),
+      abbrev: stringField(""),
+      humanityLoss: numberField(0),
+      MountZone: stringField(""),
+      EffectMode: stringField("Permanent"),
+      EffectActive: booleanField(false),
+      Module: objectField(DEFAULT_CYBERWARE.Module),
+      CyberBodyType: objectField(DEFAULT_CYBERWARE.CyberBodyType),
+      CyberWorkType: objectField(DEFAULT_CYBERWARE.CyberWorkType),
+      slots: numberField(0),
+      spaces: numberField(0),
+      cwTypeLabel: stringField(""),
+      cwSubtypeLabel: stringField(""),
+      effectTypes: arrayField(null, ["None"])
+    };
+  }
+
+  static migrateData(source) {
+    source ??= {};
+    normalizeNumberIfPresent(source, "humanityLoss", 0);
+    normalizeBooleanIfPresent(source, "EffectActive", false);
+    normalizeArrayIfPresent(source, "effectTypes", ["None"]);
+
+    if (hasOwn(source, "Module")) {
+      normalizeBooleanIfPresent(source.Module, "IsModule", false);
+      normalizeNumberIfPresent(source.Module, "SlotsTaken", 0);
+    }
+
+    if (hasOwn(source, "CyberWorkType")) {
+      const cwt = source.CyberWorkType ?? {};
+      if (hasOwn(cwt, "Types") || hasOwn(cwt, "Type")) {
+        cwt.Types = normalizeArray(cwt.Types?.length ? cwt.Types : cwt.Type, []);
+      }
+      normalizeBooleanIfPresent(cwt, "ChipActive", false);
+      normalizeNumberIfPresent(cwt, "Encumbrance", 0);
+      normalizeNumberIfPresent(cwt, "OptionsAvailable", 0);
+      normalizeNumberIfPresent(cwt, "SDP", 0);
+
+      if (hasOwn(cwt, "Weapon")) {
+        const weapon = cwt.Weapon ?? {};
+        if (hasOwn(weapon, "rangeDamage") && !hasOwn(weapon, "rangeDamages")) {
+          weapon.rangeDamages = weapon.rangeDamage;
+          delete weapon.rangeDamage;
+        }
+        if (hasOwn(weapon, "rangeDamages")) weapon.rangeDamages = normalizeRangeDamages(weapon.rangeDamages);
+        normalizeBooleanIfPresent(weapon, "ap", false);
+        cwt.Weapon = weapon;
+      }
+
+      source.CyberWorkType = cwt;
+    }
+
+    return super.migrateData(source);
+  }
+}
+
+export class CyberpunkVehicleData extends CyberpunkBaseItemData {
+  static defineSchema() {
+    return {
+      ...commonSchema(),
+      sdp: objectField({ value: 0, max: 0 }),
+      sp: numberField(10),
+      passengers: numberField(4),
+      speed: objectField({ value: 0, max: 0, maneuver: 0, acceleration: 0 }),
+      maneuverability: objectField({ value: 0, condition: "" }),
+      fuel: objectField({ type: "", efficiency: 0, max: 0, value: 0 })
+    };
+  }
+}
+
+export class CyberpunkMiscData extends CyberpunkBaseItemData {}
+
+function normalizeRangeDamages(value) {
+  if (Array.isArray(value)) {
+    return mergeDefaults({ pointBlank: value[0] ?? "" }, DEFAULT_RANGE_DAMAGES);
+  }
+  if (typeof value === "string" || typeof value === "number") {
+    return mergeDefaults({ pointBlank: String(value) }, DEFAULT_RANGE_DAMAGES);
+  }
+  return mergeDefaults(value, DEFAULT_RANGE_DAMAGES);
+}

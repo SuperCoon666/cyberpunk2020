@@ -2,11 +2,23 @@ import { CyberpunkActor } from "./actor/actor.js";
 import { CyberpunkActorSheet } from "./actor/actor-sheet.js";
 import { CyberpunkItem } from "./item/item.js";
 import { CyberpunkItemSheet } from "./item/item-sheet.js";
+import { CyberpunkCharacterData, CyberpunkNpcData } from "./data/actor-data.js";
+import {
+    CyberpunkAmmoData,
+    CyberpunkArmorData,
+    CyberpunkCyberwareData,
+    CyberpunkMiscData,
+    CyberpunkProgramData,
+    CyberpunkSkillData,
+    CyberpunkVehicleData,
+    CyberpunkWeaponData
+} from "./data/item-data.js";
 
 import { preloadHandlebarsTemplates } from "./templates.js";
 import { registerHandlebarsHelpers } from "./handlebars-helpers.js"
 import * as migrations from "./migrate.js";
 import { registerSystemSettings } from "./settings.js"
+import { getHtmlElement } from "./compat.js";
 
 Hooks.once('init', async function () {
 
@@ -24,6 +36,20 @@ Hooks.once('init', async function () {
     CONFIG.Actor.documentClass = CyberpunkActor;
     CONFIG.Item.documentClass = CyberpunkItem;
 
+    // Register v13/v14 System DataModels.
+    // These replace legacy system-template initialization for Actor/Item system data.
+    CONFIG.Actor.dataModels.character = CyberpunkCharacterData;
+    CONFIG.Actor.dataModels.npc = CyberpunkNpcData;
+
+    CONFIG.Item.dataModels.skill = CyberpunkSkillData;
+    CONFIG.Item.dataModels.program = CyberpunkProgramData;
+    CONFIG.Item.dataModels.weapon = CyberpunkWeaponData;
+    CONFIG.Item.dataModels.ammo = CyberpunkAmmoData;
+    CONFIG.Item.dataModels.armor = CyberpunkArmorData;
+    CONFIG.Item.dataModels.cyberware = CyberpunkCyberwareData;
+    CONFIG.Item.dataModels.vehicle = CyberpunkVehicleData;
+    CONFIG.Item.dataModels.misc = CyberpunkMiscData;
+
     // Register sheets, unregister original core sheets
     Actors.unregisterSheet("core", ActorSheet);
     Actors.registerSheet("cyberpunk2020", CyberpunkActorSheet, { makeDefault: true });
@@ -40,7 +66,7 @@ Hooks.once('init', async function () {
 
     // Fumble inline results
     Hooks.on("renderChatMessage", (message, html) => {
-      const root = html?.[0] ?? html;
+      const root = getHtmlElement(html);
       if (!root?.querySelectorAll) return;
 
       for (const el of root.querySelectorAll("a.cp-inline-roll")) {
@@ -111,6 +137,41 @@ Hooks.once('init', async function () {
           tip = document.createElement("div");
           tip.className = "cp-dice-tooltip";
           tip.innerHTML = tooltipHTML;
+
+          const showInlineRollFormula = game.settings.get(
+            "cyberpunk2020",
+            "showInlineRollFormula"
+          );
+
+          if (showInlineRollFormula) {
+            const summary = document.createElement("div");
+            summary.className = "cp-inline-roll-summary";
+
+            const formula = String(roll.formula ?? "").trim();
+            const result = String(roll.result ?? "").trim();
+            const totalValue = Number(roll.total);
+            const total = Number.isFinite(totalValue) ? String(roll.total) : "";
+
+            const formulaLine = document.createElement("div");
+            formulaLine.className = "cp-inline-roll-formula";
+            formulaLine.textContent = formula;
+
+            const resultLine = document.createElement("div");
+            resultLine.className = "cp-inline-roll-result";
+            resultLine.textContent = result && total
+              ? `${result} = ${total}`
+              : result || total;
+
+            if (formulaLine.textContent) summary.appendChild(formulaLine);
+            if (resultLine.textContent && resultLine.textContent !== formulaLine.textContent) {
+              summary.appendChild(resultLine);
+            }
+
+            if (summary.childElementCount > 0) {
+              tip.prepend(summary);
+            }
+          }
+
           document.body.appendChild(tip);
 
           requestAnimationFrame(() => {
@@ -126,10 +187,9 @@ Hooks.once('init', async function () {
 });
 
 /**
- * Once the entire VTT framework is initialized, check to see if we should perform a data migration (nabbed from Foundry's 5e module and adapted)
+ * Check whether this world needs a system data migration.
  */
 Hooks.once("ready", async function () {
-  // Determine whether a system migration is required and feasible
   if (!game.user.isGM) return;
 
   const TARGET_VERSION = game.system.version;
@@ -138,23 +198,17 @@ Hooks.once("ready", async function () {
 
   const worldSystemVersion = game.world?.systemVersion || "";
 
-  // If we never stored migration version, use worldSystemVersion as baseline (prevents migration on fresh worlds)
+  // Use worldSystemVersion as a baseline for worlds that predate the explicit migration marker.
   const baseline = stored || worldSystemVersion || "0";
-
-  console.log(
-    `CYBERPUNK: World systemVersion=${worldSystemVersion || "(none)"}; stored migration=${stored || "(none)"}; baseline=${baseline}`
-  );
 
   const needsMigration = foundry.utils.isNewerVersion(TARGET_VERSION, baseline);
 
   if (!needsMigration) {
     if (!stored) {
       await game.settings.set("cyberpunk2020", "systemMigrationVersion", TARGET_VERSION);
-      console.log(`CYBERPUNK: Migration marker initialized to ${TARGET_VERSION}`);
     }
     return;
   }
 
-  // Run migration once per system version upgrade
   await migrations.migrateWorld(TARGET_VERSION);
 });

@@ -207,6 +207,13 @@ details[open] summary ~ * {
     margin-left: 0px;
   }
 }
+
+.cyberware-humanity-locked,
+.cyberware-humanity-locked input,
+input.cyberware-humanity-locked {
+  cursor: not-allowed;
+}
+
 /**
 * A convenience class to prevent boilerplate
 * Best used like so, in its basic form:
@@ -688,11 +695,12 @@ div.statderive .value.rightborder {
 .combat-tab {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 10fr;
+  grid-template-rows: auto auto;
   grid-template-areas: "rolls rolls" "weapons armor";
   column-gap: 10px;
   row-gap: 10px;
   align-items: start;
+  align-content: start;
 }
 .combat-tab .armor-section {
   grid-area: armor;
@@ -787,20 +795,25 @@ div.statderive .value.rightborder {
 
 .cyberpunk .armor-display {
   max-height: 200px;
-  max-width: 25em;
-  padding-left: 10%;
-  padding-right: 10%;
-  margin-bottom: 10px;
+  width: 16em;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding-left: 0;
+  padding-right: 0;
+  margin: 0 auto 10px auto;
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  grid-template-rows: 1fr 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: auto auto auto;
   grid-template-areas: ". Head ." "lArm Torso rArm" "lLeg . rLeg";
-  column-gap: 3px;
-  row-gap: 3px;
-  justify-items: center;
+  column-gap: 4px;
+  row-gap: 4px;
+  justify-content: center;
+  justify-items: stretch;
 }
 .cyberpunk .armor-display .armor-segment {
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   border: solid black;
   border-width: 2px 2px 0px 2px;
   display: grid;
@@ -1348,6 +1361,93 @@ div.statderive .value.rightborder {
   max-width: min(820px, calc(100vw - 60px));
 }
 
+/* Ammo Effects: dropdown-multiselect */
+.cyberpunk .field .ammo-ms {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Item sheets: slightly wider number inputs */
+.cyberpunk.sheet.item .field > input[type="number"]:not(.smallnumber) {
+  width: 3.6em;
+  min-width: 3.6em;
+  padding: 0 4px;
+  text-align: center;
+}
+
+.cyberpunk.sheet.item .field-list {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+/* Important: allow grid children to shrink instead of pushing the column */
+.cyberpunk.sheet.item .field-list .field {
+  min-width: 0;
+}
+.cyberpunk.sheet.item .field-list .field label {
+  min-width: 0;
+}
+
+/* Trigger button */
+.cyberpunk .field .ammo-ms-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 0 6px;
+  line-height: 24px;
+  border: 1px solid var(--color-border, #444);
+  background: var(--color-bg, #111);
+  color: inherit;
+  cursor: pointer;
+}
+.cyberpunk .field .ammo-ms-trigger:focus {
+  outline: 1px solid var(--color-accent, #999);
+}
+.cyberpunk .field .ammo-ms-labels {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cyberpunk .field .ammo-ms-caret {
+  flex: 0 0 auto;
+  margin-left: 8px;
+}
+
+/* Drop-down menu */
+.cyberpunk .field .ammo-ms-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 2px);
+  display: none;
+  z-index: 1000;
+  border: 1px solid var(--color-border, #444);
+  background: var(--color-bg, #111);
+  padding: 6px;
+  max-height: 240px;
+  overflow: auto;
+  box-shadow: 0 4px 12px rgba(0,0,0,.35);
+}
+.cyberpunk .field .ammo-ms.open .ammo-ms-menu {
+  display: block;
+}
+.cyberpunk .field .ammo-ms-opt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+}
+.cyberpunk .field .ammo-ms-opt input {
+  margin: 0;
+}
+
 #weapon-modifier .window-content {
   height: auto !important;
   max-height: calc(100vh - 160px) !important;
@@ -1380,21 +1480,53 @@ div.statderive .value.rightborder {
 .chat-message a.cp-inline-roll:hover {
   text-decoration: underline;
 }
-/* Custom hover dice tooltip for cp-inline-roll (shows only dice faces/results) */
+/* Custom hover dice tooltip for cp-inline-roll */
 .cp-dice-tooltip {
   position: fixed;
   z-index: 1000;
   pointer-events: none;
-}
-
-/* Give the tooltip a readable container */
-.cp-dice-tooltip .dice-tooltip {
-  margin: 0;
+  max-width: 420px;
   padding: 6px 8px;
   border-radius: 6px;
   border: 1px solid var(--color-border-dark, rgba(0, 0, 0, 0.5));
   background: var(--color-bg, rgba(0, 0, 0, 0.85));
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+/* Foundry tooltip content is rendered inside our custom tooltip container */
+.cp-dice-tooltip .dice-tooltip {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.cp-dice-tooltip .cp-inline-roll-summary {
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--color-border-light-tertiary, rgba(255, 255, 255, 0.25));
+  font-size: 12px;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.cp-dice-tooltip .cp-inline-roll-formula {
+  font-weight: 600;
+}
+
+.cp-dice-tooltip .cp-inline-roll-result {
+  opacity: 0.9;
+}
+
+/* Hide all text/formula/headers/totals inside Foundry tooltip */
+.cp-dice-tooltip .dice-tooltip > header,
+.cp-dice-tooltip .dice-tooltip .dice-formula,
+.cp-dice-tooltip .dice-tooltip .dice-total,
+.cp-dice-tooltip .dice-tooltip .part-header,
+.cp-dice-tooltip .dice-tooltip .part-formula,
+.cp-dice-tooltip .dice-tooltip .part-total {
+  display: none !important;
 }
 
 /* Hide all text/formula/headers/totals inside Foundry tooltip */

@@ -6,14 +6,20 @@
   <div class="field">
     <label for="system.humanityCost">{{CPLocal "HumanityCostRoll"}}</label>
     <span class="flex-pad"></span>
-    <input class="textsize" name="system.humanityCost" type="text" value="{{system.humanityCost}}" {{#unless isGM}}readonly{{/unless}}/>
+    <input
+      class="textsize{{#unless canEditCyberwareHumanity}} cyberware-humanity-locked{{/unless}}"
+      name="system.humanityCost"
+      type="text"
+      value="{{system.humanityCost}}"
+      {{#unless canEditCyberwareHumanity}}readonly{{/unless}}
+    />
     <div class="humanity-cost-roll field-image action" style="background-image: url('../../../icons/svg/d10-grey.svg')"></div>
   </div>
 
-  {{#if isGM}}
+  {{#if canEditCyberwareHumanity}}
     {{> (template "fields/number") label="HumanityLoss" edit="system.humanityLoss"}}
   {{else}}
-    {{> (template "fields/number") label="HumanityLoss" edit="system.humanityLoss" readOnly=true}}
+    {{> (template "fields/number") label="HumanityLoss" edit="system.humanityLoss" readOnly=true extraClasses="cyberware-humanity-locked"}}
   {{/if}}
   {{> (template "fields/string") label="Abbrev" edit="system.abbrev"}}
 
@@ -316,32 +322,40 @@
         {{> (template "fields/number") label="Accuracy" edit="system.CyberWorkType.Weapon.accuracy"}}
 
         {{> (template "fields/number") label="Range" edit="system.CyberWorkType.Weapon.range"}}
-        {{> (template "fields/boolean") label="AP" edit="system.CyberWorkType.Weapon.ap"}}
 
-        {{> (template "fields/number") label="ShotsLeft" edit="system.CyberWorkType.Weapon.shotsLeft"}}
-        {{> (template "fields/number") label="Shots" edit="system.CyberWorkType.Weapon.shots"}}
-
-        {{> (template "fields/number") label="RoF" edit="system.CyberWorkType.Weapon.rof"}}
         {{> (template "fields/select") label="Reliability" edit="system.CyberWorkType.Weapon.reliability" choices=reliabilities}}
+
+        {{#unless cwWeaponIsMelee}}
+          {{> (template "fields/number") label="ShotsLeft" edit="system.CyberWorkType.Weapon.shotsLeft"}}
+          {{> (template "fields/number") label="Shots" edit="system.CyberWorkType.Weapon.shots"}}
+
+          {{> (template "fields/number") label="RoF" edit="system.CyberWorkType.Weapon.rof"}}
+
+          {{> (template "fields/select") label="Ammo" edit="system.CyberWorkType.Weapon.ammoItemId" choices=cwAmmoChoices allowBlank=true}}
+        {{/unless}}
 
         <div class="field">
           <label for="system.CyberWorkType.Weapon.attackSkill">{{CPLocal "AttackSkill"}}</label>
           <div class="flex-pad"></div>
           {{#if (equals system.CyberWorkType.Weapon.weaponType 'Exotic')}}
             <datalist id="possibleSkillsCW">
-              {{#each attackSkills as |skill|}}<option value="{{skill}}">{{skill}}</option>{{/each}}
+                {{#each attackSkills as |skill|}}<option value="{{skill}}">{{skill}}</option>{{/each}}
             </datalist>
             <input type="text" list="possibleSkillsCW" placeholder="{{CPLocal 'AttackSkill'}}" name="system.CyberWorkType.Weapon.attackSkill" value="{{system.CyberWorkType.Weapon.attackSkill}}">
           {{else}}
             <select name="system.CyberWorkType.Weapon.attackSkill">
               {{#each attackSkills as |skill|}}
-                <option value="{{skill}}" {{#if (equals ../system.CyberWorkType.Weapon.attackSkill skill)}}selected{{/if}}>{{skill}}</option>
+                <option value="{{skill.value}}" {{#if (equals ../system.CyberWorkType.Weapon.attackSkill skill.value)}}selected{{/if}}{{#if (equals ../system.CyberWorkType.Weapon.attackSkill skill.label)}}selected{{/if}}>{{skill.label}}</option>
               {{/each}}
             </select>
           {{/if}}
         </div>
 
-        {{> (template "fields/string") label="AmmoType" edit="system.CyberWorkType.Weapon.ammoType"}}
+        {{#if cwWeaponIsMelee}}
+            {{> (template "fields/boolean") label="AP" edit="system.CyberWorkType.Weapon.ap"}}
+        {{else}}
+            {{> (template "fields/string") label="AmmoType" edit="system.CyberWorkType.Weapon.ammoType"}}
+        {{/if}}
       </div>
     </div>
   {{/if}}

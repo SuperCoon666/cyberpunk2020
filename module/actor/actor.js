@@ -1,7 +1,7 @@
 import { makeD10Roll, Multiroll } from "../dice.js";
 import { isFumbleRoll, buildSkillFumbleData } from "../utils.js";
 import { SortOrders, sortSkills } from "./skill-sort.js";
-import { btmFromBT } from "../lookups.js";
+import { btmFromBT, MARTIAL_ART_KEY_BY_ID, MARTIAL_ART_ID_BY_KEY, FNFF2_ONLY_MARTIAL_ART_IDS, isFnff2Enabled } from "../lookups.js";
 import { properCase, localize, getDefaultSkills, cwHasType, cwIsEnabled } from "../utils.js"
 
 /**
@@ -12,10 +12,14 @@ export class CyberpunkActor extends Actor {
 
 
   /** @override */
-  async _onCreate(data, options={}) {
-    const updates = { _id: data._id };
+  async _preCreate(data, options = {}, user) {
+    const allowed = await super._preCreate(data, options, user);
+    if (allowed === false) return false;
 
-    if (data.type === "character") {
+    const actorType = data?.type ?? this.type;
+    const updates = {};
+
+    if (actorType === "character") {
       updates["img"] = "systems/cyberpunk2020/img/edgerunner.svg";
       updates["prototypeToken.texture.src"] = "systems/cyberpunk2020/img/edgerunner.svg";
       updates["prototypeToken.actorLink"] = true;
@@ -23,32 +27,20 @@ export class CyberpunkActor extends Actor {
       updates["system.icon"] = "systems/cyberpunk2020/img/edgerunner.svg";
     }
 
-    // Build a working items array for initial creation patching
-    updates.items = Array.isArray(data.items) ? data.items.slice() : [];
-
-    // Helper: extract base id either from sourceId or from _id
-    const getBaseId = (it) => {
-      const src = it?.flags?.core?.sourceId;
-      if (src && typeof src === "string") return src.split(".").pop();
-      return it?._id ? String(it._id) : null;
-    };
-
-    const hasItemWithBaseId = (items, baseId) => {
-      return items.some((it) => getBaseId(it) === baseId);
-    };
+    const items = this._getInitialItemsSource(data);
 
     // Default skills
-    const firstSkill = updates.items.find((item) => item.type === "skill");
+    const firstSkill = items.find((item) => item.type === "skill");
     if (!firstSkill) {
-      // Using toObject is important - foundry REALLY doesn't like creating new documents from documents themselves
+      // Using toObject is important - Foundry does not like creating new documents from documents themselves.
       const skillsData = sortSkills(await getDefaultSkills(), SortOrders.Name)
         .map((item) => item.toObject());
-      updates.items = updates.items.concat(skillsData);
+      items.push(...skillsData);
       updates["system.skillsSortedBy"] = "Name";
     }
 
     // Default unarmed melee weapons: Kick + Strike
-    if (data.type === "character" || data.type === "npc") {
+    if (actorType === "character" || actorType === "npc") {
       const UNARMED_WEAPON_IDS = [
         "TF0nBrjofPX2RiuG", // Kick
         "TZoiQuE8fUzJ8Jta"  // Strike
@@ -58,22 +50,57 @@ export class CyberpunkActor extends Actor {
 
       if (meleePack) {
         for (const wid of UNARMED_WEAPON_IDS) {
-          if (hasItemWithBaseId(updates.items, wid)) continue;
+          if (CyberpunkActor._hasItemWithBaseId(items, wid)) continue;
 
           const doc = await meleePack.getDocument(wid);
           if (!doc) continue;
 
           const obj = doc.toObject();
-
           obj.system = obj.system ?? {};
           obj.system.equipped = true;
 
-          updates.items.push(obj);
+          items.push(obj);
         }
       }
     }
 
-    await this.update(updates);
+    updates.items = items;
+    this.updateSource(updates);
+  }
+
+  /**
+   * Return a mutable initial embedded-items source array for _preCreate.
+   * Keeping this as plain source data avoids a post-create Actor.update call.
+   *
+   * @param {object} data
+   * @returns {object[]}
+   * @private
+   */
+  _getInitialItemsSource(data) {
+    const sourceItems = this._source?.items ?? data?.items ?? [];
+    const deepClone = foundry.utils.deepClone ?? ((value) => JSON.parse(JSON.stringify(value)));
+    return Array.isArray(sourceItems) ? deepClone(sourceItems) : [];
+  }
+
+  /**
+   * Extract the original compendium/base id used to avoid adding duplicate defaults.
+   *
+   * @param {object} itemData
+   * @returns {string|null}
+   * @private
+   */
+  static _getItemBaseId(itemData) {
+    return CyberpunkActor._getItemIdCandidates(itemData).find(id => id) ?? null;
+  }
+
+  /**
+   * @param {object[]} items
+   * @param {string} baseId
+   * @returns {boolean}
+   * @private
+   */
+  static _hasItemWithBaseId(items, baseId) {
+    return items.some((item) => CyberpunkActor._getItemBaseId(item) === baseId);
   }
 
   /**
@@ -470,23 +497,12 @@ export class CyberpunkActor extends Actor {
   sortSkills(sortOrder = "Name") {
     let allSkills = this.itemTypes.skill;
     sortOrder = sortOrder || Object.keys(SortOrders)[0];
-    console.log(`Sorting skills by ${sortOrder}`);
     let sortedView = sortSkills(allSkills, SortOrders[sortOrder]).map(skill => skill.id);
 
-    // Technically UI info, but we don't wanna calc every time we open a sheet so store it in the actor.
     this.update({
-      // Why is it that when storing Item: {data: {data: {innerdata}}}, it comes out as {data: {innerdata}}
       "system.sortedSkillIDs": sortedView,
       "system.skillsSortedBy": sortOrder
     });
-  }
-
-  /**
-   * Get a body type modifier from the body type stat (body)
-   * I couldn't figure out a single formula that'd work for it (cos of the weird widths of BT values)
-   */
-  static btm(body) {
-    
   }
 
   // Current wound state. 0 for uninjured, going up by 1 for each new one. 1 for Light, 2 Serious, 3 Critical etc.
@@ -510,15 +526,281 @@ export class CyberpunkActor extends Actor {
   }
 
   trainedMartials() {
-    return this.itemTypes.skill
-      .filter(skill => skill.name.startsWith(localize("Martial")))
-      .filter(martial => martial.system.level > 0)
-      .map(martial => martial.name);
+    const fnff2 = isFnff2Enabled();
+    const trained = [];
+    const usedSkillIds = new Set();
+
+    for (const [martialKey, martialId] of Object.entries(MARTIAL_ART_ID_BY_KEY)) {
+      if (!fnff2 && FNFF2_ONLY_MARTIAL_ART_IDS.has(martialId)) continue;
+
+      const skill = this._getSkillByStableId(martialId);
+      if (!skill) continue;
+      if (!CyberpunkActor._hasAnyPositiveSkillValue(skill)) continue;
+
+      trained.push(martialKey);
+      usedSkillIds.add(skill.id);
+    }
+
+    const customMartials = (this.itemTypes?.skill ?? [])
+      .filter(skill => !usedSkillIds.has(skill.id))
+      .filter(skill => !CyberpunkActor._getMartialKeyForSkill(skill))
+      .filter(skill => CyberpunkActor._looksLikeCustomMartialSkill(skill))
+      .filter(skill => CyberpunkActor._hasAnyPositiveSkillValue(skill))
+      .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+      .map(skill => CyberpunkActor._customMartialKeyForSkill(skill));
+
+    trained.push(...customMartials);
+    return trained;
   }
 
-  // TODO: Make this doable with just skill name
+  /**
+   * Find an owned skill by the stable id used in system lookup tables.
+   *
+   * Do not resolve built-in martial arts by localized names. Localized packs must
+   * keep the same _id/source id, so the id table remains the primary source of
+   * truth. Name fallback below is used only for legacy/custom martial data.
+   *
+   * @param {string} stableId
+   * @returns {Item|null}
+   * @private
+   */
+  _getSkillByStableId(stableId) {
+    if (!stableId) return null;
+
+    const direct = this.items.get(stableId);
+    if (direct?.type === "skill") return direct;
+
+    return this.items.find(item => {
+      if (item.type !== "skill") return false;
+      return CyberpunkActor._getItemIdCandidates(item).includes(stableId);
+    }) ?? null;
+  }
+
+  static _customMartialPrefix() {
+    return "custom-martial:";
+  }
+
+  static _customMartialKeyForSkill(skill) {
+    return `${CyberpunkActor._customMartialPrefix()}${skill.id}`;
+  }
+
+  static _customMartialItemIdFromKey(value) {
+    const key = String(value ?? "");
+    const prefix = CyberpunkActor._customMartialPrefix();
+    return key.startsWith(prefix) ? key.slice(prefix.length) : null;
+  }
+
+  _getCustomMartialSkill(value) {
+    const id = CyberpunkActor._customMartialItemIdFromKey(value);
+    if (!id) return null;
+
+    const skill = this.items.get(id);
+    return skill?.type === "skill" ? skill : null;
+  }
+
+  /**
+   * Normalize skill names for non-martial fallback lookups and custom martial
+   * art detection.
+   *
+   * @param {string} value
+   * @returns {string}
+   * @private
+   */
+  static _normalizeSkillName(value) {
+    return String(value ?? "")
+      .replace(/\s*~\s*/g, "")
+      .replace(/\s*\(\d+\)\s*$/g, "")
+      .replace(/\s*:\s*/g, ": ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  static _stripMartialDifficultyTag(value) {
+    return String(value ?? "")
+      .replace(/\s*~\s*/g, "")
+      .replace(/\s*\(\d+\)\s*$/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  static _martialNamePrefixes() {
+    const prefixes = new Set(["Martial Arts"]);
+    const localized = localize("SkillMartialArts");
+
+    if (localized && !String(localized).includes("SkillMartialArts")) {
+      prefixes.add(localized);
+    }
+
+    return [...prefixes]
+      .map(prefix => CyberpunkActor._normalizeSkillName(prefix))
+      .filter(Boolean);
+  }
+
+  static _stripMartialNamePrefix(value) {
+    const normalized = CyberpunkActor._normalizeSkillName(value);
+
+    for (const prefix of CyberpunkActor._martialNamePrefixes()) {
+      if (normalized.toLowerCase().startsWith(`${prefix.toLowerCase()}: `)) {
+        return normalized.slice(prefix.length + 2).trim();
+      }
+    }
+
+    return normalized;
+  }
+
+  static _looksLikeCustomMartialSkill(skill) {
+    if (skill?.type !== "skill") return false;
+    const name = CyberpunkActor._normalizeSkillName(skill.name);
+    if (!name) return false;
+
+    return CyberpunkActor._martialNamePrefixes()
+      .some(prefix => name.toLowerCase().startsWith(`${prefix.toLowerCase()}: `));
+  }
+
+  /**
+   * Return all stable ids that can identify an Item, including embedded item id
+   * and compendium source id. Names are intentionally ignored for built-in
+   * martial arts identity.
+   *
+   * @param {Item|object} itemData
+   * @returns {string[]}
+   * @private
+   */
+  static _getItemIdCandidates(itemData) {
+    const ids = new Set();
+
+    const add = (value) => {
+      if (value == null || value === "") return;
+      ids.add(String(value));
+    };
+
+    const addSourceId = (sourceId) => {
+      if (!sourceId || typeof sourceId !== "string") return;
+      add(sourceId.split(".").pop());
+    };
+
+    add(itemData?.id);
+    add(itemData?._id);
+    add(itemData?._source?._id);
+
+    addSourceId(itemData?.flags?.core?.sourceId);
+    addSourceId(itemData?._source?.flags?.core?.sourceId);
+
+    return [...ids];
+  }
+
+  /**
+   * Resolve a built-in martial-art skill Item to a martial-art lookup key.
+   *
+   * This deliberately uses only stable ids/source ids. Localized item names are
+   * not part of built-in martial-art identity because different languages share
+   * the same _id by system convention.
+   *
+   * @param {Item|object} skill
+   * @returns {string|null}
+   * @private
+   */
+  static _getMartialKeyForSkill(skill) {
+    for (const id of CyberpunkActor._getItemIdCandidates(skill)) {
+      const martialKey = MARTIAL_ART_KEY_BY_ID[id];
+      if (martialKey) return martialKey;
+    }
+
+    return null;
+  }
+
+  _getMartialSkillByDisplayName(value) {
+    const target = CyberpunkActor._normalizeSkillName(value);
+    if (!target) return null;
+
+    const prefixLoc = localize("SkillMartialArts");
+    const prefixCandidates = CyberpunkActor._martialNamePrefixes();
+
+    for (const [martialKey, martialId] of Object.entries(MARTIAL_ART_ID_BY_KEY)) {
+      const skill = this._getSkillByStableId(martialId);
+      if (!skill) continue;
+
+      const localizedShort = localize("Skill" + martialKey);
+      const labelCandidates = new Set([
+        martialKey,
+        skill.name,
+        localizedShort
+      ]);
+
+      if (localizedShort && !String(localizedShort).includes("Skill")) {
+        for (const prefix of prefixCandidates) {
+          labelCandidates.add(`${prefix}: ${localizedShort}`);
+        }
+      }
+
+      if (prefixLoc && !String(prefixLoc).includes("SkillMartialArts")) {
+        labelCandidates.add(`${prefixLoc}: ${localizedShort}`);
+      }
+
+      for (const candidate of labelCandidates) {
+        const normalized = CyberpunkActor._normalizeSkillName(candidate);
+        if (normalized === target) return skill;
+        if (CyberpunkActor._stripMartialNamePrefix(normalized) === target) return skill;
+      }
+    }
+
+    const customSkill = (this.itemTypes?.skill ?? []).find(skill => {
+      if (!CyberpunkActor._looksLikeCustomMartialSkill(skill)) return false;
+      const fullName = CyberpunkActor._normalizeSkillName(skill.name);
+      const shortName = CyberpunkActor._stripMartialNamePrefix(skill.name);
+      return fullName === target || shortName === target;
+    });
+
+    return customSkill ?? null;
+  }
+
+  getMartialDisplayName(martialKey) {
+    if (martialKey === "Brawling") return localize("SkillBrawling");
+
+    const customSkill = this._getCustomMartialSkill(martialKey);
+    if (customSkill) {
+      return CyberpunkActor._stripMartialNamePrefix(customSkill.name);
+    }
+
+    const localized = localize("Skill" + martialKey);
+    const label = localized && !String(localized).includes("Skill") ? localized : martialKey;
+    return CyberpunkActor._stripMartialNamePrefix(
+      CyberpunkActor._stripMartialDifficultyTag(label)
+    );
+  }
+  getSkillDisplayName(skill) {
+    if (!skill) return "";
+
+    const martialKey = CyberpunkActor._getMartialKeyForSkill(skill);
+    if (!martialKey) return skill.name;
+
+    const localizationKey = `martials.${martialKey}`;
+    const localized = localize(localizationKey);
+
+    if (localized && localized !== `CYBERPUNK.${localizationKey}`) {
+      return localized;
+    }
+
+    return skill.name;
+  }
+
+  /**
+   * Used only to decide whether a martial-art skill should appear in the attack
+   * dialog. A manually entered base level should still make the art selectable
+   * even if a stale chip toggle currently makes the effective value zero.
+   *
+   * @param {Item|object} skill
+   * @returns {boolean}
+   * @private
+   */
+  static _hasAnyPositiveSkillValue(skill) {
+    const data = skill?.system ?? skill ?? {};
+    return (Number(data.level) || 0) > 0
+      || (Number(data.chipLevel) || 0) > 0
+      || CyberpunkActor.realSkillValue(skill) > 0;
+  }
+
   static realSkillValue(skill) {
-    // Sometimes we use this to sort raw item data before it becomes a full-fledged item. So we use either system or data, as needed
     if (!skill) return 0;
     const data = skill.system ?? skill;
     let value = Number(data.level) || 0;
@@ -528,9 +810,17 @@ export class CyberpunkActor extends Actor {
   }
 
   getSkillVal(skillName) {
-    console.log("SkillName:", skillName);
-    console.log("SkillName_localize:", localize("Skill"+skillName));
-    console.log("lang:", game.i18n);
+    const customMartial = this._getCustomMartialSkill(skillName);
+    if (customMartial) return CyberpunkActor.realSkillValue(customMartial);
+
+    const martialId = MARTIAL_ART_ID_BY_KEY?.[skillName];
+    if (martialId) {
+      const byId = this._getSkillByStableId(martialId);
+      return byId ? CyberpunkActor.realSkillValue(byId) : 0;
+    }
+
+    const martialByDisplayName = this._getMartialSkillByDisplayName(skillName);
+    if (martialByDisplayName) return CyberpunkActor.realSkillValue(martialByDisplayName);
 
     const nameLoc = localize("Skill" + skillName);
     const prefixLoc = localize("SkillMartialArts");
@@ -538,19 +828,15 @@ export class CyberpunkActor extends Actor {
     const shortName = nameLoc.includes("Skill") ? null : nameLoc;
     const candidates = new Set();
 
-    if (shortName) candidates.add(shortName);
-
+    if (shortName) candidates.add(CyberpunkActor._normalizeSkillName(shortName));
     if (shortName && !prefixLoc.includes("Skill")) {
-      candidates.add(`${prefixLoc}: ${shortName}`);
+      candidates.add(CyberpunkActor._normalizeSkillName(`${prefixLoc}: ${shortName}`));
     }
+    candidates.add(CyberpunkActor._normalizeSkillName(skillName));
 
-    candidates.add(skillName);
-
-    const skillItem = this.itemTypes.skill.find(s =>
-      candidates.has(s.name) || (shortName && s.name.endsWith(`: ${shortName}`))
-    );
-
+    const skillItem = this.itemTypes.skill.find(s => candidates.has(CyberpunkActor._normalizeSkillName(s.name)));
     if (!skillItem) return 0;
+
     return CyberpunkActor.realSkillValue(skillItem);
   }
 
@@ -711,9 +997,7 @@ export class CyberpunkActor extends Actor {
       ui.notifications.error(localize("NoCombatError"));
       return;
     }
-  
-    console.log(modificator);
-  
+
     const combat = game.combat;
     let combatant = combat.combatants.find(c => c.actorId === this.id);
   

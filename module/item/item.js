@@ -1,14 +1,10 @@
-import { weaponTypes, rangedAttackTypes, meleeAttackTypes, fireModes, rangedModifiers, ranges, rangeDCs, rangeResolve, strengthDamageBonus, getMartialActionBonus, martialActions } from "../lookups.js"
+import { weaponTypes, rangedAttackTypes, meleeAttackTypes, fireModes, ranges, rangeDCs, rangeResolve, strengthDamageBonus, getMartialActionBonus, martialActions, isFnff2Enabled, getFnff2DamageBonusSymbol, FNFF2_ONLY_MARTIAL_ART_IDS } from "../lookups.js"
 import { Multiroll, makeD10Roll } from "../dice.js"
-import { properCase, replaceIn, localize, localizeParam, rollLocation, cwHasType, cwIsEnabled, isFumbleRoll, buildRangedCombatFumbleData, buildSkillFumbleData, clamp} from "../utils.js";
-import { CyberpunkActor } from "../actor/actor.js";
+import { localize, localizeParam, rollLocation, cwHasType, cwIsEnabled, isFumbleRoll, buildRangedCombatFumbleData, buildSkillFumbleData, clamp } from "../utils.js";
+import { createCyberpunkChatMessage } from "../compat.js";
 
-/**
- * Extend the basic Item with some very simple modifications.
- * @extends {Item}
- */
+/** @extends {Item} */
 export class CyberpunkItem extends Item {
-  // This also has preparedata, but we don't have to worry about that so far
 
   /**
    * Cyberpunk 2020: any fractional damage is rounded down
@@ -23,6 +19,19 @@ export class CyberpunkItem extends Item {
     if (n <= 0) return 0;
 
     return Math.max(1, Math.floor(n));
+  }
+
+  static _resolveFullAutoRounds(attackMods = {}, system = {}) {
+    const rof = Math.max(0, Math.floor(Number(system?.rof) || 0));
+    const shotsLeft = Math.max(0, Math.floor(Number(system?.shotsLeft) || 0));
+    const maxRounds = Math.min(rof, shotsLeft);
+
+    if (maxRounds <= 0) return 0;
+
+    const requested = Math.floor(Number(attackMods?.fullAutoRoundsFired));
+    if (!Number.isFinite(requested) || requested <= 0) return maxRounds;
+
+    return clamp(requested, 1, maxRounds);
   }
 
   /**
@@ -44,6 +53,23 @@ export class CyberpunkItem extends Item {
       return `<a class="inline-roll inline-result cp-inline-roll roll-result roll ${cls}" data-roll="${json}">${v}</a>`;
     } catch (e) {
       return String(v);
+    }
+  }
+
+  /** @override */
+  async _preCreate(data, options, user) {
+    await super._preCreate(data, options, user);
+
+    try {
+      if (this.type === "skill") {
+        const id = data?._id || this._id;
+        if (id && FNFF2_ONLY_MARTIAL_ART_IDS.has(id) && !isFnff2Enabled()) {
+          ui?.notifications?.warn(game.i18n.localize("CYBERPUNK.FNFF2SkillDisabledWarn"));
+          throw new Error("FNFF2-only Martial Arts skill cannot be added while FNFF2 is disabled.");
+        }
+      }
+    } catch (e) {
+      throw e;
     }
   }
 
@@ -114,49 +140,51 @@ export class CyberpunkItem extends Item {
   }
 
   _prepareArmorData(system) {
-    // If new owner and armor covers this many areas or more, delete armor coverage areas the owner does not have
+    // Armor from compendiums/world items has no owning actor.
+    // Armor morphing must run only for owned actor items.
+    const actor = this.actor;
+    if (!actor) return;
+
+    const ownerLocs = actor.system?.hitLocations;
+    if (!ownerLocs) return;
+
+    if (!system.coverage || typeof system.coverage !== "object") {
+      system.coverage = {};
+    }
+
+    // If new owner and armor covers this many areas or more,
+    // delete armor coverage areas the owner does not have.
     const COVERAGE_CLEANSE_THRESHOLD = 20;
 
-    let skipReform = false;
-    // Sometimes this just BREAKS
-    try {
-      let idCheck = this.actor.id;
-    }
-    catch {
-      skipReform = true;
-    }
+    const lastOwnerId = system.lastOwnerId ?? "";
+    const nowOwned = !lastOwnerId;
+    const changedHands = !!lastOwnerId && lastOwnerId !== actor.id;
 
-    let nowOwned = !system.lastOwnerId && this.actor;
-    let changedHands = system.lastOwnerId !== undefined && system.lastOwnerId != this.actor.id;
-    if(!skipReform && (nowOwned || changedHands)) {
-      system.lastOwnerId = this.actor.id;
-      let ownerLocs = this.actor.system.hitLocations;
-      
-      // Time to morph the armor to its new owner!
-      // I just want this here so people can armor up giant robotic snakes if they want, y'know? or mechs.
-      // ...I am fully aware this is overkill effort for most games.
-      let areasCovered = Object.keys(system.coverage).length;
-      let cleanseAreas = areasCovered > COVERAGE_CLEANSE_THRESHOLD;
-      if(cleanseAreas) {
-        // Remove any extra areas
-        // This is so that armors can't be made bigger indefinitely. No idea why players might do that, but hey.
-        for(let armorArea in system.coverage) {
-          if(!ownerLocs[armorArea]) {
-            console.warn(`ARMOR MORPH: The new owner of this armor (${this.actor.name}) does not have a ${armorArea}. Removing the area from the armor.`)
-            delete system.coverage.armorArea;
-          }
+    if (!(nowOwned || changedHands)) return;
+
+    system.lastOwnerId = actor.id;
+
+    // Time to morph the armor to its new owner.
+    const areasCovered = Object.keys(system.coverage).length;
+    const cleanseAreas = areasCovered > COVERAGE_CLEANSE_THRESHOLD;
+
+    if (cleanseAreas) {
+      // Remove any extra areas.
+      for (const armorArea in system.coverage) {
+        if (!ownerLocs[armorArea]) {
+          console.warn(`ARMOR MORPH: The new owner of this armor (${actor.name}) does not have a ${armorArea}. Removing the area from the armor.`);
+          delete system.coverage[armorArea];
         }
       }
-      
-      // TODO: Strict bodytypes option?
-      // Add any areas the owner has but the armor doesn't.
-      for(let ownerLoc in ownerLocs) {
-        if(!system.coverage[ownerLoc]) {
-          system.coverage[ownerLoc] = {
-            stoppingPower: 0,
-            ablation: 0
-          }
-        }
+    }
+
+    // Add any areas the owner has but the armor doesn't.
+    for (const ownerLoc in ownerLocs) {
+      if (!system.coverage[ownerLoc]) {
+        system.coverage[ownerLoc] = {
+          stoppingPower: 0,
+          ablation: 0
+        };
       }
     }
   }
@@ -212,7 +240,6 @@ export class CyberpunkItem extends Item {
     };
   }
 
-  // TODO: For 0.8.1, we want to also add flavor text to the different modifiers
   // Get the roll modifiers to add when given a certain set of modifiers
   __shootModTerms({
     aimRounds,
@@ -227,7 +254,8 @@ export class CyberpunkItem extends Item {
     turningToFace,
     range,
     fireMode,
-    extraMod
+    extraMod,
+    fullAutoRoundsFired
   }) {
     const sys = this._getWeaponSystem ? this._getWeaponSystem() : this.system;
     let terms = []
@@ -264,13 +292,11 @@ export class CyberpunkItem extends Item {
     }
 
     // Range on its own doesn't actually apply a modifier - it only affects to-hit rolls. But it does affect certain fire modes.
-    // For now assume full auto = all bullets; spray and pray
+    // Full auto now uses the number of rounds chosen in the attack dialog, capped by ROF and remaining ammunition.
     // +1/-1 per 10 bullets fired. + if close, - if medium onwards.
     // Friend's copy of the rulebook states penalties/bonus for all except point blank
     if(fireMode === fireModes.fullAuto) {
-      const shotsLeft = Number(sys.shotsLeft) || 0;
-      const rof = Number(sys.rof) || 0;
-      const bullets = Math.min(shotsLeft, rof);
+      const bullets = CyberpunkItem._resolveFullAutoRounds({ fullAutoRoundsFired }, sys);
       // If close range, add, else subtract
       let multiplier = 
           (range === ranges.close) ? 1 
@@ -292,9 +318,19 @@ export class CyberpunkItem extends Item {
   }
 
   // Melee mods are a lot...simpler? I could maybe add swept or something, or opponent dodging. That'll be best once choosing targets is done
-  __meleeModTerms({extraMod}) {
+  __meleeModTerms({ extraMod, targetArea }) {
+    const terms = [];
+
+    if (!!targetArea) {
+      terms.push(-4);
+    }
+
     const n = Number(extraMod);
-    return Number.isFinite(n) && n !== 0 ? [n] : [];
+    if (Number.isFinite(n) && n !== 0) {
+      terms.push(n);
+    }
+
+    return terms;
   }
 
   // Now, this is gonna have to ask the player for different things depending on the weapon
@@ -326,21 +362,21 @@ export class CyberpunkItem extends Item {
     let owner = this.actor;
     const system = this._getWeaponSystem();
 
+    if (owner === null) {
+      throw new Error("This item isn't owned by anyone.");
+    }
 
-    if (system.shotsLeft <= 0) {
+    const isRanged = this.isRanged();
+
+    if (isRanged && Number(system?.shotsLeft ?? 0) <= 0) {
       ui.notifications.warn(localize("NoAmmo"));
       return false;
     }
 
-    if (owner === null) {
-      throw new Error("This item isn't owned by anyone.");
-    }
-    let isRanged = this.isRanged();
-    if(!isRanged) {
+    if (!isRanged) {
       if (system.attackType === meleeAttackTypes.martial) {
         return this.__martialBonk(attackMods);
-      }
-      else {
+      } else {
         return this.__meleeBonk(attackMods);
       }
     }
@@ -421,7 +457,7 @@ export class CyberpunkItem extends Item {
       // The kind of distance we're attacking at, so we can display Close: <50m or something like that
       let actualRangeBracket = rangeResolve[attackMods.range](system.range);
       let DC = rangeDCs[attackMods.range];
-      let targetCount = targetTokens.length || attackMods.targetsCount || 1;
+      let targetCount = Math.max(1, targetTokens.length || Number(attackMods.targetsCount) || 1);
       const rollData = this.actor?.getRollData?.() ?? {};
       const maximizeDamage = this._shouldMaximizePointBlankDamage(attackMods);
       const maxDamageRoll = maximizeDamage
@@ -430,19 +466,25 @@ export class CyberpunkItem extends Item {
       const maxDamage = maximizeDamage
         ? CyberpunkItem._floorDamageTotal(maxDamageRoll.total)
         : null;
+      const totalRounds = CyberpunkItem._resolveFullAutoRounds(attackMods, system);
       
       // This is a somewhat flawed multi-target thing - given target tokens, we could calculate distance (& therefore penalty) for each, and apply damage to them
       let rolls = [];
       let shotsLeft = Number(system.shotsLeft) || 0;
-      const perTarget = Math.max(1, Math.floor((Number(system.rof) || 0) / targetCount));
-      for (let i = 0; i < targetCount; i++) {
-          let attackRoll = await this.attackRoll(attackMods);
+      let roundsToAllocate = Math.min(totalRounds, shotsLeft);
 
-          const perTarget = Math.max(1, Math.floor((Number(system.rof) || 0) / targetCount));
+      for (let i = 0; i < targetCount && roundsToAllocate > 0; i++) {
+          const remainingTargets = targetCount - i;
+          const plannedRoundsForTarget = Math.ceil(roundsToAllocate / remainingTargets);
+          const attackModsForTarget = {
+            ...attackMods,
+            fullAutoRoundsFired: plannedRoundsForTarget
+          };
 
+          let attackRoll = await this.attackRoll(attackModsForTarget);
           const rangedFumble = await this._maybeApplyRangedFumble(attackRoll);
 
-          let roundsFired = Math.min(shotsLeft, perTarget);
+          let roundsFired = Math.min(shotsLeft, plannedRoundsForTarget);
 
           if (rangedFumble) {
             roundsFired = Math.min(shotsLeft, 1);
@@ -450,8 +492,10 @@ export class CyberpunkItem extends Item {
 
           if (rangedFumble?.outcome?.discharge) {
             shotsLeft = 0;
+            roundsToAllocate = 0;
           } else {
             shotsLeft = Math.max(0, shotsLeft - roundsFired);
+            roundsToAllocate = Math.max(0, roundsToAllocate - roundsFired);
           }
 
           await this.__setWeaponField("shotsLeft", shotsLeft);
@@ -464,6 +508,7 @@ export class CyberpunkItem extends Item {
           if (rangedFumble?.forceMiss) {
             roundsHit = 0;
           }
+
           let areaDamages = {};
           // Roll damage for each of the bullets that hit
           for (let i = 0; i < roundsHit; i++) {
@@ -484,6 +529,7 @@ export class CyberpunkItem extends Item {
                 damageHtml: CyberpunkItem._inlineRollHtml(dmg, dmgRoll, "damage")
               });
           }
+
           let templateData = {
               target: targetTokens[i] || undefined,
               range: attackMods.range,
@@ -498,10 +544,12 @@ export class CyberpunkItem extends Item {
               },
               fumble: rangedFumble?.fumble ?? null,
           };
+
           let roll = new Multiroll(`${localize("Autofire")}`, `${localize("Range")}: ${localizeParam(attackMods.range, {range: actualRangeBracket})}`);
-          roll.execute(undefined, "systems/cyberpunk2020/templates/chat/multi-hit.hbs", templateData);
+          await roll.execute(undefined, "systems/cyberpunk2020/templates/chat/multi-hit.hbs", templateData);
           rolls.push(roll);
       }
+
       return rolls;
   }
 
@@ -576,9 +624,15 @@ export class CyberpunkItem extends Item {
 
   async __suppressiveFire(mods = {}) {
     const sys = this._getWeaponSystem();
-    const rounds = clamp(Number(mods.roundsFired) || Number(sys.rof) || 0, 1, Number(sys.shotsLeft) || 0);
+    const rof = Math.max(0, Math.floor(Number(sys.rof) || 0));
+    const shotsLeft = Math.max(0, Math.floor(Number(sys.shotsLeft) || 0));
+    const maxRounds = Math.min(rof, shotsLeft);
+    const requestedRounds = Math.floor(Number(mods.roundsFired) || maxRounds);
+    const rounds = maxRounds > 0
+      ? clamp(requestedRounds, 1, maxRounds)
+      : 0;
     const width = Math.max(2, Number(mods.zoneWidth ?? 2));
-    const targets = Math.max(1, Number(mods.targetsCount ?? 1));
+    const targets = Math.max(1, Math.floor(Number(mods.targetsCount ?? 1)));
 
     await this.__setWeaponField("shotsLeft", sys.shotsLeft - rounds);
 
@@ -612,11 +666,11 @@ export class CyberpunkItem extends Item {
       { weaponName: this.name, rounds, width, saveDC, dmgFormula, results }
     );
 
-    ChatMessage.create({
+    await createCyberpunkChatMessage({
       speaker: ChatMessage.getSpeaker({ actor: this.actor }),
       content: html,
       flags : { cyberpunk2020: { fireMode: "suppressive" } }
-    });
+    }, { useDefaultRollMode: true });
   }
 
   async __semiAuto(attackMods) {
@@ -677,12 +731,13 @@ export class CyberpunkItem extends Item {
   }
 
   async __meleeBonk(attackMods) {
-      // Just doesn't have a DC - is contested instead
+      // Melee attacks do not have a fixed DC; they are contested instead
       let attackRoll = await this.attackRoll(attackMods);
 
       // Take into account the CyberTerminus modifier for damage
       const system = this._getWeaponSystem ? this._getWeaponSystem() : this.system;
       let damageFormula = `${system.damage}+@strengthBonus`;
+
       if (attackMods.cyberTerminus) {
           switch (attackMods.cyberTerminus) {
               case "CyberTerminusX2":
@@ -696,14 +751,22 @@ export class CyberpunkItem extends Item {
                   break;
           }
       }
+
       let damageRoll = await new Roll(damageFormula, {
           strengthBonus: strengthDamageBonus(this.actor.system.stats.bt.total)
       }).evaluate();
 
       // CP2020: any fractional damage is rounded down
-      damageRoll._total = CyberpunkItem._floorDamageTotal(damageRoll.total);
+      const damage = CyberpunkItem._floorDamageTotal(damageRoll.total);
+      damageRoll._total = damage;
 
-      let locationRoll = await rollLocation(attackMods.targetActor, attackMods.targetArea);
+      const locationRoll = await rollLocation(attackMods.targetActor, attackMods.targetArea);
+      const areaDamages = {};
+
+      areaDamages[locationRoll.areaHit] = [{
+        damage,
+        damageHtml: CyberpunkItem._inlineRollHtml(damage, damageRoll, "damage")
+      }];
 
       let fumble = null;
       if (game.settings.get("cyberpunk2020", "fumbleTableEnabled") && isFumbleRoll(attackRoll)) {
@@ -714,70 +777,134 @@ export class CyberpunkItem extends Item {
       }
 
       let bigRoll = new Multiroll(this.name, this.system.flavor)
-        .addRoll(attackRoll, { name: localize("Attack") })
-        .addRoll(damageRoll, { name: localize("Damage") })
-        .addRoll(locationRoll.roll, { name: localize("Location"), flavor: locationRoll.areaHit });
+        .addRoll(attackRoll, { name: localize("Attack") });
 
-      bigRoll.defaultExecute({ img: this.img, fumble });
+      await bigRoll.execute(
+        undefined,
+        "systems/cyberpunk2020/templates/chat/multi-hit.hbs",
+        {
+          attackRoll,
+          hit: true,
+          hits: 1,
+          areaDamages,
+          suppressHitTally: true,
+          fumble
+        }
+      );
+
       return bigRoll;
   }
   async __martialBonk(attackMods) {
     let actor = this.actor;
     let system = actor.system;
+
     // Action being done, eg strike, block etc
     let action = attackMods.action;
     let martialArt = attackMods.martialArt;
 
-    // Will be something this line once I add the martial arts bonuses. None for brawling, remember
-    // let martialBonus = this.actor?.skills.MartialArts[martialArt].bonuses[action];
     let isMartial = martialArt != "Brawling";
     let keyTechniqueBonus = 0;
     let martialSkillLevel = actor.getSkillVal(martialArt);
     let flavor = game.i18n.has(`CYBERPUNK.${action + "Text"}`) ? localize(action + "Text") : "";
 
-    let results = new Multiroll(localizeParam("MartialTitle", {action: localize(action), martialArt: localize("Skill" + martialArt)}), flavor);
+    const martialArtLabel = actor.getMartialDisplayName?.(martialArt) ?? localize("Skill" + martialArt);
+    let results = new Multiroll(
+      localizeParam("MartialTitle", { action: localize(action), martialArt: martialArtLabel }),
+      flavor
+    );
 
-    // All martial arts are contested
     // Bonus for a specific action from the selected martial art
     const actionBonus = getMartialActionBonus(martialArt, action);
 
     // Additional modifier from the dialog
     const extraMod = Number(attackMods.extraMod || 0);
 
-    // Martial arts throw formula: reflex + skill level + special technique + action bonus + additional mod
-    // If the reception is performed through a weapon item (including cyber weapons), we take its WA
+    // Same aimed-location penalty as ranged attacks
+    const targetAreaMod = attackMods.targetArea ? -4 : 0;
+
+    // FNFF2: Martial Damage Bonus rules
+    const fnff2 = isFnff2Enabled();
+
+    let martialDamageBonusValue = 0;
+
+    if (isMartial) {
+      if (!fnff2) {
+        martialDamageBonusValue = martialSkillLevel;
+      } else {
+        const symbol = getFnff2DamageBonusSymbol(action);
+        const isKeyVariant = actionBonus > 0;
+
+        const levelForDamage =
+          (martialArt === "Martial Arts: PanzerFaust")
+            ? Math.floor(martialSkillLevel * 1.5)
+            : martialSkillLevel;
+
+        // * — damage bonus works if Key Variant
+        // $ — works only if Key Variant
+        // % / @ — do not give damage bonus from MA level
+        if ((symbol === "*" || symbol === "$") && isKeyVariant) {
+          martialDamageBonusValue = levelForDamage;
+        } else {
+          martialDamageBonusValue = 0;
+        }
+      }
+    }
+
+    // Martial arts attack formula: reflex + skill level + special technique + action bonus + additional mod.
+    // If the action is performed through a weapon item, including cyber weapons, use its WA.
     const sysForAcc = this._getWeaponSystem ? this._getWeaponSystem() : this.system;
     const weaponAccuracy = Number(sysForAcc?.accuracy ?? 0) || 0;
 
     let attackRoll = new Roll(
-      `1d10x10 + @stats.ref.total + @attackBonus + @keyTechniqueBonus + @actionBonus + @extraMod${weaponAccuracy !== 0 ? " + @weaponAccuracy" : ""}`, 
+            `1d10x10 + @stats.ref.total + @attackBonus + @keyTechniqueBonus + @actionBonus + @extraMod + @targetAreaMod${weaponAccuracy !== 0 ? " + @weaponAccuracy" : ""}`,
       {
         stats: system.stats,
         attackBonus: martialSkillLevel,
         keyTechniqueBonus: keyTechniqueBonus,
         actionBonus: actionBonus,
         extraMod: extraMod,
+        targetAreaMod,
         weaponAccuracy
       }
     );
-    results.addRoll(attackRoll, {name: "Attack"});
 
-    // Base damage: if the weapon has a damage field, use it
-    // Otherwise, fall back to the standard dice rolls for strikes/kicks/throws/chokes
+    results.addRoll(attackRoll, { name: localize("Attack") });
+
+    // At this stage, martial damage is taken only from the selected weapon item.
+    // Non-damaging actions keep the compact roll-only chat card.
+    //
+    // Damage-capable actions:
+    // - Standard CP2020: Strike, Kick, Throw, Choke.
+    // - FNFF2 additions: Punch, Jump Kick, Ram, Cast.
+    //
+    // Roll-only actions:
+    // Dodge, Block/Parry, All-Out Parry, All-Out Dodge,
+    // Disarm, Sweep/Trip, Grapple, Hold, Escape.
     const sysWeapon = this._getWeaponSystem ? this._getWeaponSystem() : this.system;
-    const baseWeaponDamage = (sysWeapon?.damage && String(sysWeapon.damage).trim()) ? String(sysWeapon.damage).trim() : "";
+    const baseWeaponDamage = (sysWeapon?.damage && String(sysWeapon.damage).trim())
+      ? String(sysWeapon.damage).trim()
+      : "";
+
+    const damagingMartialActions = new Set([
+      martialActions.strike,
+      martialActions.punch,
+      martialActions.kick,
+      martialActions.jumpKick,
+      martialActions.ram,
+      martialActions.cast,
+      martialActions.throw,
+      martialActions.choke
+    ]);
+
+    const canDealDamage = damagingMartialActions.has(action);
     let damageFormula = "";
 
-    if (baseWeaponDamage) {
+    if (canDealDamage && baseWeaponDamage) {
       damageFormula = `${baseWeaponDamage}+@strengthBonus+@martialDamageBonus`;
-    } else if (action === martialActions.strike) {
-      damageFormula = "1d3+@strengthBonus+@martialDamageBonus";
-    } else if ([martialActions.kick, martialActions.throw, martialActions.choke].includes(action)) {
-      damageFormula = "1d6+@strengthBonus+@martialDamageBonus";
     }
 
     // CyberTerminus modifier
-    if (attackMods?.cyberTerminus) {
+    if (attackMods?.cyberTerminus && damageFormula) {
       switch (attackMods.cyberTerminus) {
         case "CyberTerminusX2":
           damageFormula = `(${damageFormula})*2`;
@@ -791,20 +918,6 @@ export class CyberpunkItem extends Item {
       }
     }
 
-    if (damageFormula) {
-      const loc = await rollLocation(attackMods.targetArea);
-      results.addRoll(loc.roll, { name: localize("Location"), flavor: loc.areaHit });
-      const damageRoll = await new Roll(damageFormula, {
-        strengthBonus: strengthDamageBonus(system.stats.bt.total),
-        // Martial arts get a damage bonus
-        martialDamageBonus: isMartial ? martialSkillLevel : 0
-      }).evaluate();
-
-      // CP2020: any fractional damage is rounded down
-      damageRoll._total = CyberpunkItem._floorDamageTotal(damageRoll.total);
-
-      results.addRoll(damageRoll, { name: localize("Damage") });
-    }
     if (!attackRoll._evaluated) {
       await attackRoll.evaluate();
     }
@@ -817,7 +930,40 @@ export class CyberpunkItem extends Item {
       });
     }
 
-    await results.defaultExecute({ img: this.img, fumble });
+    // Defensive/non-damaging martial actions keep the compact default roll card.
+    if (!damageFormula) {
+      await results.defaultExecute({ img: this.img, fumble });
+      return results;
+    }
+
+    const locationRoll = await rollLocation(attackMods.targetActor, attackMods.targetArea);
+    const damageRoll = await new Roll(damageFormula, {
+      strengthBonus: strengthDamageBonus(system.stats.bt.total),
+      martialDamageBonus: martialDamageBonusValue
+    }).evaluate();
+
+    const damage = CyberpunkItem._floorDamageTotal(damageRoll.total);
+    damageRoll._total = damage;
+
+    const areaDamages = {};
+    areaDamages[locationRoll.areaHit] = [{
+      damage,
+      damageHtml: CyberpunkItem._inlineRollHtml(damage, damageRoll, "damage")
+    }];
+
+    await results.execute(
+      undefined,
+      "systems/cyberpunk2020/templates/chat/multi-hit.hbs",
+      {
+        attackRoll,
+        hit: true,
+        hits: 1,
+        areaDamages,
+        suppressHitTally: true,
+        fumble
+      }
+    );
+
     return results;
   }
 

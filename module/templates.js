@@ -57,6 +57,9 @@ export const preloadHandlebarsTemplates = async function() {
         "systems/cyberpunk2020/templates/item/parts/program/summary.hbs",
         "systems/cyberpunk2020/templates/item/parts/program/settings.hbs",
         
+        // Ammo parts
+        "systems/cyberpunk2020/templates/item/parts/ammo/summary.hbs",
+        "systems/cyberpunk2020/templates/item/parts/ammo/settings.hbs",
     ]);
   };
   

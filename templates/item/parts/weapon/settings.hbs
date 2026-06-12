@@ -3,28 +3,19 @@
     {{> (template "fields/string") label="Damage" edit="system.damage"}}
     {{> (template "fields/number") label="Accuracy" edit="system.accuracy"}}
     {{> (template "fields/number") label="Range" edit="system.range"}}
-    {{> (template "fields/boolean") label="AP" edit="system.ap"}}
 
-    {{!-- Something like this will end up being in there, but it's not currently ready for release --}}
-    {{!-- <details class="field span-two-cells">
-        <summary>{{localize "Advanced"}}</summary>
-        <div class="field-list">
-            {{> (template "fields/string") label=(concat (localize "DamageShort") "(" (localize "PointBlank") ")")  edit="system.rangeDamages.pointBlank"}}
-            {{> (template "fields/string") label=(concat (localize "DamageShort") "(" (localize "Short") ")")  edit="system.rangeDamages.short"}}
-            {{> (template "fields/string") label=(concat (localize "DamageShort") "(" (localize "Medium") ")")  edit="system.rangeDamages.medium"}}
-            {{> (template "fields/string") label=(concat (localize "DamageShort") "(" (localize "Far") ")")  edit="system.rangeDamages.far"}}
-            {{> (template "fields/string") label=(concat (localize "DamageShort") "(" (localize "Extreme") ")")  edit="system.rangeDamages.extreme"}}
-        </div>
-    </details> --}}
+    {{> (template "fields/select") label="Reliability" edit="system.reliability" choices=reliabilities}}
 </div>
 
-{{!-- Stuff that affects how many shots the weapon can pump out --}}
+{{!-- Ammo-related fields: only for ranged weapons --}}
+{{#unless (equals system.weaponType 'Melee')}}
 <div class="field-list">
     {{> (template "fields/number") label="ShotsLeft" edit="system.shotsLeft"}}
     {{> (template "fields/number") label="Shots" edit="system.shots"}}
     {{> (template "fields/number") label="RoF" edit="system.rof"}}
-    {{> (template "fields/select") label="Reliability" edit="system.reliability" choices=reliabilities}}
+    {{> (template "fields/select") label="Ammo" edit="system.ammoItemId" choices=ammoChoices allowBlank=true}}
 </div>
+{{/unless}}
 
 {{!-- What kind of thing is this weapon, how it's used --}}
 <div class="field-list">
@@ -40,14 +31,14 @@
             {{!-- This will be populated by actor skills if it's held by an actor, but an input is at least editable --}}
             <datalist id="possibleSkills">
                 {{#each attackSkills as |skill|}}
-                <option value="{{skill}}">{{skill}}</option>
+                <option value="{{skill.value}}">{{skill.label}}</option>
                 {{/each}}
             </datalist>
             <input type="text" list="possibleSkills" placeholder="Choose Skill" name="system.attackSkill" value="{{system.attackSkill}}"/>
         {{else}}
             <select name="system.attackSkill">
                 {{#each attackSkills as |skill|}}
-                <option value="{{skill}}" {{#if (equals ../system.attackSkill skill)}}selected{{/if}}>{{skill}}</option>
+                <option value="{{skill.value}}" {{#if (equals ../system.attackSkill skill.value)}}selected{{/if}}{{#if (equals ../system.attackSkill skill.label)}}selected{{/if}}>{{skill.label}}</option>
                 {{/each}}
             </select>
         {{/if}}
@@ -58,6 +49,10 @@
 {{!-- Market stuff --}}
 <div class="field-list">
     {{> (template "fields/select") label="Availability" edit="system.availability" choices=availabilities}}
-    {{!-- Ammo counts as market, as it doesn't affect things mechanically currently --}}
-    {{> (template "fields/string") label="AmmoType" edit="system.ammoType"}}
+
+    {{#if isMelee}}
+        {{> (template "fields/boolean") label="AP" edit="system.ap"}}
+    {{else}}
+        {{> (template "fields/string") label="AmmoType" edit="system.ammoType"}}
+    {{/if}}
 </div>

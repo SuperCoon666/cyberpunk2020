@@ -7,7 +7,9 @@
         selected
         {{~/if}}>
 
-        {{~#if ../noTranslateOptions}}
+        {{~#if label}}
+            {{~label}}
+        {{~else if ../noTranslateOptions}}
             {{~value}} 
         {{~else if localData}} {{!-- If we have extra parameters for localization, use those --}}
             {{~CPLocalParam localKey localData}}

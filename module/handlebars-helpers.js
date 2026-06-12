@@ -34,6 +34,14 @@ export function registerHandlebarsHelpers() {
     const types = Array.isArray(cwt?.Types) ? cwt.Types : [];
     return types.includes(type) || cwt?.Type === type;
     });
+    Handlebars.registerHelper("inc", function (v) {
+        return Number(v) + 1;
+    });
+    // Ammo effect selector (multi-select)
+    Handlebars.registerHelper('ammoHasEffect', function(sys, effect) {
+    const list = Array.isArray(sys?.effectTypes) ? sys.effectTypes : (sys?.effectTypes ? [sys.effectTypes] : ["None"]);
+    return list.includes(effect);
+    });
     Handlebars.registerHelper('compare', function(x, operator, y) {
         switch (operator) {
             case "===":
@@ -109,11 +117,12 @@ export function registerHandlebarsHelpers() {
     Handlebars.registerHelper("selectOption", function(choice, options) {
         let context = {};
         // We're using the more complex layout of choices. Almost no real translation needed (except for choosing local key)
-        if(choice.value !== undefined) {
+        if(choice && typeof choice === "object" && choice.value !== undefined) {
             context = {
                 value: choice.value,
                 localKey: choice.localKey || choice.value,
-                localData: choice.localData
+                localData: choice.localData,
+                label: choice.label
             }
         }
         // Just ["one", "two"] etc
@@ -121,7 +130,8 @@ export function registerHandlebarsHelpers() {
             context = {
                 value: choice,
                 localKey: choice,
-                localData: undefined
+                localData: undefined,
+                label: undefined
             }
         }
 

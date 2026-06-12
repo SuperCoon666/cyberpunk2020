@@ -1,12 +1,9 @@
 import { weaponTypes, meleeAttackTypes, rangedAttackTypes, attackSkills, concealability, availability, reliability, getStatNames } from "../lookups.js";
 import { formulaHasDice } from "../dice.js";
-import { localize, cwHasType, getSkillIndex } from "../utils.js";
-import { getMartialKeyByName } from '../translations.js'
+import { deleteFieldUpdate, localize, cwHasType, getSkillIndex } from "../utils.js";
+import { createCyberpunkChatMessage, getHtmlElement, getPublicMessageMode, getRichEditorHTML, saveRichEditorHTML, rollToCyberpunkChatMessage } from "../compat.js";
 
-/**
- * Extend the basic ItemSheet with some very simple modifications
- * @extends {ItemSheet}
- */
+/** @extends {ItemSheet} */
 export class CyberpunkItemSheet extends ItemSheet {
 
   /** @override */
@@ -21,23 +18,20 @@ export class CyberpunkItemSheet extends ItemSheet {
 
   /** @override */
   get template() {
-    const path = "systems/cyberpunk2020/templates/item";
-    // Return a single sheet for all item types.
-    // return `${path}/item-sheet.hbs`;
-
-    // Alternatively, you could use the following return statement to do a
-    // unique item sheet by type, like `weapon-sheet.hbs`.
-    return `${path}/item-sheet.hbs`;
+    return "systems/cyberpunk2020/templates/item/item-sheet.hbs";
   }
 
   /* -------------------------------------------- */
 
   /** @override */
   async getData() {
-    // This means the handlebars data and the form edit data actually mirror each other
     const data = await super.getData();
     data.system = this.item.system;
+    data.owner = this.item.isOwner;
+    data.editable = this.isEditable ?? this.options?.editable ?? false;
     data.isGM = game.user.isGM;
+    data.canEditCyberwareHumanity = game.user.isGM
+      || game.settings.get("cyberpunk2020", "playersCanEditCyberwareHumanity");
 
     switch (this.item.type) {
       case "weapon":
@@ -55,6 +49,10 @@ export class CyberpunkItemSheet extends ItemSheet {
       case "cyberware": 
         await this._prepareCyberware(data); 
         break;
+      
+      case "ammo":
+          this._prepareAmmo(data);
+          break;
 
       default:
         break;
@@ -66,26 +64,204 @@ export class CyberpunkItemSheet extends ItemSheet {
     sheet.stats = getStatNames();
   }
 
+  _prepareAmmo(sheet) {
+    const sys = this.item?.system ?? {};
+    const updates = {};
+    const setIfMissing = (key, value) => {
+      if (sys[key] === null || sys[key] === undefined) updates[`system.${key}`] = value;
+    };
+    setIfMissing("quantity", 0);
+
+    setIfMissing("armorMultSoft", 1);
+    setIfMissing("armorMultHard", 1);
+    setIfMissing("rawDamageMult", 1);
+    setIfMissing("penDamageMult", 1);
+    setIfMissing("bonusDamageFormula", "");
+    setIfMissing("accuracyMod", 0);
+
+    setIfMissing("stunSaveOnHit", false);
+    setIfMissing("stunSaveMod", 0);
+
+    setIfMissing("dotEnabled", false);
+    setIfMissing("dotTurns", 0);
+    setIfMissing("dotDamageFormula", "");
+
+    setIfMissing("blastRadius", 0);
+    setIfMissing("blastZones", 4);
+    setIfMissing("blastShrapnel", false);
+    setIfMissing("blastFullDamageWithin", 1);
+
+    const zones = Math.max(1, Math.min(10, Number(sys.blastZones ?? 4)));
+
+    const defaultMult = (i) => 1 / (2 ** (i + 1));
+    if (Array.isArray(sys.blastMultipliers) && sys.blastMultipliers.length && Number(sys.blastMultipliers[0]) === 1) {
+      const fixed = sys.blastMultipliers.slice(1);
+
+      while (fixed.length < zones) fixed.push(defaultMult(fixed.length));
+      fixed.length = zones;
+
+      updates["system.blastMultipliers"] = fixed;
+    }
+
+    if (!sys.blastMultipliers) {
+      updates["system.blastMultipliers"] = Array.from({ length: zones }, (_, i) => defaultMult(i));
+    } else if (!Array.isArray(sys.blastMultipliers)) {
+      const obj = sys.blastMultipliers;
+      const arr = Array.from({ length: zones }, (_, i) => {
+        const raw = obj[i] ?? obj[String(i)];
+        const n = Number(String(raw ?? "").replace(",", "."));
+        return Number.isFinite(n) ? n : defaultMult(i);
+      });
+      updates["system.blastMultipliers"] = arr;
+    } else {
+      let cur = sys.blastMultipliers.slice();
+
+      if (cur.length && Number(cur[0]) === 1) cur.shift();
+
+      cur = cur.slice(0, zones).map((v, i) => {
+        const n = Number(String(v ?? "").replace(",", "."));
+        return Number.isFinite(n) ? n : defaultMult(i);
+      });
+
+      while (cur.length < zones) cur.push(defaultMult(cur.length));
+
+      const prev = sys.blastMultipliers;
+      const changed =
+        cur.length !== prev.length ||
+        cur.some((v, i) => v !== prev[i]);
+
+      if (changed) {
+        updates["system.blastMultipliers"] = cur;
+      }
+    }
+
+    setIfMissing("spreadMode", "single");
+    setIfMissing("spreadDistance", 0);
+    setIfMissing("spreadDamageShort", "");
+    setIfMissing("spreadDamageMedium", "");
+    setIfMissing("spreadDamageLong", "");
+    setIfMissing("spreadWidthShort", 1);
+    setIfMissing("spreadWidthMedium", 2);
+    setIfMissing("spreadWidthLong", 3);
+
+    if (Object.keys(updates).length) {
+      this.item.updateSource(updates);
+      sheet.system = this.item.system;
+    }
+
+    // Weapon type (category of weapon for which the ammunition is intended)
+    sheet.ammoReloadTypes = [
+      // Bullet weapons.
+      "AmmoReloadLightPistolSMG",
+      "AmmoReloadMediumPistolSMG",
+      "AmmoReloadHeavyPistolSMG",
+      "AmmoReloadVeryHeavyPistol",
+      "AmmoReloadAssaultRifle",
+      "AmmoReloadShotgun",
+
+      // Individual categories
+      "AmmoWeaponArrows",
+      "AmmoWeaponCrossbowQuarrels",
+      "AmmoWeaponAirguns",
+      "AmmoWeaponPaintloads",
+      "AmmoReloadNeedlegunRounds",
+      "AmmoReload20mmCannonRound",
+      "AmmoWeaponGauss",
+      "AmmoReloadFlamethrower",
+
+      "AmmoReloadGrenades",
+      "AmmoReloadRockets",
+      "AmmoReloadOther"
+    ];
+
+    // Blast zones selector options
+    sheet.blastZonesOptions = Object.fromEntries(
+      Array.from({ length: 10 }, (_, i) => {
+        const n = i + 1;
+        return [n, n];
+      })
+    );
+
+    // Indices for rendering multiplier inputs dynamically
+    sheet.blastMultiplierIndices = Array.from(
+      { length: Math.max(1, Math.min(10, Number(this.item.system?.blastZones ?? 4))) },
+      (_, i) => i
+    );
+
+    // Spread mode selector (Single / Spread)
+    sheet.ammoSpreadModes = [
+      { value: "single", localKey: "AmmoSpreadModeSingle" },
+      { value: "spread", localKey: "AmmoSpreadModeSpread" }
+    ];
+
+    const effectTypes = Array.isArray(sys.effectTypes)
+      ? sys.effectTypes
+      : (sys.effectTypes ? [sys.effectTypes] : ["None"]);
+
+    const effectKeyMap = {
+      None: "AmmoEffect_None",
+      CoreMods: "AmmoEffect_CoreMods",
+      Stun: "AmmoEffect_Stun",
+      DoT: "AmmoEffect_DoT",
+      Blast: "AmmoEffect_Blast",
+      Spread: "AmmoEffect_Spread"
+    };
+
+    sheet.ammoFx = {
+      typeLabels: (effectTypes.length ? effectTypes : ["None"])
+        .map(t => localize(effectKeyMap[t] ?? "AmmoEffect_None"))
+    };
+  }
+
   _prepareWeapon(sheet) {
     sheet.weaponTypes = Object.values(weaponTypes).sort();
     const isMelee = this.item.system.weaponType === weaponTypes.melee;
+    sheet.isMelee = isMelee;
     sheet.attackTypes = isMelee ? Object.values(meleeAttackTypes).sort() : Object.values(rangedAttackTypes).sort();
     sheet.concealabilities = Object.values(concealability);
     sheet.availabilities = Object.values(availability);
     sheet.reliabilities = Object.values(reliability);
 
+    if (this.item.system?.ammoItemId == null) {
+      this.item.updateSource({ "system.ammoItemId": "" });
+    }
+
+    sheet.ammoChoices = [];
+    const ammoOwner = this.item?.parent;
+
+    if (ammoOwner) {
+      const ammoItemsRaw = ammoOwner.itemTypes?.ammo ?? ammoOwner.items.filter(i => i.type === "ammo");
+      const ammoItems = ammoItemsRaw.filter(a => a.system?.equipped !== false);
+      sheet.ammoChoices = [...ammoItems]
+        .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+        .map(a => {
+          const ammoType = String(a.system?.ammoType ?? "");
+          const typeLabel = ammoType ? ammoType : "";
+          const label = typeLabel ? `${a.name} (${typeLabel})` : a.name;
+          return { value: a.id, localKey: label };
+        });
+    }
+
     const actor = this.item?.parent;
     const wType = this.item.system.weaponType || weaponTypes.pistol;
     const baseKeys = attackSkills[wType] || [];
     const includeMartials = (wType === weaponTypes.melee) && (this.item.system.attackType === meleeAttackTypes.martial);
-    const martialKeys = includeMartials ? (actor?.trainedMartials?.() || []).map(getMartialKeyByName) : [];
-    sheet.attackSkills = [...baseKeys, ...martialKeys].map(k => localize("Skill"+k));
+    const martialKeys = includeMartials ? (actor?.trainedMartials?.() || []) : [];
+    const toAttackSkillChoice = (key) => {
+      const martialLabel = actor?.getMartialDisplayName?.(key);
+      const localized = localize("Skill" + key);
+      return {
+        value: key,
+        label: martialLabel ?? (localized.includes("Skill") ? key : localized)
+      };
+    };
 
-    // TODO: Be not so inefficient for this
-    if(!sheet.attackSkills.length && this.actor) {
-      if(this.actor) {
-        sheet.attackSkills = this.actor.itemTypes.skill.map(skill => skill.name).sort();
-      }
+    sheet.attackSkills = [...baseKeys, ...martialKeys].map(toAttackSkillChoice);
+
+    if (!sheet.attackSkills.length && actor?.itemTypes?.skill) {
+      sheet.attackSkills = actor.itemTypes.skill
+        .map(skill => ({ value: skill.name, label: skill.name }))
+        .sort((a, b) => String(a.label).localeCompare(String(b.label)));
     }
   }
 
@@ -137,7 +313,6 @@ async _prepareCyberware(sheet) {
     });
   }
 
-  // Ensure EffectMode/EffectActive defaults exist (for legacy items)
   if (this.item.system?.EffectMode == null) {
     this.item.updateSource({ "system.EffectMode": "Permanent" });
   }
@@ -216,7 +391,7 @@ async _prepareCyberware(sheet) {
     const byId = this.actor?.items?.get(key);
     if (byId?.type === "skill") return byId.name;
     // Otherwise resolve via compendium index for current UI language
-    return this._cwSkillIdToName.get(key) || key; // legacy name-key fallback
+    return this._cwSkillIdToName.get(key) || key;
   };
 
   sheet.cw.currentSkills = Object.keys(cwt.Skill ?? {})
@@ -254,19 +429,51 @@ async _prepareCyberware(sheet) {
   sheet.weaponTypes = Object.values(weaponTypes).sort();
   const cwW = this.item.system?.CyberWorkType?.Weapon || {};
   const isMelee = cwW.weaponType === weaponTypes.melee;
+  sheet.cwWeaponIsMelee = isMelee;
   sheet.attackTypes = isMelee ? Object.values(meleeAttackTypes).sort() : Object.values(rangedAttackTypes).sort();
   sheet.concealabilities = Object.values(concealability);
   sheet.availabilities = Object.values(availability);
   sheet.reliabilities = Object.values(reliability);
 
+  if (this.item.system?.CyberWorkType?.Weapon?.ammoItemId == null) {
+    this.item.updateSource({ "system.CyberWorkType.Weapon.ammoItemId": "" });
+  }
+
+  sheet.cwAmmoChoices = [];
+  const ammoOwner = this.actor;
+
+  if (ammoOwner) {
+    const ammoItemsRaw = ammoOwner.itemTypes?.ammo ?? ammoOwner.items.filter(i => i.type === "ammo");
+    const ammoItems = ammoItemsRaw.filter(a => a.system?.equipped !== false);
+
+    sheet.cwAmmoChoices = [...ammoItems]
+      .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+      .map(a => {
+        const ammoType = String(a.system?.ammoType ?? "");
+        const label = ammoType ? `${a.name} (${ammoType})` : a.name;
+        return { value: a.id, localKey: label };
+      });
+  }
+
   const actor = this.item?.parent;
   const baseKeys = attackSkills[cwW.weaponType || weaponTypes.pistol] || [];
   const includeMartials = isMelee && (cwW.attackType === meleeAttackTypes.martial);
-  const martialKeys = includeMartials ? (actor?.trainedMartials?.() || []).map(getMartialKeyByName) : [];
-  sheet.attackSkills = [...baseKeys, ...martialKeys].map(k => localize("Skill"+k));
+  const martialKeys = includeMartials ? (actor?.trainedMartials?.() || []) : [];
+  const toAttackSkillChoice = (key) => {
+    const martialLabel = actor?.getMartialDisplayName?.(key);
+    const localized = localize("Skill" + key);
+    return {
+      value: key,
+      label: martialLabel ?? (localized.includes("Skill") ? key : localized)
+    };
+  };
+
+  sheet.attackSkills = [...baseKeys, ...martialKeys].map(toAttackSkillChoice);
   
   if (!sheet.attackSkills.length && this.actor) {
-    sheet.attackSkills = (this.actor.itemTypes.skill || []).map(s => s.name).sort((a, b) => a.localeCompare(b));
+    sheet.attackSkills = (this.actor.itemTypes.skill || [])
+      .map(skill => ({ value: skill.name, label: skill.name }))
+      .sort((a, b) => String(a.label).localeCompare(String(b.label)));
   }
 
   const TYPE_CHOICES_BASE = [
@@ -308,8 +515,7 @@ async _prepareCyberware(sheet) {
     // Only module-capable implant base types (no dynamic extras)
     sheet.cw.parentCwTypeChoices = TYPE_CHOICES_BASE;
 
-    // Normalize currently selected values (supports legacy aliases like "CYBERARM", "Arm", etc.)
-    sheet.cw.cyberwareTypeSelected = pickType(this.item.system?.cyberwareType) || "";
+      sheet.cw.cyberwareTypeSelected = pickType(this.item.system?.cyberwareType) || "";
     sheet.cw.allowedParentCwTypeSelected =
       pickType(this.item.system?.Module?.AllowedParentCyberwareType) ||
       String(this.item.system?.Module?.AllowedParentCyberwareType || "");
@@ -406,9 +612,14 @@ async _prepareCyberware(sheet) {
     await this.item.update(update);
     this.render(false);
   }
-  async _cwDelete(objPath, key) {
+  async _ammoSet(path, value) {
     const update = {};
-    update[`${objPath}.-=${key}`] = null;
+    foundry.utils.setProperty(update, path, value);
+    await this.item.update(update);
+    this.render(false);
+  }
+  async _cwDelete(objPath, key) {
+    const update = deleteFieldUpdate(`${objPath}.${key}`);
     await this.item.update(update);
     this.render(false);
   }
@@ -459,8 +670,16 @@ async _prepareCyberware(sheet) {
   activateListeners(html) {
     super.activateListeners(html);
 
+    const root = getHtmlElement(html);
+
+    const editable = this.isEditable ?? this.options?.editable ?? false;
+
+    // Notes editor autosave must be registered while the sheet is editable,
+    // but it is independent from the item controls below.
+    if (editable) this._cpSetupNotesAutosave(root);
+
     // Everything below here is only needed if the sheet is editable
-    if (!this.options.editable) return;
+    if (!editable) return;
 
     // Roll handlers, click handlers, etc. would go here, same as actor sheet.
     html.find(".item-roll").click(this.item.roll.bind(this));
@@ -543,6 +762,59 @@ async _prepareCyberware(sheet) {
       if (typeof this._cp_syncActiveFlagsToSkills === "function") {
         await this._cp_syncActiveFlagsToSkills();
       }
+    });
+
+    html.on("change", "select[name='system.ammoItemId']", async (ev) => {
+      if (this.item.type !== "weapon") return;
+
+      const value = String(ev.currentTarget.value ?? "");
+      await this.item.update({ "system.ammoItemId": value }, { render: false });
+    });
+    html.on("change", "select[name='system.CyberWorkType.Weapon.ammoItemId']", async (ev) => {
+      if (this.item.type !== "cyberware") return;
+
+      const value = String(ev.currentTarget.value ?? "");
+      await this.item.update({ "system.CyberWorkType.Weapon.ammoItemId": value }, { render: false });
+    });
+
+    // Allow comma decimal separator in numeric inputs (convert to dot)
+    html.on("change", 'input[type="number"]', (ev) => {
+      const el = ev.currentTarget;
+      if (typeof el.value === "string" && el.value.includes(",")) {
+        el.value = el.value.replace(",", ".");
+      }
+    });
+
+    // Ammo Blast Multipliers
+    html.on("change", "input.ammo-blast-mult", async (ev) => {
+      if (this.item.type !== "ammo") return;
+
+      ev.preventDefault();
+      ev.stopPropagation();
+
+      const el = ev.currentTarget;
+      const idx = Number(el.dataset.index);
+      if (!Number.isFinite(idx)) return;
+
+      const raw = String(el.value ?? "").replace(",", ".");
+      const val = Number(raw);
+
+      const zones = Math.max(1, Math.min(10, Number(this.item.system?.blastZones ?? 4)));
+
+      const defaultMult = (i) => 1 / (2 ** (i + 1));
+
+      let cur = this.item.system?.blastMultipliers;
+      if (!Array.isArray(cur)) {
+        cur = Array.from({ length: zones }, (_, i) => defaultMult(i));
+      } else {
+        cur = cur.slice(0, zones);
+        while (cur.length < zones) cur.push(defaultMult(cur.length));
+      }
+
+      cur[idx] = Number.isFinite(val) ? val : cur[idx];
+
+      await this.item.update({ "system.blastMultipliers": cur }, { render: false });
+      this.render(false);
     });
 
     html.on("mousedown", "input[name='cw-skill-search'], input[name='cw-chip-skill-search']", ev => {
@@ -637,10 +909,11 @@ async _prepareCyberware(sheet) {
       // Public chat message so players can't reroll silently
       const actor = cyber.actor ?? null;
       const speaker = ChatMessage.getSpeaker(actor ? { actor } : {});
-      const rollMode = CONST?.DICE_ROLL_MODES?.PUBLIC ?? "roll";
+      const messageMode = getPublicMessageMode();
 
       if (roll) {
-        await roll.toMessage(
+        await rollToCyberpunkChatMessage(
+          roll,
           {
             speaker,
             flavor: game.i18n.format("CYBERPUNK.Chat.HumanityRollFlavor", {
@@ -648,18 +921,17 @@ async _prepareCyberware(sheet) {
               item: cyber.name
             })
           },
-          { rollMode }
+          { messageMode }
         );
       } else {
-        await ChatMessage.create({
-          type: CONST.CHAT_MESSAGE_TYPES.OTHER,
+        await createCyberpunkChatMessage({
           speaker,
           content: game.i18n.format("CYBERPUNK.Chat.HumanityLossSet", {
             actor: actor?.name ?? game.user.name,
             item: cyber.name,
             loss
           })
-        });
+        }, { messageMode });
       }
     });
 
@@ -769,25 +1041,38 @@ async _prepareCyberware(sheet) {
       const affectedKeys = Object.keys(this.item.system?.CyberWorkType?.ChipSkills || {});
       for (const it of (actor?.items ?? [])) {
         if (it.type !== "skill") continue;
-        if (!(affectedKeys.includes(it.id) || affectedKeys.includes(it.name))) continue; // id + legacy name
+        if (!(affectedKeys.includes(it.id) || affectedKeys.includes(it.name))) continue;
         if (it.sheet?.rendered) it.sheet.render(true);
       }
       this.render(true);
     });
 
-    // SKILL SHEET: enabling/disabling the “chip” for a skill
+    // SKILL SHEET: persist skill levels and chip mode immediately.
     if (this.item.type === "skill") {
-      html.on("change", "input[name='system.isChipped']", async (ev) => {
-        const checked = !!ev.currentTarget.checked;
+      const parseSkillNumber = (value) => {
+        const n = Number.parseInt(value ?? 0, 10);
+        return Number.isFinite(n) ? n : 0;
+      };
 
-        const prev = !!this.item.system?.isChipped;
-        if (prev === checked) return;
-
+      const updateThisSkill = async (patch) => {
         const actor = this.item.actor;
+        if (actor) {
+          await actor.updateEmbeddedDocuments("Item", [
+            { _id: this.item.id, ...patch }
+          ], { render: false });
+        } else {
+          await this.item.update(patch, { render: false });
+        }
+      };
+
+      const findChipsForThisSkill = () => {
+        const actor = this.item.actor;
+        if (!actor) return [];
+
         const skillId = this.item.id;
         const skillName = this.item.name;
 
-        const chips = actor ? actor.items.filter(i => {
+        return actor.items.filter(i => {
           if (i.type !== "cyberware") return false;
           if (!cwHasType(i, "Chip")) return false;
           if (i.system?.equipped === false) return false;
@@ -796,99 +1081,101 @@ async _prepareCyberware(sheet) {
 
           return (skillId && Object.prototype.hasOwnProperty.call(map, skillId)) ||
                 Object.prototype.hasOwnProperty.call(map, skillName);
-        }) : [];
+        });
+      };
+
+      html.on("change", "input[name='system.level']", async (ev) => {
+        const value = parseSkillNumber(ev.currentTarget.value);
+        const prev = Number(this.item.system?.level || 0);
+        if (prev === value) return;
+
+        await updateThisSkill({ "system.level": value });
+
+        const actor = this.item.actor;
+        if (actor?.sheet?.rendered) actor.sheet.render(true);
+        this.render(true);
+      });
+
+      html.on("change", "input[name='system.isChipped']", async (ev) => {
+        const checked = !!ev.currentTarget.checked;
+
+        const prev = !!this.item.system?.isChipped;
+        if (prev === checked) return;
+
+        const actor = this.item.actor;
+        const skillId = this.item.id;
+        const chips = findChipsForThisSkill();
 
         if (actor && chips.length) {
-          // MOST important: switch ChipActive, otherwise synchronization will “roll back” again.
+          // Switch real chips, then let synchronization derive the skill flag.
           const chipUpdates = chips.map(ch => ({
             _id: ch.id,
             "system.CyberWorkType.ChipActive": checked
           }));
           await actor.updateEmbeddedDocuments("Item", chipUpdates, { render: false });
 
-          // Synchronize levels and flags from active chips
           if (typeof this._cp_syncChipLevelsToSkills === "function") {
             await this._cp_syncChipLevelsToSkills();
           }
           if (typeof this._cp_syncActiveFlagsToSkills === "function") {
             await this._cp_syncActiveFlagsToSkills();
           }
-        } else if (actor) {
-          await actor.updateEmbeddedDocuments("Item", [
-            { _id: skillId, "system.isChipped": checked }
-          ], { render: false });
         } else {
-          await this.item.update({ "system.isChipped": checked }, { render: false });
+          // No real chip implant: allow manual chip mode on the skill item itself.
+          await updateThisSkill({
+            "system.isChipped": checked,
+            ...deleteFieldUpdate("system.chipped")
+          });
         }
 
-        if (actor) {
-          await actor.updateEmbeddedDocuments("Item", [
-            { _id: skillId, "system.-=chipped": null }
-          ], { render: false });
-          if (actor.sheet?.rendered) actor.sheet.render(true);
-        } else {
-          await this.item.update({ "system.-=chipped": null }, { render: false });
+        if (actor?.sheet?.rendered) actor.sheet.render(true);
+        for (const ch of chips) if (ch.sheet?.rendered) ch.sheet.render(true);
+        this.render(true);
+      });
+
+      // Changing “Level (with chip)” always persists the skill's own chipLevel.
+      // If a real chip implant exists for this skill, mirror the value into that chip as well.
+      html.on("change", "input[name='system.chipLevel']", async (ev) => {
+        const actor = this.item.actor;
+        const skillId = this.item.id;
+        const skillName = this.item.name;
+
+        const value = parseSkillNumber(ev.currentTarget.value);
+        const prev = Number(this.item.system?.chipLevel || 0);
+        if (prev !== value) {
+          await updateThisSkill({ "system.chipLevel": value });
         }
 
+        const chips = findChipsForThisSkill();
+        if (actor && chips.length) {
+          const updates = chips.map(ch => {
+            const map = ch.system?.CyberWorkType?.ChipSkills || {};
+            const patch = { _id: ch.id };
+
+            if (skillId && Object.prototype.hasOwnProperty.call(map, skillId)) {
+              patch[`system.CyberWorkType.ChipSkills.${skillId}`] = value;
+            }
+            if (Object.prototype.hasOwnProperty.call(map, skillName)) {
+              patch[`system.CyberWorkType.ChipSkills.${skillName}`] = value;
+            }
+
+            return patch;
+          }).filter(p => Object.keys(p).length > 1);
+
+          if (updates.length) {
+            await actor.updateEmbeddedDocuments("Item", updates, { render: false });
+          }
+
+          if (typeof this._cp_syncChipLevelsToSkills === "function") {
+            await this._cp_syncChipLevelsToSkills();
+          }
+        }
+
+        if (actor?.sheet?.rendered) actor.sheet.render(true);
         for (const ch of chips) if (ch.sheet?.rendered) ch.sheet.render(true);
         this.render(true);
       });
     }
-
-    // SKILL SHEET: changing “Level (with chip)” synchronizes the corresponding level in the chips
-    html.on("change", "input[name='system.chipLevel']", async (ev) => {
-      const actor = this.item.actor;
-      if (!actor) return;
-
-      const skillId = this.item.id;
-      const skillName = this.item.name;
-
-      const n = Number(ev.currentTarget.value);
-      const value = Number.isFinite(n) ? n : 0;
-
-      const prev = Number(this.item.system?.chipLevel || 0);
-      if (prev === value) return;
-
-      const chips = actor.items.filter(i => {
-        if (i.type !== "cyberware") return false;
-        if (!cwHasType(i, "Chip")) return false;
-        if (i.system?.equipped === false) return false;
-        const map = i.system?.CyberWorkType?.ChipSkills;
-        if (!map) return false;
-
-        return (skillId && Object.prototype.hasOwnProperty.call(map, skillId)) ||
-              Object.prototype.hasOwnProperty.call(map, skillName);
-      });
-
-      if (!chips.length) return;
-
-      const updates = chips.map(ch => {
-        const map = ch.system?.CyberWorkType?.ChipSkills || {};
-        const patch = { _id: ch.id };
-
-        // Update keys that actually exist in the document (id — new format, name — legacy)
-        if (skillId && Object.prototype.hasOwnProperty.call(map, skillId)) {
-          patch[`system.CyberWorkType.ChipSkills.${skillId}`] = value;
-        }
-        if (Object.prototype.hasOwnProperty.call(map, skillName)) {
-          patch[`system.CyberWorkType.ChipSkills.${skillName}`] = value;
-        }
-
-        return patch;
-      }).filter(p => Object.keys(p).length > 1);
-
-      if (updates.length) {
-        await actor.updateEmbeddedDocuments("Item", updates, { render: false });
-      }
-
-      if (typeof this._cp_syncChipLevelsToSkills === "function") {
-        await this._cp_syncChipLevelsToSkills();
-      }
-
-      if (actor?.sheet?.rendered) actor.sheet.render(true);
-      for (const ch of chips) if (ch.sheet?.rendered) ch.sheet.render(true);
-      this.render(true);
-    });
 
     // Open/close menu
     html.on("click", ".cw-ms-trigger", ev => {
@@ -933,6 +1220,51 @@ async _prepareCyberware(sheet) {
       }
 
       await this._cwSet("system.CyberWorkType.Types", next);
+    });
+
+    html.on("click", ".ammo-ms-trigger", ev => {
+      if (this.item.type !== "ammo") return;
+      ev.preventDefault();
+      const root = ev.currentTarget.closest(".ammo-ms");
+      if (!root) return;
+      root.classList.toggle("open");
+    });
+
+    html.on("click", ev => {
+      if (this.item.type !== "ammo") return;
+      if ($(ev.target).closest(".ammo-ms").length) return;
+      html.find(".ammo-ms.open").removeClass("open");
+    });
+
+    html.on("change", ".ammo-ms-menu input[type=checkbox]", async ev => {
+      if (this.item.type !== "ammo") return;
+      const root = ev.currentTarget.closest(".ammo-ms");
+      if (!root) return;
+
+      const menu = root.querySelector(".ammo-ms-menu");
+      let next = Array.from(menu.querySelectorAll("input[type=checkbox]:checked")).map(i => i.value);
+
+      const changed = ev.currentTarget.value;
+      const turnedOn = ev.currentTarget.checked;
+
+      if (changed === "None" && turnedOn) {
+        next = ["None"];
+        menu.querySelectorAll("input[type=checkbox]").forEach(i => {
+          i.checked = (i.value === "None");
+        });
+      } else if (turnedOn) {
+        const none = menu.querySelector('input[value="None"]');
+        if (none) none.checked = false;
+        next = next.filter(v => v !== "None");
+      }
+
+      if (!next.length) {
+        next = ["None"];
+        const none = menu.querySelector('input[value="None"]');
+        if (none) none.checked = true;
+      }
+
+      await this._ammoSet("system.effectTypes", next);
     });
 
     // Auto-refresh on related Item updates (keeps module/implant sheets in sync)
@@ -1018,22 +1350,89 @@ async _prepareCyberware(sheet) {
     });
   }
 
+  _cpSetupNotesAutosave(root) {
+    if (!root) return;
+    const editable = this.isEditable ?? this.options?.editable ?? false;
+    if (!editable) return;
+
+    if (!this._cpNotesAutosaveState) {
+      this._cpNotesAutosaveState = {
+        saving: false,
+        pending: false,
+        lastSaved: String(this.item.system?.notes ?? "")
+      };
+    }
+
+    if (this._cpNotesAutosaveHandler) {
+      try { root.removeEventListener("save", this._cpNotesAutosaveHandler, true); } catch (_) {}
+    }
+
+    const handler = (ev) => {
+      const target = ev?.target;
+      if (!target?.closest) return;
+      if (!target.closest('.tab[data-tab="notes"]')) return;
+      if (!target.closest(".cp-notes-editor")) return;
+
+      setTimeout(() => this._cpFlushNotesAutosave(root, { force: true, serialize: false }), 0);
+    };
+
+    root.addEventListener("save", handler, true);
+    this._cpNotesAutosaveHandler = handler;
+  }
+
+  _cpReadNotesHTML(root, { serialize = false } = {}) {
+    const selectors = [
+      '.tab[data-tab="notes"] .editor-content',
+      '.tab[data-tab="notes"] [contenteditable="true"]'
+    ];
+
+    return serialize
+      ? saveRichEditorHTML(this, root, "system.notes", selectors)
+      : getRichEditorHTML(this, root, "system.notes", selectors);
+  }
+
+  async _cpFlushNotesAutosave(root, { force = false, serialize = false } = {}) {
+    const st = this._cpNotesAutosaveState;
+    if (!st) return;
+
+    if (st.saving) {
+      st.pending = true;
+      return;
+    }
+
+    const html = this._cpReadNotesHTML(root, { serialize });
+    if (html == null) return;
+    if (!force && st.lastSaved === html) return;
+
+    st.saving = true;
+    try {
+      await this.item.update({ "system.notes": html }, { render: false });
+      st.lastSaved = html;
+    } catch (err) {
+      console.warn("CP2020: item notes save failed", err);
+    } finally {
+      st.saving = false;
+      if (st.pending) {
+        st.pending = false;
+        await this._cpFlushNotesAutosave(root, { force: true, serialize: false });
+      }
+    }
+  }
+
+  /** @override */
+  async close(options = {}) {
+    try {
+      const root = getHtmlElement(this.element);
+      await this._cpFlushNotesAutosave(root, { force: true, serialize: true });
+    } catch (_) {}
+
+    return super.close(options);
+  }
+
   /** @override */
   async _updateObject(event, formData) {
     const data = foundry.utils.expandObject(formData);
 
-    if (this.item.type === "cyberware") {
-      const pickLastString = (v) => Array.isArray(v) ? String(v[v.length - 1] ?? "") : String(v ?? "");
-
-      const t = foundry.utils.getProperty(data, "system.cyberwareType");
-      if (t !== undefined) foundry.utils.setProperty(data, "system.cyberwareType", pickLastString(t));
-
-      const ap = foundry.utils.getProperty(data, "system.Module.AllowedParentCyberwareType");
-      if (ap !== undefined) foundry.utils.setProperty(data, "system.Module.AllowedParentCyberwareType", pickLastString(ap));
-
-      const slots = Number(foundry.utils.getProperty(data, "system.Module.SlotsTaken"));
-      if (!Number.isFinite(slots)) foundry.utils.setProperty(data, "system.Module.SlotsTaken", 0);
-    }
     if (this.item.type === "cyberware") {
       const pickLastString = (v) => {
         if (Array.isArray(v)) return v.length ? String(v[v.length - 1] ?? "") : "";
@@ -1061,8 +1460,16 @@ async _prepareCyberware(sheet) {
         const n = parseInt(v ?? 0, 10);
         return isNaN(n) ? 0 : n;
       };
-      foundry.utils.setProperty(data, "system.level", fixNum(foundry.utils.getProperty(data,"system.level")));
-      foundry.utils.setProperty(data, "system.chipLevel", fixNum(foundry.utils.getProperty(data,"system.chipLevel")));
+
+      // In Foundry v14 an ItemSheet change submit may contain only the changed
+      // input, not the complete form. Do not create missing skill fields here,
+      // or changing level will overwrite chipLevel with 0 and vice versa.
+      if (foundry.utils.hasProperty(data, "system.level")) {
+        foundry.utils.setProperty(data, "system.level", fixNum(foundry.utils.getProperty(data, "system.level")));
+      }
+      if (foundry.utils.hasProperty(data, "system.chipLevel")) {
+        foundry.utils.setProperty(data, "system.chipLevel", fixNum(foundry.utils.getProperty(data, "system.chipLevel")));
+      }
     }
 
     const legacy = foundry.utils.getProperty(data, "system.chipped");
@@ -1072,32 +1479,32 @@ async _prepareCyberware(sheet) {
     }
 
     if (this.item.type === "cyberware") {
-    const equip = foundry.utils.getProperty(data, "system.equipped");
-    if (equip === true) {
-      const zone = String(
-        foundry.utils.getProperty(data, "system.MountZone") ||
-        foundry.utils.getProperty(data, "system.CyberBodyType.Type") ||
-        this.item.system?.MountZone ||
-        this.item.system?.CyberBodyType?.Type ||
-        ""
-      );
-      const loc = String(
-        foundry.utils.getProperty(data, "system.CyberBodyType.Location") ||
-        this.item.system?.CyberBodyType?.Location ||
-        ""
-      );
-      if ((zone === "Arm" || zone === "Leg") && !loc) {
-        foundry.utils.setProperty(data, "system.CyberBodyType.Location", "Left");
+      const equip = foundry.utils.getProperty(data, "system.equipped");
+      if (equip === true) {
+        const zone = String(
+          foundry.utils.getProperty(data, "system.MountZone") ||
+          foundry.utils.getProperty(data, "system.CyberBodyType.Type") ||
+          this.item.system?.MountZone ||
+          this.item.system?.CyberBodyType?.Type ||
+          ""
+        );
+        const loc = String(
+          foundry.utils.getProperty(data, "system.CyberBodyType.Location") ||
+          this.item.system?.CyberBodyType?.Location ||
+          ""
+        );
+        if ((zone === "Arm" || zone === "Leg") && !loc) {
+          foundry.utils.setProperty(data, "system.CyberBodyType.Location", "Left");
+        }
       }
     }
-  }
 
     await this.item.update(data);
   }
 
   /**
    * Collect the chip level aggregate for all of the actor's chip implants
-   * Take the maximum, key = skill name (as on the sheet)
+   * Take the maximum chip level for each affected skill.
   */
   async _cp_syncChipLevelsToSkills() {
     const actor = this.item.actor;
