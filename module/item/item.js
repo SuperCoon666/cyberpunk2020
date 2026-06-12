@@ -315,9 +315,19 @@ export class CyberpunkItem extends Item {
   }
 
   // Melee mods are a lot...simpler? I could maybe add swept or something, or opponent dodging. That'll be best once choosing targets is done
-  __meleeModTerms({extraMod}) {
+  __meleeModTerms({ extraMod, targetArea }) {
+    const terms = [];
+
+    if (!!targetArea) {
+      terms.push(-4);
+    }
+
     const n = Number(extraMod);
-    return Number.isFinite(n) && n !== 0 ? [n] : [];
+    if (Number.isFinite(n) && n !== 0) {
+      terms.push(n);
+    }
+
+    return terms;
   }
 
   // Now, this is gonna have to ask the player for different things depending on the weapon
@@ -718,12 +728,13 @@ export class CyberpunkItem extends Item {
   }
 
   async __meleeBonk(attackMods) {
-      // Just doesn't have a DC - is contested instead
+      // Melee attacks do not have a fixed DC; they are contested instead
       let attackRoll = await this.attackRoll(attackMods);
 
       // Take into account the CyberTerminus modifier for damage
       const system = this._getWeaponSystem ? this._getWeaponSystem() : this.system;
       let damageFormula = `${system.damage}+@strengthBonus`;
+
       if (attackMods.cyberTerminus) {
           switch (attackMods.cyberTerminus) {
               case "CyberTerminusX2":
@@ -737,14 +748,22 @@ export class CyberpunkItem extends Item {
                   break;
           }
       }
+
       let damageRoll = await new Roll(damageFormula, {
           strengthBonus: strengthDamageBonus(this.actor.system.stats.bt.total)
       }).evaluate();
 
       // CP2020: any fractional damage is rounded down
-      damageRoll._total = CyberpunkItem._floorDamageTotal(damageRoll.total);
+      const damage = CyberpunkItem._floorDamageTotal(damageRoll.total);
+      damageRoll._total = damage;
 
-      let locationRoll = await rollLocation(attackMods.targetActor, attackMods.targetArea);
+      const locationRoll = await rollLocation(attackMods.targetActor, attackMods.targetArea);
+      const areaDamages = {};
+
+      areaDamages[locationRoll.areaHit] = [{
+        damage,
+        damageHtml: CyberpunkItem._inlineRollHtml(damage, damageRoll, "damage")
+      }];
 
       let fumble = null;
       if (game.settings.get("cyberpunk2020", "fumbleTableEnabled") && isFumbleRoll(attackRoll)) {
@@ -755,36 +774,50 @@ export class CyberpunkItem extends Item {
       }
 
       let bigRoll = new Multiroll(this.name, this.system.flavor)
-        .addRoll(attackRoll, { name: localize("Attack") })
-        .addRoll(damageRoll, { name: localize("Damage") })
-        .addRoll(locationRoll.roll, { name: localize("Location"), flavor: locationRoll.areaHit });
+        .addRoll(attackRoll, { name: localize("Attack") });
 
-      bigRoll.defaultExecute({ img: this.img, fumble });
+      await bigRoll.execute(
+        undefined,
+        "systems/cyberpunk2020/templates/chat/multi-hit.hbs",
+        {
+          attackRoll,
+          hit: true,
+          hits: 1,
+          areaDamages,
+          suppressHitTally: true,
+          fumble
+        }
+      );
+
       return bigRoll;
   }
   async __martialBonk(attackMods) {
     let actor = this.actor;
     let system = actor.system;
+
     // Action being done, eg strike, block etc
     let action = attackMods.action;
     let martialArt = attackMods.martialArt;
 
-    // Will be something this line once I add the martial arts bonuses. None for brawling, remember
-    // let martialBonus = this.actor?.skills.MartialArts[martialArt].bonuses[action];
     let isMartial = martialArt != "Brawling";
     let keyTechniqueBonus = 0;
     let martialSkillLevel = actor.getSkillVal(martialArt);
     let flavor = game.i18n.has(`CYBERPUNK.${action + "Text"}`) ? localize(action + "Text") : "";
 
     const martialArtLabel = actor.getMartialDisplayName?.(martialArt) ?? localize("Skill" + martialArt);
-    let results = new Multiroll(localizeParam("MartialTitle", {action: localize(action), martialArt: martialArtLabel}), flavor);
+    let results = new Multiroll(
+      localizeParam("MartialTitle", { action: localize(action), martialArt: martialArtLabel }),
+      flavor
+    );
 
-    // All martial arts are contested
     // Bonus for a specific action from the selected martial art
     const actionBonus = getMartialActionBonus(martialArt, action);
 
     // Additional modifier from the dialog
     const extraMod = Number(attackMods.extraMod || 0);
+
+    // Same aimed-location penalty as ranged attacks
+    const targetAreaMod = attackMods.targetArea ? -4 : 0;
 
     // FNFF2: Martial Damage Bonus rules
     const fnff2 = isFnff2Enabled();
@@ -796,7 +829,6 @@ export class CyberpunkItem extends Item {
         martialDamageBonusValue = martialSkillLevel;
       } else {
         const symbol = getFnff2DamageBonusSymbol(action);
-
         const isKeyVariant = actionBonus > 0;
 
         const levelForDamage =
@@ -804,9 +836,9 @@ export class CyberpunkItem extends Item {
             ? Math.floor(martialSkillLevel * 1.5)
             : martialSkillLevel;
 
-        // * — damage bonus works (if Key Variant)
+        // * — damage bonus works if Key Variant
         // $ — works only if Key Variant
-        // % / ‘@’ — do not give damage bonus from MA level
+        // % / @ — do not give damage bonus from MA level
         if ((symbol === "*" || symbol === "$") && isKeyVariant) {
           martialDamageBonusValue = levelForDamage;
         } else {
@@ -814,26 +846,29 @@ export class CyberpunkItem extends Item {
         }
       }
     }
-    // Martial arts throw formula: reflex + skill level + special technique + action bonus + additional mod
-    // If the reception is performed through a weapon item (including cyber weapons), we take its WA
+
+    // Martial arts attack formula: reflex + skill level + special technique + action bonus + additional mod.
+    // If the action is performed through a weapon item, including cyber weapons, use its WA.
     const sysForAcc = this._getWeaponSystem ? this._getWeaponSystem() : this.system;
     const weaponAccuracy = Number(sysForAcc?.accuracy ?? 0) || 0;
 
     let attackRoll = new Roll(
-      `1d10x10 + @stats.ref.total + @attackBonus + @keyTechniqueBonus + @actionBonus + @extraMod${weaponAccuracy !== 0 ? " + @weaponAccuracy" : ""}`, 
+            `1d10x10 + @stats.ref.total + @attackBonus + @keyTechniqueBonus + @actionBonus + @extraMod + @targetAreaMod${weaponAccuracy !== 0 ? " + @weaponAccuracy" : ""}`,
       {
         stats: system.stats,
         attackBonus: martialSkillLevel,
         keyTechniqueBonus: keyTechniqueBonus,
         actionBonus: actionBonus,
         extraMod: extraMod,
+        targetAreaMod,
         weaponAccuracy
       }
     );
-    results.addRoll(attackRoll, {name: "Attack"});
 
-    // Base damage: if the weapon has a damage field, use it
-    // Otherwise, fall back to the standard dice rolls for strikes/kicks/throws/chokes
+    results.addRoll(attackRoll, { name: localize("Attack") });
+
+    // Base damage: if the weapon has a damage field, use it.
+    // Otherwise, fall back to the standard dice rolls for strikes/kicks/throws/chokes.
     const sysWeapon = this._getWeaponSystem ? this._getWeaponSystem() : this.system;
     const baseWeaponDamage = (sysWeapon?.damage && String(sysWeapon.damage).trim()) ? String(sysWeapon.damage).trim() : "";
     let damageFormula = "";
@@ -847,7 +882,7 @@ export class CyberpunkItem extends Item {
     }
 
     // CyberTerminus modifier
-    if (attackMods?.cyberTerminus) {
+    if (attackMods?.cyberTerminus && damageFormula) {
       switch (attackMods.cyberTerminus) {
         case "CyberTerminusX2":
           damageFormula = `(${damageFormula})*2`;
@@ -861,19 +896,6 @@ export class CyberpunkItem extends Item {
       }
     }
 
-    if (damageFormula) {
-      const loc = await rollLocation(attackMods.targetArea);
-      results.addRoll(loc.roll, { name: localize("Location"), flavor: loc.areaHit });
-      const damageRoll = await new Roll(damageFormula, {
-        strengthBonus: strengthDamageBonus(system.stats.bt.total),
-        martialDamageBonus: martialDamageBonusValue
-      }).evaluate();
-
-      // CP2020: any fractional damage is rounded down
-      damageRoll._total = CyberpunkItem._floorDamageTotal(damageRoll.total);
-
-      results.addRoll(damageRoll, { name: localize("Damage") });
-    }
     if (!attackRoll._evaluated) {
       await attackRoll.evaluate();
     }
@@ -886,7 +908,40 @@ export class CyberpunkItem extends Item {
       });
     }
 
-    await results.defaultExecute({ img: this.img, fumble });
+    // Defensive/non-damaging martial actions keep the compact default roll card.
+    if (!damageFormula) {
+      await results.defaultExecute({ img: this.img, fumble });
+      return results;
+    }
+
+    const locationRoll = await rollLocation(attackMods.targetActor, attackMods.targetArea);
+    const damageRoll = await new Roll(damageFormula, {
+      strengthBonus: strengthDamageBonus(system.stats.bt.total),
+      martialDamageBonus: martialDamageBonusValue
+    }).evaluate();
+
+    const damage = CyberpunkItem._floorDamageTotal(damageRoll.total);
+    damageRoll._total = damage;
+
+    const areaDamages = {};
+    areaDamages[locationRoll.areaHit] = [{
+      damage,
+      damageHtml: CyberpunkItem._inlineRollHtml(damage, damageRoll, "damage")
+    }];
+
+    await results.execute(
+      undefined,
+      "systems/cyberpunk2020/templates/chat/multi-hit.hbs",
+      {
+        attackRoll,
+        hit: true,
+        hits: 1,
+        areaDamages,
+        suppressHitTally: true,
+        fumble
+      }
+    );
+
     return results;
   }
 

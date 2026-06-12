@@ -1,21 +1,29 @@
 <div class="cyberpunk cyberpunk-card flexcol">
     <h2>{{title}}</h2>
+
     <div class="field-list one-col">
         {{#if target}}
         <div class="field">
             <span>{{CPLocal "Target"}}: </span>
             <span class="flex-pad">{{target.name}}</span>
-        </div>        
+        </div>
         {{/if}}
+
+        {{#if range}}
         <div class="field">
             <span>{{CPLocal "Range"}}: </span>
             <span class="flex-pad">{{CPLocalParam range locals.range}}</span>
         </div>
+        {{/if}}
+
+        {{#if toHit}}
         <div class="field">
             <span>{{CPLocal "ToHit"}}: </span>
             <span class="flex-pad">{{toHit}}</span>
         </div>
+        {{/if}}
     </div>
+
     <div class="field-list one-col">
         <div class="field" style="grid-column-end: span 1">
             <span>{{CPLocal "Attack"}}: </span>
@@ -34,26 +42,27 @@
             </span>
         </div>
     </div>
-    
+
+    {{#unless suppressHitTally}}
     <div>
-        {{!-- "X hit of y fired" Uses "hit" and "fired" fields respectively --}}
-        {{!-- They're separate so we can emphasise the hit --}}
         <p><em>{{CPLocalParam "AutofireHitTally" this}}</em> {{CPLocalParam "AutofireFiredTally" this}}</p>
     </div>
+    {{/unless}}
+
     {{#if hit}}
         <h3>{{CPLocal "Damage"}}</h3>
-            <div class="damage-tally">
-                {{#each areaDamages as |damages areaName|}}
-                    <div>
-                        <label><b>{{CPLocal areaName}}</b></label>
-                        <ul>
-                            {{#each damages as |damage|}}
-                                <li>{{CPLocal "Damage"}} {{{damage.damageHtml}}}</li>
-                            {{/each}}
-                        </ul>
-                    </div>
-                {{/each}}
-            </div>
+        <div class="damage-tally">
+            {{#each areaDamages as |damages areaName|}}
+                <div>
+                    <label><b>{{CPLocal areaName}}</b></label>
+                    <ul>
+                        {{#each damages as |damage|}}
+                            <li>{{CPLocal "Damage"}} {{{damage.damageHtml}}}</li>
+                        {{/each}}
+                    </ul>
+                </div>
+            {{/each}}
+        </div>
     {{else}}
         <h3>{{CPLocal "NoHits"}}</h3>
     {{/if}}

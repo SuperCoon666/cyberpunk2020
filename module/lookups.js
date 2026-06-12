@@ -485,6 +485,13 @@ export function martialOptions(actor) {
             ]
         },
         {
+            localKey: "TargetArea",
+            dataPath: "targetArea",
+            defaultValue: "",
+            choices: defaultTargetLocations,
+            allowBlank: true
+        },
+        {
             localKey: "CyberTerminus",
             dataPath: "cyberTerminus",
             defaultValue: "NoCyberlimb",
