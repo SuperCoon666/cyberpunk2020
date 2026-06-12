@@ -333,13 +333,13 @@
           <div class="flex-pad"></div>
           {{#if (equals system.CyberWorkType.Weapon.weaponType 'Exotic')}}
             <datalist id="possibleSkillsCW">
-              {{#each attackSkills as |skill|}}<option value="{{skill}}">{{skill}}</option>{{/each}}
+                {{#each attackSkills as |skill|}}<option value="{{skill}}">{{skill}}</option>{{/each}}
             </datalist>
             <input type="text" list="possibleSkillsCW" placeholder="{{CPLocal 'AttackSkill'}}" name="system.CyberWorkType.Weapon.attackSkill" value="{{system.CyberWorkType.Weapon.attackSkill}}">
           {{else}}
             <select name="system.CyberWorkType.Weapon.attackSkill">
               {{#each attackSkills as |skill|}}
-                <option value="{{skill}}" {{#if (equals ../system.CyberWorkType.Weapon.attackSkill skill)}}selected{{/if}}>{{skill}}</option>
+                <option value="{{skill.value}}" {{#if (equals ../system.CyberWorkType.Weapon.attackSkill skill.value)}}selected{{/if}}{{#if (equals ../system.CyberWorkType.Weapon.attackSkill skill.label)}}selected{{/if}}>{{skill.label}}</option>
               {{/each}}
             </select>
           {{/if}}

@@ -746,7 +746,8 @@ export class CyberpunkItem extends Item {
     let martialSkillLevel = actor.getSkillVal(martialArt);
     let flavor = game.i18n.has(`CYBERPUNK.${action + "Text"}`) ? localize(action + "Text") : "";
 
-    let results = new Multiroll(localizeParam("MartialTitle", {action: localize(action), martialArt: localize("Skill" + martialArt)}), flavor);
+    const martialArtLabel = actor.getMartialDisplayName?.(martialArt) ?? localize("Skill" + martialArt);
+    let results = new Multiroll(localizeParam("MartialTitle", {action: localize(action), martialArt: martialArtLabel}), flavor);
 
     // All martial arts are contested
     // Bonus for a specific action from the selected martial art

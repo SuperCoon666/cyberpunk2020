@@ -451,10 +451,12 @@ export function martialOptions(actor) {
             localKey: "MartialArt",
             dataPath: "martialArt",
             choices: [
-            { value: "Brawling", localKey: "SkillBrawling" },
-
-              ...(actor.trainedMartials().map(key => {
-                return { value: key, localKey: "Skill" + key };
+              { value: "Brawling", localKey: "SkillBrawling" },
+              ...((actor?.trainedMartials?.() ?? []).map(key => {
+                return {
+                  value: key,
+                  label: actor?.getMartialDisplayName?.(key) ?? key
+                };
               }))
             ]
         },

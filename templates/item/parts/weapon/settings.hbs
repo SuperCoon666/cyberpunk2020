@@ -31,14 +31,14 @@
             {{!-- This will be populated by actor skills if it's held by an actor, but an input is at least editable --}}
             <datalist id="possibleSkills">
                 {{#each attackSkills as |skill|}}
-                <option value="{{skill}}">{{skill}}</option>
+                <option value="{{skill.value}}">{{skill.label}}</option>
                 {{/each}}
             </datalist>
             <input type="text" list="possibleSkills" placeholder="Choose Skill" name="system.attackSkill" value="{{system.attackSkill}}"/>
         {{else}}
             <select name="system.attackSkill">
                 {{#each attackSkills as |skill|}}
-                <option value="{{skill}}" {{#if (equals ../system.attackSkill skill)}}selected{{/if}}>{{skill}}</option>
+                <option value="{{skill.value}}" {{#if (equals ../system.attackSkill skill.value)}}selected{{/if}}{{#if (equals ../system.attackSkill skill.label)}}selected{{/if}}>{{skill.label}}</option>
                 {{/each}}
             </select>
         {{/if}}

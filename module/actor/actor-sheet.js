@@ -117,7 +117,13 @@ export class CyberpunkActorSheet extends ActorSheet {
 
     sheetData.skillDisplayList = sheetData.filteredSkillIDs
       .map(id => this.actor.items.get(id))
-      .filter(Boolean);
+      .filter(Boolean)
+      .map(skill => ({
+        id: skill.id,
+        name: skill.name,
+        displayName: this.actor.getSkillDisplayName?.(skill) ?? skill.name,
+        system: skill.system
+      }));
   }
   _getSortedSkillIDs(sheetData) {
     const system = sheetData?.system ?? this.actor.system;
@@ -153,7 +159,9 @@ export class CyberpunkActorSheet extends ActorSheet {
     return listToFilter.filter(id => {
       const skill = this.actor.items.get(id);
       if (!skill) return false;
-      return String(skill.name).toUpperCase().includes(upperSearch);
+      const displayName = this.actor.getSkillDisplayName?.(skill) ?? skill.name;
+      return String(skill.name).toUpperCase().includes(upperSearch)
+        || String(displayName).toUpperCase().includes(upperSearch);
     });
   }
 

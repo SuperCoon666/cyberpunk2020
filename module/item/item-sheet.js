@@ -245,10 +245,21 @@ export class CyberpunkItemSheet extends ItemSheet {
     const baseKeys = attackSkills[wType] || [];
     const includeMartials = (wType === weaponTypes.melee) && (this.item.system.attackType === meleeAttackTypes.martial);
     const martialKeys = includeMartials ? (actor?.trainedMartials?.() || []) : [];
-    sheet.attackSkills = [...baseKeys, ...martialKeys].map(k => localize("Skill"+k));
+    const toAttackSkillChoice = (key) => {
+      const martialLabel = actor?.getMartialDisplayName?.(key);
+      const localized = localize("Skill" + key);
+      return {
+        value: key,
+        label: martialLabel ?? (localized.includes("Skill") ? key : localized)
+      };
+    };
+
+    sheet.attackSkills = [...baseKeys, ...martialKeys].map(toAttackSkillChoice);
 
     if (!sheet.attackSkills.length && actor?.itemTypes?.skill) {
-      sheet.attackSkills = actor.itemTypes.skill.map(skill => skill.name).sort();
+      sheet.attackSkills = actor.itemTypes.skill
+        .map(skill => ({ value: skill.name, label: skill.name }))
+        .sort((a, b) => String(a.label).localeCompare(String(b.label)));
     }
   }
 
@@ -446,10 +457,21 @@ async _prepareCyberware(sheet) {
   const baseKeys = attackSkills[cwW.weaponType || weaponTypes.pistol] || [];
   const includeMartials = isMelee && (cwW.attackType === meleeAttackTypes.martial);
   const martialKeys = includeMartials ? (actor?.trainedMartials?.() || []) : [];
-  sheet.attackSkills = [...baseKeys, ...martialKeys].map(k => localize("Skill"+k));
+  const toAttackSkillChoice = (key) => {
+    const martialLabel = actor?.getMartialDisplayName?.(key);
+    const localized = localize("Skill" + key);
+    return {
+      value: key,
+      label: martialLabel ?? (localized.includes("Skill") ? key : localized)
+    };
+  };
+
+  sheet.attackSkills = [...baseKeys, ...martialKeys].map(toAttackSkillChoice);
   
   if (!sheet.attackSkills.length && this.actor) {
-    sheet.attackSkills = (this.actor.itemTypes.skill || []).map(s => s.name).sort((a, b) => a.localeCompare(b));
+    sheet.attackSkills = (this.actor.itemTypes.skill || [])
+      .map(skill => ({ value: skill.name, label: skill.name }))
+      .sort((a, b) => String(a.label).localeCompare(String(b.label)));
   }
 
   const TYPE_CHOICES_BASE = [
