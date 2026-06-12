@@ -140,48 +140,51 @@ export class CyberpunkItem extends Item {
   }
 
   _prepareArmorData(system) {
-    // If new owner and armor covers this many areas or more, delete armor coverage areas the owner does not have
+    // Armor from compendiums/world items has no owning actor.
+    // Armor morphing must run only for owned actor items.
+    const actor = this.actor;
+    if (!actor) return;
+
+    const ownerLocs = actor.system?.hitLocations;
+    if (!ownerLocs) return;
+
+    if (!system.coverage || typeof system.coverage !== "object") {
+      system.coverage = {};
+    }
+
+    // If new owner and armor covers this many areas or more,
+    // delete armor coverage areas the owner does not have.
     const COVERAGE_CLEANSE_THRESHOLD = 20;
 
-    let skipReform = false;
-    // Sometimes this just BREAKS
-    try {
-      let idCheck = this.actor.id;
-    }
-    catch {
-      skipReform = true;
-    }
+    const lastOwnerId = system.lastOwnerId ?? "";
+    const nowOwned = !lastOwnerId;
+    const changedHands = !!lastOwnerId && lastOwnerId !== actor.id;
 
-    let nowOwned = !system.lastOwnerId && this.actor;
-    let changedHands = system.lastOwnerId !== undefined && system.lastOwnerId != this.actor.id;
-    if(!skipReform && (nowOwned || changedHands)) {
-      system.lastOwnerId = this.actor.id;
-      let ownerLocs = this.actor.system.hitLocations;
-      
-      // Time to morph the armor to its new owner!
-      // I just want this here so people can armor up giant robotic snakes if they want, y'know? or mechs.
-      // ...I am fully aware this is overkill effort for most games.
-      let areasCovered = Object.keys(system.coverage).length;
-      let cleanseAreas = areasCovered > COVERAGE_CLEANSE_THRESHOLD;
-      if(cleanseAreas) {
-        // Remove any extra areas
-        // This is so that armors can't be made bigger indefinitely. No idea why players might do that, but hey.
-        for(let armorArea in system.coverage) {
-          if(!ownerLocs[armorArea]) {
-            console.warn(`ARMOR MORPH: The new owner of this armor (${this.actor.name}) does not have a ${armorArea}. Removing the area from the armor.`)
-            delete system.coverage.armorArea;
-          }
+    if (!(nowOwned || changedHands)) return;
+
+    system.lastOwnerId = actor.id;
+
+    // Time to morph the armor to its new owner.
+    const areasCovered = Object.keys(system.coverage).length;
+    const cleanseAreas = areasCovered > COVERAGE_CLEANSE_THRESHOLD;
+
+    if (cleanseAreas) {
+      // Remove any extra areas.
+      for (const armorArea in system.coverage) {
+        if (!ownerLocs[armorArea]) {
+          console.warn(`ARMOR MORPH: The new owner of this armor (${actor.name}) does not have a ${armorArea}. Removing the area from the armor.`);
+          delete system.coverage[armorArea];
         }
       }
-      
-      // Add any areas the owner has but the armor doesn't.
-      for(let ownerLoc in ownerLocs) {
-        if(!system.coverage[ownerLoc]) {
-          system.coverage[ownerLoc] = {
-            stoppingPower: 0,
-            ablation: 0
-          }
-        }
+    }
+
+    // Add any areas the owner has but the armor doesn't.
+    for (const ownerLoc in ownerLocs) {
+      if (!system.coverage[ownerLoc]) {
+        system.coverage[ownerLoc] = {
+          stoppingPower: 0,
+          ablation: 0
+        };
       }
     }
   }

@@ -695,11 +695,12 @@ div.statderive .value.rightborder {
 .combat-tab {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 10fr;
+  grid-template-rows: auto auto;
   grid-template-areas: "rolls rolls" "weapons armor";
   column-gap: 10px;
   row-gap: 10px;
   align-items: start;
+  align-content: start;
 }
 .combat-tab .armor-section {
   grid-area: armor;
@@ -794,20 +795,25 @@ div.statderive .value.rightborder {
 
 .cyberpunk .armor-display {
   max-height: 200px;
-  max-width: 25em;
-  padding-left: 10%;
-  padding-right: 10%;
-  margin-bottom: 10px;
+  width: 16em;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding-left: 0;
+  padding-right: 0;
+  margin: 0 auto 10px auto;
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  grid-template-rows: 1fr 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: auto auto auto;
   grid-template-areas: ". Head ." "lArm Torso rArm" "lLeg . rLeg";
-  column-gap: 3px;
-  row-gap: 3px;
-  justify-items: center;
+  column-gap: 4px;
+  row-gap: 4px;
+  justify-content: center;
+  justify-items: stretch;
 }
 .cyberpunk .armor-display .armor-segment {
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   border: solid black;
   border-width: 2px 2px 0px 2px;
   display: grid;
