@@ -611,9 +611,15 @@ export class CyberpunkItem extends Item {
 
   async __suppressiveFire(mods = {}) {
     const sys = this._getWeaponSystem();
-    const rounds = clamp(Number(mods.roundsFired) || Number(sys.rof) || 0, 1, Number(sys.shotsLeft) || 0);
+    const rof = Math.max(0, Math.floor(Number(sys.rof) || 0));
+    const shotsLeft = Math.max(0, Math.floor(Number(sys.shotsLeft) || 0));
+    const maxRounds = Math.min(rof, shotsLeft);
+    const requestedRounds = Math.floor(Number(mods.roundsFired) || maxRounds);
+    const rounds = maxRounds > 0
+      ? clamp(requestedRounds, 1, maxRounds)
+      : 0;
     const width = Math.max(2, Number(mods.zoneWidth ?? 2));
-    const targets = Math.max(1, Number(mods.targetsCount ?? 1));
+    const targets = Math.max(1, Math.floor(Number(mods.targetsCount ?? 1)));
 
     await this.__setWeaponField("shotsLeft", sys.shotsLeft - rounds);
 

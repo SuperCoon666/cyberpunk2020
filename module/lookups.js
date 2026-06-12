@@ -355,8 +355,12 @@ export function defaultHitLocations() {
 }
 
 export function rangedModifiers(weapon, targetTokens=[]) {
-    let range = weapon.system.range || 50;
+    const sys = weapon._getWeaponSystem?.() ?? weapon.system ?? {};
+    let range = sys.range || 50;
     let fireModes = weapon.__getFireModes() || [];
+    const rof = Math.max(0, Math.floor(Number(sys.rof) || 0));
+    const shotsLeft = Math.max(0, Math.floor(Number(sys.shotsLeft) || 0));
+    const suppressiveRoundsMax = Math.min(rof, shotsLeft);
     return [
         [{
             localKey: "FireMode",
@@ -399,13 +403,33 @@ export function rangedModifiers(weapon, targetTokens=[]) {
         {localKey:"Ricochet", dataPath:"ricochet",defaultValue: false},
         {localKey:"Running", dataPath:"running",defaultValue: false},
         {localKey:"TurnFace", dataPath:"turningToFace",defaultValue: false},
-        {localKey:"FireZoneWidth",  dataPath:"zoneWidth",  dtype:"Number", defaultValue: 2},
-        {localKey:"RoundsFiredLbl", dataPath:"roundsFired", dtype:"Number", defaultValue: weapon.system.rof},
+        {
+            localKey: "FireZoneWidth",
+            dataPath: "zoneWidth",
+            dtype: "Number",
+            defaultValue: 2,
+            min: 2,
+            step: 1,
+            extraClasses: "suppressive-field suppressive-zone-width"
+        },
+        {
+            localKey: "RoundsFiredLbl",
+            dataPath: "roundsFired",
+            dtype: "Number",
+            defaultValue: suppressiveRoundsMax,
+            min: 1,
+            max: suppressiveRoundsMax,
+            step: 1,
+            extraClasses: "suppressive-field suppressive-rounds-fired"
+        },
         {
             localKey: "TargetsCount",
-            dataPath:"targetsCount",
-            dtype:"Number",
-            defaultValue: Math.max(1, targetTokens.length)
+            dataPath: "targetsCount",
+            dtype: "Number",
+            defaultValue: Math.max(1, targetTokens.length),
+            min: 1,
+            step: 1,
+            extraClasses: "suppressive-field suppressive-targets-count"
         },
         ]
     ];

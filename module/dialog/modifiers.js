@@ -194,11 +194,18 @@ import { createCyberpunkChatMessage, getGMUserIds } from "../compat.js";
         const rof = Math.max(0, Math.floor(Number(sysAfter?.rof) || 0));
         const maxRounds = Math.min(rof, Math.max(0, Math.floor(Number(shotsLeftAfter) || 0)));
 
-        const input = html.find('input[name="fullAutoRoundsFired"]').get(0);
-        if (input) {
-          input.dataset.max = String(maxRounds);
-          input.value = String(maxRounds);
-          input.setCustomValidity("");
+        const fullAutoInput = html.find('input[name="fullAutoRoundsFired"]').get(0);
+        if (fullAutoInput) {
+          fullAutoInput.dataset.max = String(maxRounds);
+          fullAutoInput.value = String(maxRounds);
+          fullAutoInput.setCustomValidity("");
+        }
+
+        const suppressiveRoundsInput = html.find('input[name="roundsFired"]').get(0);
+        if (suppressiveRoundsInput) {
+          suppressiveRoundsInput.dataset.max = String(maxRounds);
+          suppressiveRoundsInput.value = String(maxRounds);
+          suppressiveRoundsInput.setCustomValidity("");
         }
       };
 
@@ -283,6 +290,7 @@ import { createCyberpunkChatMessage, getGMUserIds } from "../compat.js";
 
       // collect strings used exclusively for suppression
       const $supRows = $([
+        '.field.suppressive-field',
         '.field[data-path="zoneWidth"]',
         '.field[data-path="roundsFired"]',
         '.field[data-path="targetsCount"]',
@@ -306,6 +314,139 @@ import { createCyberpunkChatMessage, getGMUserIds } from "../compat.js";
 
       const getFullAutoRoundsInput = () => html.find('input[name="fullAutoRoundsFired"]').get(0);
 
+            const getNumberInput = (name) => {
+        return html.find(`input[name="${name}"], input[name="fields.${name}"]`).get(0);
+      };
+
+      const showFieldValidation = (input, message, { report = false } = {}) => {
+        if (!input) return false;
+
+        input.setCustomValidity(message);
+
+        if (report) {
+          input.focus();
+          input.reportValidity();
+        }
+
+        return false;
+      };
+
+      const clearFieldValidation = (...inputs) => {
+        for (const input of inputs) {
+          if (input) input.setCustomValidity("");
+        }
+      };
+
+      const validateIntegerRangeInput = (input, { min = 1, max = 1, messageKey = "IntegerRangeInvalid", report = false } = {}) => {
+        if (!input) return true;
+
+        input.setCustomValidity("");
+
+        const rawValue = String(input.value ?? "").trim();
+        const value = Number(rawValue);
+
+        const invalid = rawValue === ""
+          || !Number.isFinite(value)
+          || !Number.isInteger(value)
+          || value < min
+          || value > max;
+
+        if (!invalid) return true;
+
+        return showFieldValidation(
+          input,
+          localizeParam(messageKey, { min, max }),
+          { report }
+        );
+      };
+
+      const validateNumberMinInput = (input, { min = 1, messageKey = "NumberMinInvalid", report = false } = {}) => {
+        if (!input) return true;
+
+        input.setCustomValidity("");
+
+        const rawValue = String(input.value ?? "").trim();
+        const value = Number(rawValue);
+
+        const invalid = rawValue === ""
+          || !Number.isFinite(value)
+          || value < min;
+
+        if (!invalid) return true;
+
+        return showFieldValidation(
+          input,
+          localizeParam(messageKey, { min }),
+          { report }
+        );
+      };
+
+      const validateIntegerMinInput = (input, { min = 1, messageKey = "IntegerMinInvalid", report = false } = {}) => {
+        if (!input) return true;
+
+        input.setCustomValidity("");
+
+        const rawValue = String(input.value ?? "").trim();
+        const value = Number(rawValue);
+
+        const invalid = rawValue === ""
+          || !Number.isFinite(value)
+          || !Number.isInteger(value)
+          || value < min;
+
+        if (!invalid) return true;
+
+        return showFieldValidation(
+          input,
+          localizeParam(messageKey, { min }),
+          { report }
+        );
+      };
+
+      const validateSuppressiveInputs = ({ report = false } = {}) => {
+        const roundsInput = getNumberInput("roundsFired");
+        const zoneWidthInput = getNumberInput("zoneWidth");
+        const targetsInput = getNumberInput("targetsCount");
+
+        clearFieldValidation(roundsInput, zoneWidthInput, targetsInput);
+
+        if ($fireMode.val() !== fireModes.suppressive) return true;
+
+        const maxRounds = Math.max(0, Math.floor(Number(roundsInput?.dataset?.max) || 0));
+
+        // No ammunition available. Let the existing weapon roll guard show NoAmmo
+        if (maxRounds > 0) {
+          const roundsValid = validateIntegerRangeInput(roundsInput, {
+            min: 1,
+            max: maxRounds,
+            messageKey: "IntegerRangeInvalid",
+            report
+          });
+
+          if (!roundsValid) return false;
+        }
+
+        const zoneMin = Math.max(1, Math.floor(Number(zoneWidthInput?.dataset?.min) || 2));
+
+        const zoneValid = validateNumberMinInput(zoneWidthInput, {
+          min: zoneMin,
+          messageKey: "NumberMinInvalid",
+          report
+        });
+
+        if (!zoneValid) return false;
+
+        const targetsValid = validateIntegerMinInput(targetsInput, {
+          min: 1,
+          messageKey: "IntegerMinInvalid",
+          report
+        });
+
+        if (!targetsValid) return false;
+
+        return true;
+      };
+      
       const validateFullAutoRoundsInput = ({ report = false } = {}) => {
         const input = getFullAutoRoundsInput();
         if (!input) return true;
@@ -348,17 +489,31 @@ import { createCyberpunkChatMessage, getGMUserIds } from "../compat.js";
         $supRows.toggle(isSup);
         $fullAutoRows.toggle(isFullAuto);
 
-        const input = getFullAutoRoundsInput();
-        if (input && !isFullAuto) input.setCustomValidity("");
+        const fullAutoInput = getFullAutoRoundsInput();
+        if (fullAutoInput && !isFullAuto) fullAutoInput.setCustomValidity("");
+
+        if (!isSup) {
+          clearFieldValidation(
+            getNumberInput("roundsFired"),
+            getNumberInput("zoneWidth"),
+            getNumberInput("targetsCount")
+          );
+        }
       };
 
       updateVisibility();
       $fireMode.on('change', () => {
         updateVisibility();
         validateFullAutoRoundsInput();
+        validateSuppressiveInputs();
       });
+
       html.find('input[name="fullAutoRoundsFired"]').on('input change', () => {
         validateFullAutoRoundsInput();
+      });
+
+      html.find('input[name="roundsFired"], input[name="zoneWidth"], input[name="targetsCount"]').on('input change', () => {
+        validateSuppressiveInputs();
       });
     }
   
@@ -405,7 +560,91 @@ import { createCyberpunkChatMessage, getGMUserIds } from "../compat.js";
         }
       }
 
+      if (this.options.weapon && formData.fireMode === fireModes.suppressive) {
+        const sys = this.options.weapon._getWeaponSystem
+          ? this.options.weapon._getWeaponSystem()
+          : this.options.weapon.system;
+
+        const rof = Math.max(0, Math.floor(Number(sys?.rof) || 0));
+        const shotsLeft = Math.max(0, Math.floor(Number(sys?.shotsLeft) || 0));
+        const maxRounds = Math.min(rof, shotsLeft);
+
+        const roundsInput = this.element.find('input[name="roundsFired"], input[name="fields.roundsFired"]').get(0);
+        const zoneWidthInput = this.element.find('input[name="zoneWidth"], input[name="fields.zoneWidth"]').get(0);
+        const targetsInput = this.element.find('input[name="targetsCount"], input[name="fields.targetsCount"]').get(0);
+
+        const invalidate = (input, message) => {
+          if (!input) return false;
+          input.setCustomValidity(message);
+          input.focus();
+          input.reportValidity();
+          return false;
+        };
+
+        const clear = (input) => {
+          if (input) input.setCustomValidity("");
+        };
+
+        const roundsRaw = String(roundsInput?.value ?? formData.roundsFired ?? "").trim();
+        const rounds = Number(roundsRaw);
+
+        if (maxRounds > 0) {
+          const roundsInvalid = roundsRaw === ""
+            || !Number.isFinite(rounds)
+            || !Number.isInteger(rounds)
+            || rounds < 1
+            || rounds > maxRounds;
+
+          if (roundsInvalid) {
+            return invalidate(
+              roundsInput,
+              localizeParam("IntegerRangeInvalid", { min: 1, max: maxRounds })
+            );
+          }
+
+          clear(roundsInput);
+          formData.roundsFired = rounds;
+        }
+
+        const zoneRaw = String(zoneWidthInput?.value ?? formData.zoneWidth ?? "").trim();
+        const zoneWidth = Number(zoneRaw);
+        const zoneMin = Math.max(1, Math.floor(Number(zoneWidthInput?.dataset?.min) || 2));
+
+        const zoneInvalid = zoneRaw === ""
+          || !Number.isFinite(zoneWidth)
+          || zoneWidth < zoneMin;
+
+        if (zoneInvalid) {
+          return invalidate(
+            zoneWidthInput,
+            localizeParam("NumberMinInvalid", { min: zoneMin })
+          );
+        }
+
+        clear(zoneWidthInput);
+        formData.zoneWidth = zoneWidth;
+
+        const targetsRaw = String(targetsInput?.value ?? formData.targetsCount ?? "").trim();
+        const targetsCount = Number(targetsRaw);
+
+        const targetsInvalid = targetsRaw === ""
+          || !Number.isFinite(targetsCount)
+          || !Number.isInteger(targetsCount)
+          || targetsCount < 1;
+
+        if (targetsInvalid) {
+          return invalidate(
+            targetsInput,
+            localizeParam("IntegerMinInvalid", { min: 1 })
+          );
+        }
+
+        clear(targetsInput);
+        formData.targetsCount = targetsCount;
+      }
+
       this.object = formData;
+
       const fired = await this.options.onConfirm(this.object);
       if (fired !== false) this.close();
     }
