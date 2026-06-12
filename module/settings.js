@@ -48,6 +48,23 @@ export function registerSystemSettings() {
     default: false
   });
 
+  // --- Permissions: Cyberware Humanity editing ---
+  game.settings.register("cyberpunk2020", "playersCanEditCyberwareHumanity", {
+    name: "SETTINGS.PlayersCanEditCyberwareHumanity",
+    hint: "SETTINGS.PlayersCanEditCyberwareHumanityHint",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: false,
+    onChange: () => {
+      for (const app of Object.values(ui.windows ?? {})) {
+        if (app instanceof ItemSheet && app.object?.type === "cyberware") {
+          app.render(false);
+        }
+      }
+    }
+  });
+
   // --- Optional rules: Friday Night Fistfight 2 ---
   game.settings.register("cyberpunk2020", "fnff2Enabled", {
     name: "SETTINGS.FNFF2Enabled",

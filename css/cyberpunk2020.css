@@ -207,6 +207,13 @@ details[open] summary ~ * {
     margin-left: 0px;
   }
 }
+
+.cyberware-humanity-locked,
+.cyberware-humanity-locked input,
+input.cyberware-humanity-locked {
+  cursor: not-allowed;
+}
+
 /**
 * A convenience class to prevent boilerplate
 * Best used like so, in its basic form:

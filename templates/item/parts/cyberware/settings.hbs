@@ -6,14 +6,20 @@
   <div class="field">
     <label for="system.humanityCost">{{CPLocal "HumanityCostRoll"}}</label>
     <span class="flex-pad"></span>
-    <input class="textsize" name="system.humanityCost" type="text" value="{{system.humanityCost}}" {{#unless isGM}}readonly{{/unless}}/>
+    <input
+      class="textsize{{#unless canEditCyberwareHumanity}} cyberware-humanity-locked{{/unless}}"
+      name="system.humanityCost"
+      type="text"
+      value="{{system.humanityCost}}"
+      {{#unless canEditCyberwareHumanity}}readonly{{/unless}}
+    />
     <div class="humanity-cost-roll field-image action" style="background-image: url('../../../icons/svg/d10-grey.svg')"></div>
   </div>
 
-  {{#if isGM}}
+  {{#if canEditCyberwareHumanity}}
     {{> (template "fields/number") label="HumanityLoss" edit="system.humanityLoss"}}
   {{else}}
-    {{> (template "fields/number") label="HumanityLoss" edit="system.humanityLoss" readOnly=true}}
+    {{> (template "fields/number") label="HumanityLoss" edit="system.humanityLoss" readOnly=true extraClasses="cyberware-humanity-locked"}}
   {{/if}}
   {{> (template "fields/string") label="Abbrev" edit="system.abbrev"}}
 

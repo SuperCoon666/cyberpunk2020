@@ -30,6 +30,8 @@ export class CyberpunkItemSheet extends ItemSheet {
     data.owner = this.item.isOwner;
     data.editable = this.isEditable ?? this.options?.editable ?? false;
     data.isGM = game.user.isGM;
+    data.canEditCyberwareHumanity = game.user.isGM
+      || game.settings.get("cyberpunk2020", "playersCanEditCyberwareHumanity");
 
     switch (this.item.type) {
       case "weapon":
