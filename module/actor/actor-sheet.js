@@ -254,7 +254,6 @@ export class CyberpunkActorSheet extends ActorSheet {
 
     if (root && this._cpAvatarCapture) {
       try {
-        root.removeEventListener("pointerdown", this._cpAvatarCapture, { capture: true });
         root.removeEventListener("click", this._cpAvatarCapture, { capture: true });
       } catch (_) {}
     }
@@ -270,15 +269,19 @@ export class CyberpunkActorSheet extends ActorSheet {
       const fp = new FilePicker({
         type: "image",
         activeSource: "data",
-        current: "",
-        callback: (path) => this.actor.update({ img: path })
+        current: this.actor.img || "",
+        callback: (path) => this.actor.update({ img: path }),
+        top: this.position.top + 40,
+        left: this.position.left + 10
       });
+
       fp.render(true);
-      setTimeout(() => {
-        try { fp.browse({ activeSource: "data", current: "" }); }
-        catch { try { fp.browse("data", "", {}); } catch (e) { console.warn(e); } }
-      }, 0);
     };
+
+    if (root) {
+      root.addEventListener("click", cpAvatarCapture, { capture: true });
+      this._cpAvatarCapture = cpAvatarCapture;
+    }
 
     if (root) {
       root.addEventListener("pointerdown", cpAvatarCapture, { capture: true });
