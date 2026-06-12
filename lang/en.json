@@ -315,6 +315,8 @@
     "CYBERPUNK.AttackModifiers": "Attack Modifiers",
     "CYBERPUNK.ModifiersSkillTitle": "Skill Modifiers",
     "CYBERPUNK.ExtraModifiers": "Extra Modifiers",
+    "CYBERPUNK.FullAutoRoundsFired": "Autofire rounds",
+    "CYBERPUNK.FullAutoRoundsInvalid": "Value must be a whole number from {min} to {max}",
     "CYBERPUNK.FireMode": "Fire Mode",
     "CYBERPUNK.Aiming": "Aiming",
     "CYBERPUNK.AimingAt": "Aiming at",

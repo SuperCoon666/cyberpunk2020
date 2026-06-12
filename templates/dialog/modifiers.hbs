@@ -7,7 +7,7 @@
                 {{!-- Have to set the context to be values for now cos fields just look things up in their context, and values is where the actual values are --}}
                 {{!-- This COULD be neater if we make fields look in a specific place (eg values) --}}
                 {{#with ../../defaultValues}}
-                    {{>(template ../fieldPath) label=../localKey edit=../dataPath choices=../choices noTranslateChoices=../noTranslateChoices allowBlank=../allowBlank readOnly=../readOnly}}
+                    {{>(template ../fieldPath) label=../localKey edit=../dataPath choices=../choices noTranslateChoices=../noTranslateChoices allowBlank=../allowBlank readOnly=../readOnly min=../min max=../max step=../step extraClasses=../extraClasses}}
                 {{/with}}
             {{/each}}
         </div>

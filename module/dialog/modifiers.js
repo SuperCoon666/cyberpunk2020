@@ -71,11 +71,35 @@ import { createCyberpunkChatMessage, getGMUserIds } from "../compat.js";
         const already = groups.some(g =>
           g.some(m => m.dataPath === "extraMod"));
         if (!already) {
-          groups.push([{
+          const extraGroup = [{
             localKey: "ExtraModifiers",
             dataPath: "extraMod",
             defaultValue: 0
-          }]);
+          }];
+
+          const weapon = this.options.weapon;
+          const fireModesAvailable = weapon?.__getFireModes?.() ?? [];
+
+          if (fireModesAvailable.includes(fireModes.fullAuto)) {
+            const sys = weapon?._getWeaponSystem ? weapon._getWeaponSystem() : weapon?.system;
+            const rof = Math.max(0, Math.floor(Number(sys?.rof) || 0));
+            const shotsLeft = Math.max(0, Math.floor(Number(sys?.shotsLeft) || 0));
+            const maxRounds = Math.min(rof, shotsLeft);
+
+            if (rof > 0) {
+              extraGroup.push({
+                localKey: "FullAutoRoundsFired",
+                dataPath: "fullAutoRoundsFired",
+                defaultValue: maxRounds,
+                min: 1,
+                max: maxRounds,
+                step: 1,
+                extraClasses: "full-auto-rounds"
+              });
+            }
+          }
+
+          groups.push(extraGroup);
         }
       }
 
@@ -163,7 +187,19 @@ import { createCyberpunkChatMessage, getGMUserIds } from "../compat.js";
         } else if (weapon.type === "cyberware" && weapon.system?.CyberWorkType?.Weapon) {
           this.options.weapon.system.CyberWorkType.Weapon.shotsLeft = shotsLeftAfter;
         }
+
         html.find('input.number[readonly]').val(shotsLeftAfter);
+
+        const sysAfter = weapon._getWeaponSystem?.() ?? weapon.system ?? {};
+        const rof = Math.max(0, Math.floor(Number(sysAfter?.rof) || 0));
+        const maxRounds = Math.min(rof, Math.max(0, Math.floor(Number(shotsLeftAfter) || 0)));
+
+        const input = html.find('input[name="fullAutoRoundsFired"]').get(0);
+        if (input) {
+          input.dataset.max = String(maxRounds);
+          input.value = String(maxRounds);
+          input.setCustomValidity("");
+        }
       };
 
       // If the player has not selected ammunition for the weapon -> reload as before (infinite)
@@ -258,17 +294,117 @@ import { createCyberpunkChatMessage, getGMUserIds } from "../compat.js";
         .get()
         .reduce((jq, el) => jq.add(el), $());
 
+      const $fullAutoRows = $([
+        '.field.full-auto-rounds',
+        '.field[data-path="fullAutoRoundsFired"]',
+        'input[name="fields.fullAutoRoundsFired"]',
+        'input[name="fullAutoRoundsFired"]'
+      ].join(','), html)
+        .map((i, el) => $(el).closest('.field, .form-group')[0])
+        .get()
+        .reduce((jq, el) => jq.add(el), $());
+
+      const getFullAutoRoundsInput = () => html.find('input[name="fullAutoRoundsFired"]').get(0);
+
+      const validateFullAutoRoundsInput = ({ report = false } = {}) => {
+        const input = getFullAutoRoundsInput();
+        if (!input) return true;
+
+        input.setCustomValidity("");
+
+        if ($fireMode.val() !== fireModes.fullAuto) return true;
+
+        const rawValue = String(input.value ?? "").trim();
+        const value = Number(rawValue);
+        const min = Math.max(1, Math.floor(Number(input.dataset.min) || 1));
+        const max = Math.max(0, Math.floor(Number(input.dataset.max) || 0));
+
+        // No ammunition available. Let the existing weapon roll guard show NoAmmo
+        if (max <= 0) return true;
+
+        const invalid = rawValue === ""
+          || !Number.isFinite(value)
+          || !Number.isInteger(value)
+          || value < min
+          || value > max;
+
+        if (!invalid) return true;
+
+        input.setCustomValidity(localizeParam("FullAutoRoundsInvalid", { min, max }));
+
+        if (report) {
+          input.focus();
+          input.reportValidity();
+        }
+
+        return false;
+      };
+
       const updateVisibility = () => {
-        const isSup = $fireMode.val() === fireModes.suppressive;
+        const fireMode = $fireMode.val();
+        const isSup = fireMode === fireModes.suppressive;
+        const isFullAuto = fireMode === fireModes.fullAuto;
+
         $supRows.toggle(isSup);
+        $fullAutoRows.toggle(isFullAuto);
+
+        const input = getFullAutoRoundsInput();
+        if (input && !isFullAuto) input.setCustomValidity("");
       };
 
       updateVisibility();
-      $fireMode.on('change', updateVisibility);
+      $fireMode.on('change', () => {
+        updateVisibility();
+        validateFullAutoRoundsInput();
+      });
+      html.find('input[name="fullAutoRoundsFired"]').on('input change', () => {
+        validateFullAutoRoundsInput();
+      });
     }
   
     /** @override */
     async _updateObject(event, formData) {
+      if (this.options.weapon && formData.fireMode === fireModes.fullAuto) {
+        const sys = this.options.weapon._getWeaponSystem
+          ? this.options.weapon._getWeaponSystem()
+          : this.options.weapon.system;
+
+        const rof = Math.max(0, Math.floor(Number(sys?.rof) || 0));
+        const shotsLeft = Math.max(0, Math.floor(Number(sys?.shotsLeft) || 0));
+        const maxRounds = Math.min(rof, shotsLeft);
+
+        const input = this.element.find('input[name="fullAutoRoundsFired"]').get(0);
+        const rawValue = String(input?.value ?? formData.fullAutoRoundsFired ?? "").trim();
+        const requestedRounds = Number(rawValue);
+
+        const invalid = maxRounds > 0 && (
+          rawValue === ""
+          || !Number.isFinite(requestedRounds)
+          || !Number.isInteger(requestedRounds)
+          || requestedRounds < 1
+          || requestedRounds > maxRounds
+        );
+
+        if (invalid) {
+          if (input) {
+            input.setCustomValidity(localizeParam("FullAutoRoundsInvalid", {
+              min: 1,
+              max: maxRounds
+            }));
+            input.focus();
+            input.reportValidity();
+          }
+
+          return false;
+        }
+
+        if (input) input.setCustomValidity("");
+
+        if (maxRounds > 0) {
+          formData.fullAutoRoundsFired = requestedRounds;
+        }
+      }
+
       this.object = formData;
       const fired = await this.options.onConfirm(this.object);
       if (fired !== false) this.close();

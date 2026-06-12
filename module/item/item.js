@@ -21,6 +21,19 @@ export class CyberpunkItem extends Item {
     return Math.max(1, Math.floor(n));
   }
 
+  static _resolveFullAutoRounds(attackMods = {}, system = {}) {
+    const rof = Math.max(0, Math.floor(Number(system?.rof) || 0));
+    const shotsLeft = Math.max(0, Math.floor(Number(system?.shotsLeft) || 0));
+    const maxRounds = Math.min(rof, shotsLeft);
+
+    if (maxRounds <= 0) return 0;
+
+    const requested = Math.floor(Number(attackMods?.fullAutoRoundsFired));
+    if (!Number.isFinite(requested) || requested <= 0) return maxRounds;
+
+    return clamp(requested, 1, maxRounds);
+  }
+
   /**
    * Build an inline-roll anchor that shows dice results on hover (via cp-inline-roll handler).
    * Click-to-reroll is disabled globally by the system.
@@ -238,7 +251,8 @@ export class CyberpunkItem extends Item {
     turningToFace,
     range,
     fireMode,
-    extraMod
+    extraMod,
+    fullAutoRoundsFired
   }) {
     const sys = this._getWeaponSystem ? this._getWeaponSystem() : this.system;
     let terms = []
@@ -275,13 +289,11 @@ export class CyberpunkItem extends Item {
     }
 
     // Range on its own doesn't actually apply a modifier - it only affects to-hit rolls. But it does affect certain fire modes.
-    // For now assume full auto = all bullets; spray and pray
+    // Full auto now uses the number of rounds chosen in the attack dialog, capped by ROF and remaining ammunition.
     // +1/-1 per 10 bullets fired. + if close, - if medium onwards.
     // Friend's copy of the rulebook states penalties/bonus for all except point blank
     if(fireMode === fireModes.fullAuto) {
-      const shotsLeft = Number(sys.shotsLeft) || 0;
-      const rof = Number(sys.rof) || 0;
-      const bullets = Math.min(shotsLeft, rof);
+      const bullets = CyberpunkItem._resolveFullAutoRounds({ fullAutoRoundsFired }, sys);
       // If close range, add, else subtract
       let multiplier = 
           (range === ranges.close) ? 1 
@@ -432,7 +444,7 @@ export class CyberpunkItem extends Item {
       // The kind of distance we're attacking at, so we can display Close: <50m or something like that
       let actualRangeBracket = rangeResolve[attackMods.range](system.range);
       let DC = rangeDCs[attackMods.range];
-      let targetCount = targetTokens.length || attackMods.targetsCount || 1;
+      let targetCount = Math.max(1, targetTokens.length || Number(attackMods.targetsCount) || 1);
       const rollData = this.actor?.getRollData?.() ?? {};
       const maximizeDamage = this._shouldMaximizePointBlankDamage(attackMods);
       const maxDamageRoll = maximizeDamage
@@ -441,19 +453,25 @@ export class CyberpunkItem extends Item {
       const maxDamage = maximizeDamage
         ? CyberpunkItem._floorDamageTotal(maxDamageRoll.total)
         : null;
+      const totalRounds = CyberpunkItem._resolveFullAutoRounds(attackMods, system);
       
       // This is a somewhat flawed multi-target thing - given target tokens, we could calculate distance (& therefore penalty) for each, and apply damage to them
       let rolls = [];
       let shotsLeft = Number(system.shotsLeft) || 0;
-      const perTarget = Math.max(1, Math.floor((Number(system.rof) || 0) / targetCount));
-      for (let i = 0; i < targetCount; i++) {
-          let attackRoll = await this.attackRoll(attackMods);
+      let roundsToAllocate = Math.min(totalRounds, shotsLeft);
 
-          const perTarget = Math.max(1, Math.floor((Number(system.rof) || 0) / targetCount));
+      for (let i = 0; i < targetCount && roundsToAllocate > 0; i++) {
+          const remainingTargets = targetCount - i;
+          const plannedRoundsForTarget = Math.ceil(roundsToAllocate / remainingTargets);
+          const attackModsForTarget = {
+            ...attackMods,
+            fullAutoRoundsFired: plannedRoundsForTarget
+          };
 
+          let attackRoll = await this.attackRoll(attackModsForTarget);
           const rangedFumble = await this._maybeApplyRangedFumble(attackRoll);
 
-          let roundsFired = Math.min(shotsLeft, perTarget);
+          let roundsFired = Math.min(shotsLeft, plannedRoundsForTarget);
 
           if (rangedFumble) {
             roundsFired = Math.min(shotsLeft, 1);
@@ -461,8 +479,10 @@ export class CyberpunkItem extends Item {
 
           if (rangedFumble?.outcome?.discharge) {
             shotsLeft = 0;
+            roundsToAllocate = 0;
           } else {
             shotsLeft = Math.max(0, shotsLeft - roundsFired);
+            roundsToAllocate = Math.max(0, roundsToAllocate - roundsFired);
           }
 
           await this.__setWeaponField("shotsLeft", shotsLeft);
@@ -475,6 +495,7 @@ export class CyberpunkItem extends Item {
           if (rangedFumble?.forceMiss) {
             roundsHit = 0;
           }
+
           let areaDamages = {};
           // Roll damage for each of the bullets that hit
           for (let i = 0; i < roundsHit; i++) {
@@ -495,6 +516,7 @@ export class CyberpunkItem extends Item {
                 damageHtml: CyberpunkItem._inlineRollHtml(dmg, dmgRoll, "damage")
               });
           }
+
           let templateData = {
               target: targetTokens[i] || undefined,
               range: attackMods.range,
@@ -509,10 +531,12 @@ export class CyberpunkItem extends Item {
               },
               fumble: rangedFumble?.fumble ?? null,
           };
+
           let roll = new Multiroll(`${localize("Autofire")}`, `${localize("Range")}: ${localizeParam(attackMods.range, {range: actualRangeBracket})}`);
-          roll.execute(undefined, "systems/cyberpunk2020/templates/chat/multi-hit.hbs", templateData);
+          await roll.execute(undefined, "systems/cyberpunk2020/templates/chat/multi-hit.hbs", templateData);
           rolls.push(roll);
       }
+
       return rolls;
   }
 

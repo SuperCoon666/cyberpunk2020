@@ -315,6 +315,8 @@
     "CYBERPUNK.AttackModifiers": "Модификаторы атаки",
     "CYBERPUNK.ModifiersSkillTitle": "Модификаторы навыка",
     "CYBERPUNK.ExtraModifiers": "Дополнительные модификаторы",
+    "CYBERPUNK.FullAutoRoundsFired": "Выстрелов: автоогонь",
+    "CYBERPUNK.FullAutoRoundsInvalid": "Значение должно быть целым числом от {min} до {max}",
     "CYBERPUNK.FireMode": "Режим стрельбы",
     "CYBERPUNK.Aiming": "Прицеливание",
     "CYBERPUNK.AimingAt": "Прицеливание в",
