@@ -354,19 +354,24 @@ export function defaultHitLocations() {
   return cloneSystemDefault(DEFAULT_HIT_LOCATIONS);
 }
 
-export function rangedModifiers(weapon, targetTokens=[]) {
+export function rangedModifiers(weapon, targetTokens = [], savedOptions = {}) {
     const sys = weapon._getWeaponSystem?.() ?? weapon.system ?? {};
     let range = sys.range || 50;
     let fireModes = weapon.__getFireModes() || [];
     const rof = Math.max(0, Math.floor(Number(sys.rof) || 0));
     const shotsLeft = Math.max(0, Math.floor(Number(sys.shotsLeft) || 0));
     const suppressiveRoundsMax = Math.min(rof, shotsLeft);
+
+    const savedFireMode = savedOptions?.fireMode;
+    const fireModeDefault = fireModes.includes(savedFireMode)
+      ? savedFireMode
+      : fireModes[0];
     return [
         [{
             localKey: "FireMode",
             dataPath: "fireMode",
             choices: fireModes,
-            defaultValue: fireModes[0]
+            defaultValue: fireModeDefault
         },
         {
             localKey: "Range", 

@@ -570,8 +570,8 @@ export class CyberpunkActorSheet extends ActorSheet {
       const item = getEventItem(this, ev);
       const isRanged = item.isRanged();
       const system = item._getWeaponSystem?.() ?? item.system ?? {};
-      const savedMeleeAttackOptions = isRanged
-        ? {}
+      const savedAttackOptions = isRanged
+        ? this._cpGetSavedRangedAttackOptions(item)
         : this._cpGetSavedMeleeAttackOptions(item);
 
       let modifierGroups = undefined;
@@ -583,13 +583,13 @@ export class CyberpunkActorSheet extends ActorSheet {
       });
 
       if (isRanged) {
-        modifierGroups = rangedModifiers(item, targetTokens);
+        modifierGroups = rangedModifiers(item, targetTokens, savedAttackOptions);
       }
       else if (system.attackType === meleeAttackTypes.martial) {
-        modifierGroups = martialOptions(this.actor, savedMeleeAttackOptions);
+        modifierGroups = martialOptions(this.actor, savedAttackOptions);
       }
       else {
-        modifierGroups = meleeBonkOptions(savedMeleeAttackOptions);
+        modifierGroups = meleeBonkOptions(savedAttackOptions);
       }
 
       const dialog = new ModifiersDialog(this.actor, {
@@ -597,7 +597,9 @@ export class CyberpunkActorSheet extends ActorSheet {
         targetTokens: targetTokens,
         modifierGroups: modifierGroups,
         onConfirm: async (fireOptions) => {
-          if (!isRanged) {
+          if (isRanged) {
+            await this._cpSaveRangedAttackOptions(item, fireOptions);
+          } else {
             await this._cpSaveMeleeAttackOptions(item, fireOptions);
           }
 
@@ -1389,9 +1391,30 @@ export class CyberpunkActorSheet extends ActorSheet {
     }
   }
 
-  _cpGetSavedMeleeAttackOptions(item) {
-    const saved = item?.getFlag?.("cyberpunk2020", "lastMeleeAttackOptions") ?? {};
+  _cpGetSavedRangedAttackOptions(item) {
+    const saved = item?.getFlag?.("cyberpunk2020", "lastRangedAttackOptions") ?? {};
     return foundry.utils.duplicate(saved);
+  }
+
+  async _cpSaveRangedAttackOptions(item, fireOptions = {}) {
+    if (!item) return;
+    if (fireOptions.fireMode === undefined) return;
+
+    const saved = this._cpGetSavedRangedAttackOptions(item);
+    const fireMode = String(fireOptions.fireMode ?? "");
+
+    if (saved.fireMode === fireMode) return;
+
+    try {
+      await item.update({
+        "flags.cyberpunk2020.lastRangedAttackOptions": {
+          ...saved,
+          fireMode
+        }
+      }, { render: false });
+    } catch (err) {
+      console.warn("CP2020: failed to save ranged attack options", err);
+    }
   }
 
   async _cpSaveMeleeAttackOptions(item, fireOptions = {}) {
