@@ -867,18 +867,37 @@ export class CyberpunkItem extends Item {
 
     results.addRoll(attackRoll, { name: localize("Attack") });
 
-    // Base damage: if the weapon has a damage field, use it.
-    // Otherwise, fall back to the standard dice rolls for strikes/kicks/throws/chokes.
+    // At this stage, martial damage is taken only from the selected weapon item.
+    // Non-damaging actions keep the compact roll-only chat card.
+    //
+    // Damage-capable actions:
+    // - Standard CP2020: Strike, Kick, Throw, Choke.
+    // - FNFF2 additions: Punch, Jump Kick, Ram, Cast.
+    //
+    // Roll-only actions:
+    // Dodge, Block/Parry, All-Out Parry, All-Out Dodge,
+    // Disarm, Sweep/Trip, Grapple, Hold, Escape.
     const sysWeapon = this._getWeaponSystem ? this._getWeaponSystem() : this.system;
-    const baseWeaponDamage = (sysWeapon?.damage && String(sysWeapon.damage).trim()) ? String(sysWeapon.damage).trim() : "";
+    const baseWeaponDamage = (sysWeapon?.damage && String(sysWeapon.damage).trim())
+      ? String(sysWeapon.damage).trim()
+      : "";
+
+    const damagingMartialActions = new Set([
+      martialActions.strike,
+      martialActions.punch,
+      martialActions.kick,
+      martialActions.jumpKick,
+      martialActions.ram,
+      martialActions.cast,
+      martialActions.throw,
+      martialActions.choke
+    ]);
+
+    const canDealDamage = damagingMartialActions.has(action);
     let damageFormula = "";
 
-    if (baseWeaponDamage) {
+    if (canDealDamage && baseWeaponDamage) {
       damageFormula = `${baseWeaponDamage}+@strengthBonus+@martialDamageBonus`;
-    } else if (action === martialActions.strike) {
-      damageFormula = "1d3+@strengthBonus+@martialDamageBonus";
-    } else if ([martialActions.kick, martialActions.throw, martialActions.choke].includes(action)) {
-      damageFormula = "1d6+@strengthBonus+@martialDamageBonus";
     }
 
     // CyberTerminus modifier

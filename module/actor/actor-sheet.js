@@ -1454,6 +1454,71 @@ export class CyberpunkActorSheet extends ActorSheet {
     }
   }
 
+    _cpGetSavedRangedAttackOptions(item) {
+    const saved = item?.getFlag?.("cyberpunk2020", "lastRangedAttackOptions") ?? {};
+    return foundry.utils.duplicate(saved);
+  }
+
+  async _cpSaveRangedAttackOptions(item, fireOptions = {}) {
+    if (!item) return;
+    if (fireOptions.fireMode === undefined) return;
+
+    const saved = this._cpGetSavedRangedAttackOptions(item);
+    const fireMode = String(fireOptions.fireMode ?? "");
+
+    if (saved.fireMode === fireMode) return;
+
+    try {
+      await item.update({
+        "flags.cyberpunk2020.lastRangedAttackOptions": {
+          ...saved,
+          fireMode
+        }
+      }, { render: false });
+    } catch (err) {
+      console.warn("CP2020: failed to save ranged attack options", err);
+    }
+  }
+
+  _cpGetSavedMeleeAttackOptions(item) {
+    const saved = item?.getFlag?.("cyberpunk2020", "lastMeleeAttackOptions") ?? {};
+    return foundry.utils.duplicate(saved);
+  }
+
+  async _cpSaveMeleeAttackOptions(item, fireOptions = {}) {
+    if (!item) return;
+
+    const fieldsToSave = [
+      "action",
+      "martialArt",
+      "cyberTerminus"
+    ];
+
+    const saved = this._cpGetSavedMeleeAttackOptions(item);
+    let changed = false;
+
+    for (const key of fieldsToSave) {
+      if (fireOptions[key] === undefined) continue;
+
+      const value = String(fireOptions[key] ?? "");
+
+      if (saved[key] !== value) {
+        saved[key] = value;
+        changed = true;
+      }
+    }
+
+    if (!changed) return;
+
+    try {
+      await item.update({
+        "flags.cyberpunk2020.lastMeleeAttackOptions": saved
+      }, { render: false });
+    } catch (err) {
+      console.warn("CP2020: failed to save melee attack options", err);
+    }
+  }
+
   /** @override */
   async close(options = {}) {
     try {
