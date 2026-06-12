@@ -1,4 +1,4 @@
-import { getDefaultSkills, localize, tryLocalize, cwHasType } from "./utils.js";
+import { deleteFieldUpdate, getDefaultSkills, localize, cwHasType } from "./utils.js";
 
 /**
  * Migration entrypoint.
@@ -73,7 +73,6 @@ export const migrateWorld = async function (targetVersion = game.system.version)
 
   // Mark world as migrated so we don't run again on every restart
   await game.settings.set("cyberpunk2020", "systemMigrationVersion", targetVersion);
-  console.log(`CYBERPUNK: Migration flag set to ${targetVersion}`);
 };
 
 /* -------------------------------------------- */
@@ -82,6 +81,8 @@ export const migrateWorld = async function (targetVersion = game.system.version)
 
 export async function migrateActor(actor) {
   const actorUpdates = {};
+
+  migrateLegacyActorSystemShape(actor, actorUpdates);
 
   // Legacy skills migration (from old actor.system.data.skills into skill items)
   const legacySkills = foundry.utils.getProperty(actor, "system.data.skills");
@@ -101,44 +102,95 @@ export async function migrateActor(actor) {
       const trained = trainedSkills[skill.name];
 
       if (trained) {
-        // Transfer only "trained-level" info into the new skill item instance
-        foundry.utils.setProperty(skillData, "system.level", trained.value);
-        foundry.utils.setProperty(skillData, "system.IP", trained.IP ?? 0);
+        // Transfer only trained-level info into the new skill item instance.
+        foundry.utils.setProperty(skillData, "system.level", trained.value ?? 0);
+        foundry.utils.setProperty(skillData, "system.ip", trained.IP ?? trained.ip ?? 0);
+        foundry.utils.setProperty(skillData, "system.IP", trained.IP ?? trained.ip ?? 0);
+        foundry.utils.setProperty(skillData, "system.trained", true);
 
-        // Optional: keep "trained" marker if your skill schema uses it
-        if (foundry.utils.getProperty(skillData, "system.trained") !== undefined) {
-          foundry.utils.setProperty(skillData, "system.trained", true);
-        }
-
-        // Remove from trainedSkills pool to detect non-standard skills after
+        // Remove from trainedSkills pool to detect non-standard skills after.
         delete trainedSkills[skill.name];
       }
 
       skillsToAdd.push(skillData);
     }
 
-    // Convert any remaining legacy skills (custom skills not in default compendium)
+    // Convert any remaining legacy skills (custom skills not in default compendium).
     for (const [skillName, legacy] of Object.entries(trainedSkills)) {
       skillsToAdd.push(convertOldSkill(skillName, legacy));
     }
 
-    // IMPORTANT: do NOT rewrite actor.items array (it can duplicate/reshape embedded docs)
-    // Create skill items safely
+    // IMPORTANT: do NOT rewrite actor.items array (it can duplicate/reshape embedded docs).
+    // Create skill items safely.
     if (skillsToAdd.length > 0) {
       await actor.createEmbeddedDocuments("Item", skillsToAdd);
     }
 
-    // Clear legacy container and set default sorting key (system field, not flags)
+    // Clear legacy container and set default sorting key (system field, not flags).
     actorUpdates["system.skillsSortedBy"] = "Name";
-    actorUpdates["system.data.skills"] = null;
+    Object.assign(actorUpdates, deleteFieldUpdate("system.data.skills"));
   }
 
-  // Ensure sorted-by setting exists (new worlds / actors without it)
+  // Ensure sorted-by setting exists (new worlds / actors without it).
   if (!actor.system?.skillsSortedBy) {
     actorUpdates["system.skillsSortedBy"] = "Name";
   }
 
   return actorUpdates;
+}
+
+function migrateLegacyActorSystemShape(actor, actorUpdates) {
+  const sourceSystem = actor.toObject()?.system ?? {};
+
+  // Old template nesting: system.stats.stats -> system.stats.
+  const nestedStats = foundry.utils.getProperty(sourceSystem, "stats.stats");
+  if (nestedStats && typeof nestedStats === "object") {
+    actorUpdates["system.stats"] = nestedStats;
+  }
+
+  // Old template nesting: system.hitLocations.hitLocations -> system.hitLocations,
+  // and system.hitLocations.sdp -> system.sdp.
+  const nestedHitLocations = foundry.utils.getProperty(sourceSystem, "hitLocations.hitLocations");
+  if (nestedHitLocations && typeof nestedHitLocations === "object") {
+    actorUpdates["system.hitLocations"] = nestedHitLocations;
+  }
+
+  const nestedSdp = foundry.utils.getProperty(sourceSystem, "hitLocations.sdp");
+  if (nestedSdp && typeof nestedSdp === "object" && !sourceSystem.sdp) {
+    actorUpdates["system.sdp"] = nestedSdp;
+  }
+
+  // Old template nesting: system.gear.eurobucks -> system.eurobucks.
+  const eurobucks = foundry.utils.getProperty(sourceSystem, "gear.eurobucks");
+  if (eurobucks !== undefined && sourceSystem.eurobucks === undefined) {
+    actorUpdates["system.eurobucks"] = eurobucks;
+  }
+
+  // Old template nesting: system.netrun.* -> top-level fields.
+  const netrun = sourceSystem.netrun;
+  if (netrun && typeof netrun === "object") {
+    const netrunFields = [
+      "icon",
+      "handle",
+      "currentRunSpeed",
+      "runSpeed",
+      "stunDamage",
+      "activePrograms"
+    ];
+
+    for (const field of netrunFields) {
+      if (netrun[field] !== undefined && sourceSystem[field] === undefined) {
+        actorUpdates[`system.${field}`] = netrun[field];
+      }
+    }
+  }
+
+  // Very old template default could leave an object instead of a concrete path string.
+  if (sourceSystem.icon && typeof sourceSystem.icon === "object") {
+    actorUpdates["system.icon"] = sourceSystem.icon.default ?? "";
+  }
+
+  if (sourceSystem.notes === null) actorUpdates["system.notes"] = "";
 }
 
 /* -------------------------------------------- */
@@ -154,6 +206,7 @@ const CYBERWARE_PACK_NAMES = [
   "cyberaudio",
   "cyberlimbs",
   "cyberoptic",
+  "chipware",
   "other-cyberware"
 ];
 
@@ -188,7 +241,7 @@ async function ensureCyberwareIndex() {
     _cyberwareNameToRef = new Map();
 
     for (const pack of getCyberwarePacks()) {
-      const index = await pack.getIndex({ fields: ["name", "type"] });
+      const index = await pack.getIndex({ fields: ["name", "type", "flags.core.sourceId", "_stats.compendiumSource"] });
 
       for (const entry of index) {
         if (entry.type && entry.type !== "cyberware") continue;
@@ -196,8 +249,13 @@ async function ensureCyberwareIndex() {
         const id = entry._id ?? entry.id;
         if (!id) continue;
 
-        if (!_cyberwareIdToRef.has(id)) _cyberwareIdToRef.set(id, { collection: pack.collection, id });
+        addCyberwareIdRef(id, { collection: pack.collection, id });
+        addCyberwareIdRef(getIdFromSourceId(entry.flags?.core?.sourceId), { collection: pack.collection, id });
+        addCyberwareIdRef(getIdFromSourceId(entry._stats?.compendiumSource), { collection: pack.collection, id });
 
+        // Exceptional legacy fallback only for cyberware migration: old worlds may
+        // contain pre-refactor implants with no stable source id. Keep this as the
+        // final lookup option; all normal localized logic must stay id-based.
         const nm = normalizeName(entry.name);
         if (nm && !_cyberwareNameToRef.has(nm)) _cyberwareNameToRef.set(nm, { collection: pack.collection, id });
       }
@@ -207,11 +265,32 @@ async function ensureCyberwareIndex() {
   return _cyberwareIndexPromise;
 }
 
+function addCyberwareIdRef(id, ref) {
+  if (!id) return;
+  if (!_cyberwareIdToRef.has(id)) _cyberwareIdToRef.set(id, ref);
+}
+
 function getIdFromSourceId(sourceId) {
   if (!sourceId) return null;
   const s = String(sourceId);
   const parts = s.split(".");
   return parts[parts.length - 1] || null;
+}
+
+function getItemStableIdCandidates(itemData, itemDoc = null) {
+  const candidates = [
+    getIdFromSourceId(itemData.flags?.core?.sourceId),
+    getIdFromSourceId(itemData._source?.flags?.core?.sourceId),
+    getIdFromSourceId(itemData._stats?.compendiumSource),
+    getIdFromSourceId(itemData._source?._stats?.compendiumSource),
+    itemData._id,
+    itemData.id,
+    itemData._source?._id,
+    itemDoc?.id,
+    itemDoc?._id
+  ];
+
+  return Array.from(new Set(candidates.filter(Boolean).map(String)));
 }
 
 async function getCyberwareTemplateByRef(ref) {
@@ -232,10 +311,18 @@ async function getCyberwareTemplateById(docId) {
   if (!docId) return null;
   await ensureCyberwareIndex();
 
-  const ref = _cyberwareIdToRef.get(docId);
+  const ref = _cyberwareIdToRef.get(String(docId));
   if (!ref) return null;
 
   return getCyberwareTemplateByRef(ref);
+}
+
+async function getCyberwareTemplateByIds(ids) {
+  for (const id of ids) {
+    const template = await getCyberwareTemplateById(id);
+    if (template) return template;
+  }
+  return null;
 }
 
 async function getCyberwareTemplateByName(itemName) {
@@ -267,68 +354,115 @@ function preserveCyberwareRuntimeState({ oldSystem, newSystem }) {
     if (oldSystem.Module.SlotsTaken !== undefined) newSystem.Module.SlotsTaken = oldSystem.Module.SlotsTaken;
   }
 
-  // IMPORTANT: Take MountZone from the new version
-  // If the old version had a non-empty value, leave it as is
+  // Preserve installed body zone from the old owned item.
   const oldMountZone = String(oldSystem?.MountZone ?? "").trim();
   if (oldMountZone) newSystem.MountZone = oldMountZone;
 
-  // ChipActive
-  if (oldSystem?.CyberWorkType && typeof oldSystem.CyberWorkType.ChipActive === "boolean") {
+  if (oldSystem?.CyberWorkType) {
     newSystem.CyberWorkType = newSystem.CyberWorkType ?? {};
-    newSystem.CyberWorkType.ChipActive = oldSystem.CyberWorkType.ChipActive;
+
+    // Chipware runtime state.
+    if (typeof oldSystem.CyberWorkType.ChipActive === "boolean") {
+      newSystem.CyberWorkType.ChipActive = oldSystem.CyberWorkType.ChipActive;
+    }
+    if (oldSystem.CyberWorkType.ChipSkills && typeof oldSystem.CyberWorkType.ChipSkills === "object") {
+      newSystem.CyberWorkType.ChipSkills = foundry.utils.duplicate(oldSystem.CyberWorkType.ChipSkills);
+    }
+
+    // Linked item/cyberware state.
+    if (oldSystem.CyberWorkType.ItemId) newSystem.CyberWorkType.ItemId = oldSystem.CyberWorkType.ItemId;
   }
+}
+
+function normalizeRangeDamagesForUpdate(value) {
+  const defaults = {
+    pointBlank: "",
+    close: "",
+    medium: "",
+    far: "",
+    short: "",
+    extreme: ""
+  };
+
+  if (Array.isArray(value)) {
+    return foundry.utils.mergeObject(defaults, { pointBlank: value[0] ?? "" }, { inplace: false });
+  }
+
+  if (typeof value === "string" || typeof value === "number") {
+    return foundry.utils.mergeObject(defaults, { pointBlank: String(value) }, { inplace: false });
+  }
+
+  if (value && typeof value === "object") {
+    return foundry.utils.mergeObject(defaults, value, { inplace: false });
+  }
+
+  return foundry.utils.duplicate(defaults);
+}
+
+function normalizeCyberwareTypesForUpdate(itemData, updateData) {
+  const types = foundry.utils.getProperty(itemData, "system.CyberWorkType.Types");
+  const type = foundry.utils.getProperty(itemData, "system.CyberWorkType.Type");
+
+  let nextTypes = [];
+  if (Array.isArray(types)) nextTypes = types.filter(Boolean);
+  else if (typeof types === "string" && types) nextTypes = [types];
+  else if (Array.isArray(type)) nextTypes = type.filter(Boolean);
+  else if (typeof type === "string" && type) nextTypes = [type];
+
+  if (!nextTypes.length) nextTypes = ["Descriptive"];
+
+  if (!nextTypes.includes("Descriptive") && !cwHasType(itemData.system, "Descriptive")) {
+    nextTypes.push("Descriptive");
+  }
+
+  updateData["system.CyberWorkType.Type"] = nextTypes[0] ?? "Descriptive";
+  updateData["system.CyberWorkType.Types"] = Array.from(new Set(nextTypes));
 }
 
 export async function migrateItem(item) {
   const itemData = item.toObject();
   const updateData = {};
 
-  // Always store sourceId on world items
+  // Always store sourceId on world items.
   if (itemData._stats?.compendiumSource) {
     updateData["flags.core.sourceId"] = itemData._stats.compendiumSource;
   }
 
-  // Convert "rangeDamage" to "rangeDamages" for melee weapons
+  // Convert legacy rangeDamage to object-shaped rangeDamages for weapons.
   if (itemData.type === "weapon") {
     const rangeDamage = foundry.utils.getProperty(itemData, "system.rangeDamage");
     if (rangeDamage !== undefined) {
-      updateData["system.rangeDamages"] = [rangeDamage];
-      updateData["system.-=rangeDamage"] = null;
+      updateData["system.rangeDamages"] = normalizeRangeDamagesForUpdate(rangeDamage);
+      Object.assign(updateData, deleteFieldUpdate("system.rangeDamage"));
     }
   }
 
-  // CYBERWARE: replace content from compendium template, then transfer user values
+  // CYBERWARE: replace content from compendium template, then transfer user values.
   if (item.type === "cyberware") {
-    // Try find template by id first (sourceId / compendiumSource / _id), then by name
-    const src = itemData.flags?.core?.sourceId || itemData._stats?.compendiumSource;
-    const srcId = getIdFromSourceId(src);
+    const stableIds = getItemStableIdCandidates(itemData, item);
 
-    let template = null;
+    // Primary path: stable id/source id. This is the normal multilingual architecture.
+    let template = await getCyberwareTemplateByIds(stableIds);
 
-    if (srcId) template = await getCyberwareTemplateById(srcId);
-
-    if (!template && itemData._id) template = await getCyberwareTemplateById(itemData._id);
-
+    // Exceptional final fallback: old pre-refactor cyberware in existing worlds may
+    // have neither matching _id nor sourceId. Name matching is kept only here to
+    // maximize seamless migration from the old implant structure.
     if (!template) template = await getCyberwareTemplateByName(item.name);
 
     if (template) {
       const tpl = template.toObject();
-
       const oldSystem = itemData.system ?? {};
-
       const newSystem = foundry.utils.duplicate(tpl.system ?? {});
 
       transferCyberwareUserValues({ oldSystem, newSystem });
-
       preserveCyberwareRuntimeState({ oldSystem, newSystem });
 
       updateData.name = tpl.name;
       updateData.img = tpl.img;
       updateData.type = tpl.type;
       updateData.system = newSystem;
-      updateData.effects = foundry.utils.duplicate(tpl.effects ?? []);
 
-      // Flags: keep existing ones, add template
+      // Flags: keep existing ones, add template flags.
       const oldFlags = itemData.flags ?? {};
       const tplFlags = tpl.flags ?? {};
       updateData.flags = foundry.utils.mergeObject(oldFlags, tplFlags, {
@@ -337,7 +471,7 @@ export async function migrateItem(item) {
         recursive: true
       });
 
-      // Preserve folder/sort/ownership for world items
+      // Preserve folder/sort/ownership for world items.
       if (!item.parent) {
         if (itemData.folder) updateData.folder = itemData.folder;
         if (itemData.sort !== undefined) updateData.sort = itemData.sort;
@@ -345,17 +479,11 @@ export async function migrateItem(item) {
       }
 
       return updateData;
-    } else {
-      // Not found in compendium: force descriptive type to avoid misclassification
-      const types = foundry.utils.getProperty(itemData, "system.CyberWorkType.Types");
-      if (!cwHasType(itemData.system, "Descriptive")) {
-        updateData["system.CyberWorkType.Type"] = "Descriptive";
-        updateData["system.CyberWorkType.Types"] = Array.isArray(types)
-          ? Array.from(new Set([...types, "Descriptive"]))
-          : ["Descriptive"];
-      }
-      return updateData;
     }
+
+    // Not found in compendium: keep the item usable and normalize type shape.
+    normalizeCyberwareTypesForUpdate(itemData, updateData);
+    return updateData;
   }
 
   return updateData;
@@ -371,7 +499,6 @@ export async function migrateCompendium(compendium) {
     return;
   }
 
-  // v12/v13 safe: updateDocuments on the pack itself
   const docs = await compendium.getDocuments();
   const updates = [];
 
@@ -402,20 +529,26 @@ export async function migrateCompendium(compendium) {
 /* -------------------------------------------- */
 
 export function convertOldSkill(skillName, oldSkillData = {}) {
+  const level = Number(oldSkillData.value ?? oldSkillData.level ?? oldSkillData.rank ?? 0) || 0;
+  const ip = Number(oldSkillData.IP ?? oldSkillData.ip ?? 0) || 0;
+
   return {
     name: skillName,
     type: "skill",
     system: {
-      description: "",
-      category: oldSkillData.category || "",
-      rank: oldSkillData.value ?? 0,
-      stat: oldSkillData.stat || "",
-      ipmod: 1,
-      ip: oldSkillData.IP ?? 0,
-      martialArts: {},
-      hasMartialArts: false,
-      isRanged: false,
-      isLanguage: false
+      flavor: "",
+      notes: "",
+      level,
+      chipLevel: Number(oldSkillData.chipLevel ?? 0) || 0,
+      ip,
+      IP: ip,
+      diffMod: Number(oldSkillData.diffMod ?? oldSkillData.ipmod ?? 1) || 1,
+      isChipped: Boolean(oldSkillData.isChipped ?? oldSkillData.chipped ?? false),
+      autoChipped: false,
+      isRoleSkill: Boolean(oldSkillData.isRoleSkill ?? false),
+      trained: Boolean(oldSkillData.trained ?? level > 0),
+      stat: oldSkillData.stat || "cool",
+      askMods: Boolean(oldSkillData.askMods ?? false)
     }
   };
 }

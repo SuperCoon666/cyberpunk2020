@@ -1,12 +1,10 @@
-import { martialOptions, meleeAttackTypes, meleeBonkOptions, rangedModifiers, weaponTypes } from "../lookups.js"
-import { localize, localizeParam, cwHasType, cwIsEnabled } from "../utils.js"
+import { martialOptions, meleeAttackTypes, meleeBonkOptions, rangedModifiers, weaponTypes, FNFF2_ONLY_MARTIAL_ART_IDS, isFnff2Enabled } from "../lookups.js"
+import { deleteFieldUpdate, localize, localizeParam, cwHasType, cwIsEnabled } from "../utils.js"
 import { ModifiersDialog } from "../dialog/modifiers.js"
 import { SortOrders, sortSkills } from "./skill-sort.js";
+import { getHtmlElement, getRichEditorHTML, itemFromDropData, saveRichEditorHTML } from "../compat.js";
 
-/**
- * Extend the basic ActorSheet with some very simple modifications
- * @extends {ActorSheet}
- */
+/** @extends {ActorSheet} */
 export class CyberpunkActorSheet extends ActorSheet {
 
   /** @override */
@@ -26,35 +24,25 @@ export class CyberpunkActorSheet extends ActorSheet {
 
   /** @override */
   getData(options) {
-    // Call the parent getData method, which provides the base sheetData
     const sheetData = super.getData(options);
 
-    // Extract the actor and system references for convenience
     const actor = this.actor;
     const system = actor.system;
 
-    // Store a reference to the system data for easier access in templates and other methods
     sheetData.system = system;
+    sheetData.owner = this.actor.isOwner;
+    sheetData.editable = this.isEditable ?? this.options?.editable ?? false;
 
-    // Only proceed with character or NPC types
     if (actor.type === 'character' || actor.type === 'npc') {
-      // If transient data doesn't exist, initialize it.
-      // Transient data is used for temporary things like skill search filters.
-      if (system.transient == null) {
-        system.transient = { skillFilter: "" };
-      }
+      // Sheet-only UI state; do not store search text in actor.system.
+      sheetData.skillFilter = this._cpSkillFilter ?? "";
 
-      // Prepare character-related items and data
       this._prepareCharacterItems(sheetData);
       this._addWoundTrack(sheetData);
       this._prepareSkills(sheetData);
 
-      // Reference to weapon types for the template
-      // This is needed because we can't directly store a list of entities in the system data
       sheetData.weaponTypes = weaponTypes;
 
-      // Retrieve the initiative modifier from system data
-      // Ensure that you have defined `initiativeMod` in your system data schema
       const initiativeMod = foundry.utils.getProperty(system, "initiativeMod") || 0;
       sheetData.initiativeMod = initiativeMod;
 
@@ -62,8 +50,7 @@ export class CyberpunkActorSheet extends ActorSheet {
       sheetData.StunDeathMod = StunDeathMod;
     }
 
-    /*definitions for active cyberware segments - cyberware anatomy display*/
-        sheetData.cyberwareSegmentsRight = [
+    sheetData.cyberwareSegmentsRight = [
       { area: "nervous" },
       { area: "body" },
       { area: "r-arm" },
@@ -98,14 +85,8 @@ export class CyberpunkActorSheet extends ActorSheet {
     sheetData.programsTotalCost = allPrograms
     .reduce((sum, p) => sum + Number(p.system.cost || 0), 0);
 
-    /**
-     * Collect the list of active programs based on the ID array
-     *   actor.system.activePrograms: string[]
-     */
     const activeProgIds = this.actor.system.activePrograms || [];
-    // Filter out the ones the actor actually has.
     const activePrograms = allPrograms.filter(p => activeProgIds.includes(p.id));
-    // Put them in sheetData so netrun-tab.hbs can output them
     sheetData.netrunActivePrograms = activePrograms;
 
     const allSkills = this.actor.items.filter(i => i.type === "skill");
@@ -136,14 +117,25 @@ export class CyberpunkActorSheet extends ActorSheet {
 
     sheetData.skillDisplayList = sheetData.filteredSkillIDs
       .map(id => this.actor.items.get(id))
-      .filter(Boolean);
+      .filter(Boolean)
+      .map(skill => ({
+        id: skill.id,
+        name: skill.name,
+        displayName: this.actor.getSkillDisplayName?.(skill) ?? skill.name,
+        system: skill.system
+      }));
   }
   _getSortedSkillIDs(sheetData) {
     const system = sheetData?.system ?? this.actor.system;
     const sortOrder = system.skillsSortedBy || "Name";
 
-    const currentSkills =
+    let currentSkills =
       this.actor.itemTypes?.skill ?? this.actor.items.filter(i => i.type === "skill");
+
+    if (!isFnff2Enabled()) {
+      currentSkills = currentSkills.filter(s => !FNFF2_ONLY_MARTIAL_ART_IDS.has(s._id));
+    }
+
     const currentIds = currentSkills.map(s => s.id);
 
     const cached = system.sortedSkillIDs;
@@ -156,30 +148,21 @@ export class CyberpunkActorSheet extends ActorSheet {
     return sortSkills(currentSkills, SortOrders[sortOrder]).map(s => s.id);
   }
 
-  // Handle searching skills
+  // Handle searching skills. The filter is intentionally sheet-local:
+  // it must not be written into actor.system or submitted with the form.
   _filterSkills(sheetData) {
-    const transient = sheetData.system.transient ??= {};
-
-    transient.skillFilter ??= "";
-    const upperSearch = String(transient.skillFilter).toUpperCase();
-
-    let listToFilter = this._getSortedSkillIDs(sheetData);
+    const upperSearch = String(this._cpSkillFilter ?? "").toUpperCase();
+    const listToFilter = this._getSortedSkillIDs(sheetData);
 
     if (upperSearch === "") return listToFilter;
 
-    const oldSearch = String(transient.oldSearch ?? "").toUpperCase();
-    if (oldSearch && Array.isArray(sheetData.filteredSkillIDs) && upperSearch.startsWith(oldSearch)) {
-      listToFilter = sheetData.filteredSkillIDs;
-    }
-
-    const result = listToFilter.filter(id => {
+    return listToFilter.filter(id => {
       const skill = this.actor.items.get(id);
       if (!skill) return false;
-      return String(skill.name).toUpperCase().includes(upperSearch);
+      const displayName = this.actor.getSkillDisplayName?.(skill) ?? skill.name;
+      return String(skill.name).toUpperCase().includes(upperSearch)
+        || String(displayName).toUpperCase().includes(upperSearch);
     });
-
-    transient.oldSearch = upperSearch;
-    return result;
   }
 
   _addWoundTrack(sheetData) {
@@ -215,8 +198,6 @@ export class CyberpunkActorSheet extends ActorSheet {
 
     sheetData.gearTabItems = this._gearTabItems(sheetData.actor.items);
 
-    // Convenience copy of itemTypes tab, makes things a little less long-winded in the templates
-    // TODO: Does this copy need to be done with itemTypes being a thing?
     sheetData.gear = {
       weapons: sortedItems.weapon,
       armor: sortedItems.armor,
@@ -269,11 +250,10 @@ export class CyberpunkActorSheet extends ActorSheet {
 
   /** @override */
   activateListeners(html) {
-    const root = html?.[0] || html;
+    const root = getHtmlElement(html);
 
-    if (this._cpAvatarCapture) {
+    if (root && this._cpAvatarCapture) {
       try {
-        root.removeEventListener("pointerdown", this._cpAvatarCapture, { capture: true });
         root.removeEventListener("click", this._cpAvatarCapture, { capture: true });
       } catch (_) {}
     }
@@ -289,24 +269,29 @@ export class CyberpunkActorSheet extends ActorSheet {
       const fp = new FilePicker({
         type: "image",
         activeSource: "data",
-        current: "",
-        callback: (path) => this.actor.update({ img: path })
+        current: this.actor.img || "",
+        callback: (path) => this.actor.update({ img: path }),
+        top: this.position.top + 40,
+        left: this.position.left + 10
       });
+
       fp.render(true);
-      setTimeout(() => {
-        try { fp.browse({ activeSource: "data", current: "" }); }
-        catch { try { fp.browse("data", "", {}); } catch (e) { console.warn(e); } }
-      }, 0);
     };
 
-    root.addEventListener("pointerdown", cpAvatarCapture, { capture: true });
-    root.addEventListener("click", cpAvatarCapture, { capture: true });
-    this._cpAvatarCapture = cpAvatarCapture;
+    if (root) {
+      root.addEventListener("click", cpAvatarCapture, { capture: true });
+      this._cpAvatarCapture = cpAvatarCapture;
+    }
+
+    if (root) {
+      root.addEventListener("pointerdown", cpAvatarCapture, { capture: true });
+      root.addEventListener("click", cpAvatarCapture, { capture: true });
+      this._cpAvatarCapture = cpAvatarCapture;
+    }
 
     super.activateListeners(html);
     // Life tab (system.notes) autosave
     this._cpSetupNotesAutosave(root);
-    html.find('.item[draggable=true]').on('dragstart', (e) => this._onDragStart(e.originalEvent ?? e));
     html.find('[data-drop-target]').on('dragover', (ev) => ev.preventDefault());
 
     /**
@@ -317,7 +302,6 @@ export class CyberpunkActorSheet extends ActorSheet {
       let itemId = ev.currentTarget.dataset.itemId;
       return sheet.actor.items.get(itemId);
     }
-    // TODO: Check if shift is held to skip dialog?
     function deleteItemDialog(ev) {
       ev.stopPropagation();
       let item = getEventItem(this, ev);
@@ -356,20 +340,17 @@ export class CyberpunkActorSheet extends ActorSheet {
       let statName = ev.currentTarget.dataset.statName;
       this.actor.rollStat(statName);
     });
-    // TODO: Refactor these skill interactivity stuff into their own methods
     // Skill level changes
-    html.find(".skill-level").click((event) => event.target.select()).change(async (event) => {
+    const saveSkillLevel = async (event) => {
       const skill = this.actor.items.get(event.currentTarget.dataset.skillId);
       if (!skill) return;
 
       const isChipped = !!skill.system.isChipped;
-      const value = Number.parseInt(event.target.value, 10);
+      const value = Number.parseInt(event.currentTarget.value, 10);
       const safeValue = Number.isFinite(value) ? value : 0;
 
       const targetKey = isChipped ? "system.chipLevel" : "system.level";
-      await this.actor.updateEmbeddedDocuments("Item", [
-        { _id: skill.id, [targetKey]: safeValue }
-      ], { render: false });
+      await skill.update({ [targetKey]: safeValue }, { render: false });
 
       if (isChipped) {
         const skillId = skill.id;
@@ -382,10 +363,8 @@ export class CyberpunkActorSheet extends ActorSheet {
           const map = i.system?.CyberWorkType?.ChipSkills;
           if (!map) return false;
 
-          // New format: keyed by Skill Item _id
           if (skillId && Object.prototype.hasOwnProperty.call(map, skillId)) return true;
 
-          // Legacy format: keyed by localized skill name
           return Object.prototype.hasOwnProperty.call(map, skillName);
         });
 
@@ -417,62 +396,16 @@ export class CyberpunkActorSheet extends ActorSheet {
       if (this.rendered) this.render(true);
 
       if (skill.sheet?.rendered) skill.sheet.render(true);
-    });
-    // Toggle skill chipped
-    html.find(".chip-toggle").click(async ev => {
-      // IMPORTANT: if you clicked on the checkbox inside .chip-toggle — let the change handler below handle it,
-      // otherwise you will get a double toggle and visually “nothing happens”
-      if (ev.target?.closest?.("input")) return;
+    };
 
-      const skill = this.actor.items.get(ev.currentTarget.dataset.skillId);
-      if (!skill) return;
-
-      const toggled = !skill.system.isChipped;
-      const skillId = skill.id;
-      const skillName = skill.name;
-
-      // Search for chips by ID (new format) + fallback by name (old format)
-      const chips = this.actor.items.filter(i => {
-        if (i.type !== "cyberware") return false;
-        if (!cwHasType(i, "Chip")) return false;
-        if (i.system?.equipped === false) return false;
-        const map = i.system?.CyberWorkType?.ChipSkills;
-        if (!map) return false;
-
-        return (skillId && Object.prototype.hasOwnProperty.call(map, skillId)) ||
-              Object.prototype.hasOwnProperty.call(map, skillName);
-      });
-
-      if (chips.length) {
-        // If there are real chips, switch ChipActive for all chips affecting this skill.
-        const chipUpdates = chips.map(ch => ({
-          _id: ch.id,
-          "system.CyberWorkType.ChipActive": toggled
-        }));
-        await this.actor.updateEmbeddedDocuments("Item", chipUpdates, { render: false });
-
-        // Synchronize flags and skill levels from active chips
-        await this._cp_syncChipLevelsToSkills();
-        await this._cp_syncActiveFlagsToSkills();
-      } else {
-        // If there are no chips, leave manual mode isChipped
-        await this.actor.updateEmbeddedDocuments("Item", [{
-          _id: skill.id,
-          "system.isChipped": toggled
-        }], { render: false });
+    html.find(".skill-level").click((event) => event.target.select());
+    html.on("change", ".skill-level", saveSkillLevel);
+    html.on("keydown", ".skill-level", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        event.currentTarget.blur();
       }
-
-      await this.actor.updateEmbeddedDocuments("Item", [{
-        _id: skill.id,
-        "system.-=chipped": null
-      }], { render: false });
-
-      if (this.rendered) this.render(true);
-      for (const ch of chips) if (ch.sheet?.rendered) ch.sheet.render(true);
-      if (skill.sheet?.rendered) skill.sheet.render(true);
     });
-
-    
     // Skill sorting
     html.find(".skill-sort > select").change(ev => {
       let sort = ev.currentTarget.value;
@@ -480,7 +413,7 @@ export class CyberpunkActorSheet extends ActorSheet {
     });
 
     // Skill search: auto-filter + clear button
-    const $skillSearch = html.find('input.skill-search[name="system.transient.skillFilter"]');
+    const $skillSearch = html.find('input.skill-search');
     const $skillClear = html.find('.skill-search-clear');
 
     const toggleClear = () => $skillClear.toggleClass('is-visible', !!$skillSearch.val());
@@ -504,13 +437,10 @@ export class CyberpunkActorSheet extends ActorSheet {
       const val = ev.currentTarget.value || "";
       toggleClear();
 
-      // Remember cursor position before re-render
-      this._restoreSkillCaret = ev.currentTarget.selectionStart ?? val.length;
+        this._restoreSkillCaret = ev.currentTarget.selectionStart ?? val.length;
 
-      // Update the "transient" filter in memory (without actor.update)
-      foundry.utils.setProperty(this.actor.system, "transient.skillFilter", val);
+      this._cpSkillFilter = val;
 
-      // Soft re-render of the sheet
       clearTimeout(searchTypingTimer);
       searchTypingTimer = setTimeout(() => this.render(false), 120);
     });
@@ -527,7 +457,7 @@ export class CyberpunkActorSheet extends ActorSheet {
 
       $skillSearch.val('');
       this._restoreSkillCaret = 0;
-      foundry.utils.setProperty(this.actor.system, "transient.skillFilter", "");
+      this._cpSkillFilter = "";
       this.render(false);
     });
 
@@ -639,33 +569,47 @@ export class CyberpunkActorSheet extends ActorSheet {
     // "Fire" button for weapons
     html.find('.fire-weapon').click(ev => {
       ev.stopPropagation();
-      let item = getEventItem(this, ev);
-      let isRanged = item.isRanged();
+
+      const item = getEventItem(this, ev);
+      const isRanged = item.isRanged();
+      const system = item._getWeaponSystem?.() ?? item.system ?? {};
+      const savedAttackOptions = isRanged
+        ? this._cpGetSavedRangedAttackOptions(item)
+        : this._cpGetSavedMeleeAttackOptions(item);
 
       let modifierGroups = undefined;
-      let targetTokens = Array.from(game.users.current.targets.values()).map(target => {
+      const targetTokens = Array.from(game.users.current.targets.values()).map(target => {
         return {
-          name: target.document.name, 
-          id: target.id};
+          name: target.document.name,
+          id: target.id
+        };
       });
-      if(isRanged) {
-        // For now just look at the names.
-        // We have to get the values as an iterator; else if multiple targets share names, it'd turn a set with size 2 to one with size 1
-        modifierGroups = rangedModifiers(item, targetTokens);
+
+      if (isRanged) {
+        modifierGroups = rangedModifiers(item, targetTokens, savedAttackOptions);
       }
-      else if ((item._getWeaponSystem?.().attackType) === meleeAttackTypes.martial) {
-        modifierGroups = martialOptions(this.actor);
+      else if (system.attackType === meleeAttackTypes.martial) {
+        modifierGroups = martialOptions(this.actor, savedAttackOptions);
       }
       else {
-        modifierGroups = meleeBonkOptions();
+        modifierGroups = meleeBonkOptions(savedAttackOptions);
       }
 
-      let dialog = new ModifiersDialog(this.actor, {
+      const dialog = new ModifiersDialog(this.actor, {
         weapon: item,
         targetTokens: targetTokens,
         modifierGroups: modifierGroups,
-        onConfirm: (fireOptions) => item.__weaponRoll(fireOptions, targetTokens)
+        onConfirm: async (fireOptions) => {
+          if (isRanged) {
+            await this._cpSaveRangedAttackOptions(item, fireOptions);
+          } else {
+            await this._cpSaveMeleeAttackOptions(item, fireOptions);
+          }
+
+          return item.__weaponRoll(fireOptions, targetTokens);
+        }
       });
+
       dialog.render(true);
     });
 
@@ -697,40 +641,24 @@ export class CyberpunkActorSheet extends ActorSheet {
       confirmDialog.render(true);
     });
 
-    // Make each .netrun-program the “source” of the drag and drop operation
     html.find('.netrun-program').each((_, programElem) => {
-      // An attribute telling the browser and Foundry that this element can be “dragged”
       programElem.setAttribute("draggable", true);
 
-      // Process dragstart
       programElem.addEventListener("dragstart", ev => {
-        // Find the corresponding Item
         const itemId = programElem.dataset.itemId;
         const item = this.actor.items.get(itemId);
         if ( !item ) return;
 
-        // Form dragData - object to be read in _onDropItem(event, data)
-        const dragData = {
-          type: "Item",
-          actorId: this.actor.id,
-          data: item.toObject()
-        };
+        this._cpWriteOwnedItemDragData(ev, item);
 
-        // Write dragData to the event
-        ev.dataTransfer.setData("text/plain", JSON.stringify(dragData));
-
-        // You can add an “is-dragging” class or any visual highlighting class
         programElem.classList.add("is-dragging");
       });
 
-      // When the dragging is finished, remove the class
       programElem.addEventListener("dragend", ev => {
         programElem.classList.remove("is-dragging");
       });
     });
 
-    // Auto-save changes for all fields that have data-edit=”...”
-    // This will allow writing new values to this.actor at once.
     html.find('input[data-edit], select[data-edit], textarea[data-edit]').on('change', ev => {
       ev.preventDefault();
       const input = ev.currentTarget;
@@ -749,7 +677,6 @@ export class CyberpunkActorSheet extends ActorSheet {
       this.actor.update({ [path]: value });
     });
 
-    // Click on .interface-skill-roll to make a roll (if itemId is not null)
     const interfaceSkillElems = html.find('.interface-skill-roll');
 
     interfaceSkillElems.on('click', ev => {
@@ -762,7 +689,6 @@ export class CyberpunkActorSheet extends ActorSheet {
       this.actor.rollSkill(skillId);
     });
 
-    // When clicking (contextmenu) on the icon of the active program - remove it from the list
     html.find('.netrun-active-icon').on('contextmenu', async ev => {
       ev.preventDefault();
       const div = ev.currentTarget;
@@ -808,9 +734,16 @@ export class CyberpunkActorSheet extends ActorSheet {
       fp.render(true);
     });
 
+    if (this._cpChipTooltipCleanup) {
+      try { this._cpChipTooltipCleanup(); } catch (_) {}
+      this._cpChipTooltipCleanup = null;
+    }
+
     const tooltip = document.createElement("div");
     tooltip.className = "chip-tooltip";
     document.body.appendChild(tooltip);
+
+    const documentTooltipListeners = [];
 
     function hideTooltip() {
       tooltip.style.display = "none";
@@ -838,12 +771,20 @@ export class CyberpunkActorSheet extends ActorSheet {
       });
     }
 
-    attachChipwareTooltips(html[0] ?? document);
+    attachChipwareTooltips(getHtmlElement(html) ?? document);
     ["drop", "dragend", "click", "mousedown", "mouseup"].forEach(eventName => {
-      document.addEventListener(eventName, hideTooltip); 
+      document.addEventListener(eventName, hideTooltip);
+      documentTooltipListeners.push(eventName);
     });
+
+    this._cpChipTooltipCleanup = () => {
+      hideTooltip();
+      tooltip.remove();
+      for (const eventName of documentTooltipListeners) {
+        document.removeEventListener(eventName, hideTooltip);
+      }
+    };
     
-    // Skill list: switching the “chip” synchronizes implants (ChipActive) and updates all open sheets
     html.on("change", ".chip-toggle input[data-skill-id]", async (ev) => {
       const checked = !!ev.currentTarget.checked;
       const skillId = ev.currentTarget.dataset.skillId;
@@ -873,14 +814,11 @@ export class CyberpunkActorSheet extends ActorSheet {
         await this._cp_syncChipLevelsToSkills();
         await this._cp_syncActiveFlagsToSkills();
       } else {
-        await this.actor.updateEmbeddedDocuments("Item", [
-          { _id: skill.id, "system.isChipped": checked }
-        ], { render: false });
+        await skill.update({
+          "system.isChipped": checked,
+          ...deleteFieldUpdate("system.chipped")
+        }, { render: false });
       }
-
-      await this.actor.updateEmbeddedDocuments("Item", [
-        { _id: skill.id, "system.-=chipped": null }
-      ], { render: false });
 
       if (this.rendered) this.render(true);
       for (const ch of chips) if (ch.sheet?.rendered) ch.sheet.render(true);
@@ -888,32 +826,188 @@ export class CyberpunkActorSheet extends ActorSheet {
     });
 
 
-    // Drag sources for cyberware
+    // Drag sources for owned Actor Items.
     const makeDraggable = (root) => {
-      const el = root?.[0] || root;
-      el.querySelectorAll('[data-item-id]').forEach((node) => {
+      const el = getHtmlElement(root);
+      if (!el?.querySelectorAll) return;
+
+      const selector = [
+        '.field[data-item-id]',
+        '.item[data-item-id]',
+        '.skill[data-item-id]',
+        '.gear[data-item-id]',
+        '.fire-weapon[data-item-id]',
+        '.netrun-program[data-item-id]',
+        '.chipware[data-item-id]'
+      ].join(',');
+
+      el.querySelectorAll(selector).forEach((node) => {
         if (node.dataset.draggableInit === '1') return;
+        if (node.closest?.('.item-delete, .item-unequip, .item-controls')) return;
+
         node.dataset.draggableInit = '1';
         node.setAttribute('draggable', 'true');
         node.addEventListener('dragstart', (ev) => {
           const id = node.dataset.itemId;
           const it = this.actor.items.get(id);
           if (!it) return;
-          const dragData = { type: "Item", actorId: this.actor.id, data: it.toObject() };
-          ev.dataTransfer.setData("text/plain", JSON.stringify(dragData));
+          this._cpWriteOwnedItemDragData(ev, it);
         });
       });
     };
 
-    html.on('click', '.item-unequip', (e) => this._onActiveUnequip(e));
-    html.find('.item-unequip').on('mousedown click', (e) => {
+    html.on('mousedown', '.item-unequip', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-      this._onActiveUnequip(e);
+      e.stopImmediatePropagation?.();
     });
+    html.on('click', '.item-unequip', (e) => this._onActiveUnequip(e));
 
-    makeDraggable(html[0] ?? html);
+    makeDraggable(getHtmlElement(html) ?? html);
+  }
+
+  /**
+   * Build drag payload for an Item already owned by this Actor.
+   * @param {Item} item
+   * @returns {object}
+   * @private
+   */
+  _cpOwnedItemDragData(item) {
+    const dragData = (typeof item?.toDragData === "function")
+      ? item.toDragData()
+      : { type: "Item", uuid: item?.uuid };
+
+    dragData.type = dragData.type || "Item";
+    dragData.uuid = dragData.uuid || item?.uuid;
+    dragData.actorId = this.actor.id;
+    dragData.actorUuid = this.actor.uuid;
+    dragData.itemId = item.id;
+
+    return dragData;
+  }
+
+  /**
+   * @param {DragEvent} event
+   * @param {Item} item
+   * @private
+   */
+  _cpWriteOwnedItemDragData(event, item) {
+    const dragData = this._cpOwnedItemDragData(item);
+    event.dataTransfer?.setData("text/plain", JSON.stringify(dragData));
+  }
+
+  /**
+   * Extract possible Item ids from Foundry drag data.
+   * @param {object} data
+   * @returns {string[]}
+   * @private
+   */
+  _cpDropItemIdCandidates(data) {
+    const ids = [];
+    const add = (value) => {
+      if (value == null || value === "") return;
+      const id = String(value);
+      if (!ids.includes(id)) ids.push(id);
+    };
+
+    add(data?.itemId);
+    add(data?.data?._id);
+    add(data?._id);
+
+    const uuid = String(data?.uuid ?? data?.documentUuid ?? data?.itemUuid ?? "");
+    const marker = ".Item.";
+    const idx = uuid.indexOf(marker);
+    if (idx >= 0) add(uuid.slice(idx + marker.length).split(".")[0]);
+
+    return ids;
+  }
+
+  /**
+   * Does the drop payload represent an Item already owned by this Actor?
+   * @param {object} data
+   * @returns {boolean}
+   * @private
+   */
+  _cpIsSameActorItemDrop(data) {
+    if (!data || data.type !== "Item") return false;
+
+    if (data.actorId && String(data.actorId) === String(this.actor.id)) return true;
+    if (data.actorUuid && String(data.actorUuid) === String(this.actor.uuid)) return true;
+
+    const uuid = String(data.uuid ?? data.documentUuid ?? data.itemUuid ?? "");
+    if (!uuid) return false;
+
+    if (uuid.startsWith(`${this.actor.uuid}.Item.`)) return true;
+    if (uuid.includes(`Actor.${this.actor.id}.Item.`)) return true;
+
+    return false;
+  }
+
+  /**
+   * Resolve a same-actor drop to the existing owned Item.
+   * @param {object} data
+   * @returns {Item|null}
+   * @private
+   */
+  _cpGetOwnedDropItem(data) {
+    for (const id of this._cpDropItemIdCandidates(data)) {
+      const item = this.actor.items.get(id);
+      if (item) return item;
+    }
+    return null;
+  }
+
+  /**
+   * Normalize an Item document or plain Item source object to source data.
+   * @param {Item|object} itemOrData
+   * @returns {object}
+   * @private
+   */
+  _cpToItemSource(itemOrData) {
+    if (typeof itemOrData?.toObject === "function") return itemOrData.toObject();
+    return foundry.utils.deepClone(itemOrData ?? {});
+  }
+
+  /**
+   * Resolve dropped Item data.
+   *
+   * @param {object} data
+   * @returns {Promise<{item: Item|null, itemData: object, sameActor: boolean}>}
+   * @private
+   */
+  async _cpResolveDroppedItem(data) {
+    const sameActor = this._cpIsSameActorItemDrop(data);
+    const owned = sameActor ? this._cpGetOwnedDropItem(data) : null;
+    if (owned) return { item: owned, itemData: owned.toObject(), sameActor: true };
+
+    const resolved = await itemFromDropData(data);
+    const resolvedSameActor = !!(resolved?.parent && resolved.parent === this.actor);
+    const item = resolvedSameActor ? resolved : null;
+    const itemData = this._cpToItemSource(resolved);
+
+    return { item, itemData, sameActor: sameActor || resolvedSameActor };
+  }
+
+  /**
+   * Return an owned Item for a drop target, creating one only for external drops.
+   *
+   * @param {object} data
+   * @param {{item: Item|null, itemData: object, sameActor: boolean}|null} resolved
+   * @returns {Promise<{item: Item|null, itemData: object, sameActor: boolean}>}
+   * @private
+   */
+  async _cpEnsureDroppedItemOwned(data, resolved = null) {
+    const drop = resolved ?? await this._cpResolveDroppedItem(data);
+    if (drop.item) return drop;
+
+    const existing = drop.itemData?._id ? this.actor.items.get(drop.itemData._id) : null;
+    if (existing) {
+      return { item: existing, itemData: existing.toObject(), sameActor: drop.sameActor };
+    }
+
+    const created = await this.actor.createEmbeddedDocuments("Item", [drop.itemData]);
+    const item = created[0] ?? null;
+    return { item, itemData: item?.toObject() ?? drop.itemData, sameActor: false };
   }
 
   async _onActiveUnequip(event) {
@@ -942,116 +1036,91 @@ export class CyberpunkActorSheet extends ActorSheet {
     this.render(true);
   }
 
-  /**
-   * Overridden method of Drag&Drop processing
-   * When dropping, we check where exactly we dropped to (data-drop-target).
-   * If on “program-list” - add program to inventory.
-   * If on “active-programs” - activate the program.
-   */
+  /** @override */
   async _onDropItem(event, data) {
     event.preventDefault();
 
-    // Search for the parent element with the data-drop-target attribute
     const dropTarget = event.target.closest("[data-drop-target]");
-    if (!dropTarget) return super._onDropItem(event, data);
+    const sameActorDrop = this._cpIsSameActorItemDrop(data);
 
-    // Drop to “program-list”
-    const fromDrop = async () => {
-      if (Item?.fromDropData) return await Item.fromDropData(data);
-      if (Item?.implementation?.fromDropData) return await Item.implementation.fromDropData(data);
-      return data?.data ?? data;
-    };
+    if (!dropTarget) {
+      if (sameActorDrop) return false;
+      return super._onDropItem(event, data);
+    }
 
-    const ensureLocalCopy = async (itemData) => {
-      let item = this.actor.items.get(itemData._id);
-      if (!item) {
-        const created = await this.actor.createEmbeddedDocuments("Item", [itemData]);
-        item = created[0];
-      }
-      return item;
-    };
-
+    const target = dropTarget.dataset.dropTarget;
     const warn = (msg) => ui.notifications?.warn(msg);
 
-    if (dropTarget.dataset.dropTarget === "program-list") {
-      const itemData = await fromDrop();
+    if (target === "program-list") {
+      const resolved = await this._cpResolveDroppedItem(data);
+      const { itemData, sameActor } = resolved;
 
       if (itemData.type !== "program") {
         return ui.notifications.warn(localize("NotAProgram", { name: itemData.name }));
       }
 
-      // If a person pulls a program that the same actor already has,
-      // and drops it in the program-list, - do nothing (to avoid duplicating)
-      const sameActor = (data.actorId === this.actor.id);
-      const existingItem = sameActor ? this.actor.items.get(itemData._id) : null;
-      if (existingItem) {
-        ui.notifications.warn(localize("ProgramAlreadyExists", { name: existingItem.name }));
-        return;
+      if (sameActor) {
+        const existing = resolved.item ?? this._cpGetOwnedDropItem(data) ?? this.actor.items.get(itemData._id);
+        if (existing) ui.notifications.warn(localize("ProgramAlreadyExists", { name: existing.name }));
+        return false;
       }
 
-      // Otherwise (pulling from another actor, or from compendium, or it's another program) - create a copy
-      return this.actor.createEmbeddedDocuments("Item", [ itemData ]);
+      return this.actor.createEmbeddedDocuments("Item", [itemData]);
     }
 
-    // Drop in active-programs
-    if (dropTarget.dataset.dropTarget === "active-programs") {
-      const itemData = await fromDrop();
+    if (target === "active-programs") {
+      const resolved = await this._cpResolveDroppedItem(data);
+      const { itemData } = resolved;
 
       if (itemData.type !== "program") {
         return ui.notifications.warn(localize("OnlyProgramsCanBeActivated", { name: itemData.name }));
       }
 
-      // Check if the item is already in your inventory; if not, copy it
-      let item = this.actor.items.get(itemData._id);
-      if (!item) {
-        const [created] = await this.actor.createEmbeddedDocuments("Item", [itemData]);
-        item = created;
-      }
+      const { item } = await this._cpEnsureDroppedItemOwned(data, resolved);
+      if (!item) return;
 
-      // Current list of active programs (ID)
-      const currentActive = this.actor.system.activePrograms || [];
+      const currentActive = [...(this.actor.system.activePrograms || [])];
       const newMu = Number(item.system.mu) || 0;
 
-      // Count the already occupied MU
       const usedMu = currentActive.reduce((sum, id) => {
         const p = this.actor.items.get(id);
         return sum + (Number(p?.system.mu) || 0);
       }, 0);
 
       const ramMax = Number(this.actor.system.ramMax) || 0;
-
-      // If we exceed the limit after adding, we reject it
       if (ramMax && (usedMu + newMu) > ramMax) {
         return ui.notifications.warn(
           localize("NotEnoughRAM", { name: item.name, used: usedMu, max: ramMax })
         );
       }
 
-      // Add to active, if not already there
       if (!currentActive.includes(item.id)) {
         currentActive.push(item.id);
 
-        const totalMu = usedMu + newMu;
         await this.actor.update({
           "system.activePrograms": currentActive,
-          "system.ramUsed": totalMu
+          "system.ramUsed": usedMu + newMu
         });
 
         this.render(true);
       }
+
       return;
     }
 
-    // CHIPS: top plate
-    if (dropTarget.dataset.dropTarget === "active-chips") {
-      const itemData = await fromDrop();
+    if (target === "active-chips") {
+      const resolved = await this._cpResolveDroppedItem(data);
+      const { itemData } = resolved;
+
       if (itemData.type !== "cyberware") return warn(localize("ChipwareOnlyHere"));
 
       const cwt = itemData.system?.CyberWorkType ?? {};
       const types = Array.isArray(cwt.Types) ? cwt.Types : (cwt.Type ? [cwt.Type] : []);
       if (!types.includes("Chip")) return warn(localize("OnlyChipsHere"));
 
-      const item = await ensureLocalCopy(itemData);
+      const { item } = await this._cpEnsureDroppedItemOwned(data, resolved);
+      if (!item) return;
+
       await item.update({
         "system.equipped": true,
         "system.CyberWorkType.ChipActive": true
@@ -1065,17 +1134,22 @@ export class CyberpunkActorSheet extends ActorSheet {
       return;
     }
 
-    // Return to inventory (bottom)
-    if (dropTarget.dataset.dropTarget === "cyber-inventory") {
-      const itemData = await fromDrop();
+    if (target === "cyber-inventory") {
+      const resolved = await this._cpResolveDroppedItem(data);
+      const { itemData, sameActor } = resolved;
+
       if (itemData.type !== "cyberware") return warn(localize("OnlyCyberwareHere"));
 
-      const item = await ensureLocalCopy(itemData);
-      await item.update({
-        "system.equipped": false,
-        "system.CyberBodyType.Location": "",
-        "system.CyberWorkType.ChipActive": false
-      }, { render: false });
+      const { item } = await this._cpEnsureDroppedItemOwned(data, resolved);
+      if (!item) return;
+
+      if (sameActor) {
+        await item.update({
+          "system.equipped": false,
+          "system.CyberBodyType.Location": "",
+          "system.CyberWorkType.ChipActive": false
+        }, { render: false });
+      }
 
       await this._cp_syncChipLevelsToSkills();
       await this._cp_syncActiveFlagsToSkills();
@@ -1085,31 +1159,32 @@ export class CyberpunkActorSheet extends ActorSheet {
       return;
     }
 
-    // Installation by zone (auto-route to item's mount)
-    if (dropTarget.dataset.dropTarget?.startsWith("zone:")) {
-      const zoneKey = dropTarget.dataset.dropTarget.split(":")[1];
+    if (target?.startsWith("zone:")) {
+      const zoneKey = target.split(":")[1];
+      const resolved = await this._cpResolveDroppedItem(data);
+      const { itemData } = resolved;
 
-      const itemData = await fromDrop();
       if (itemData.type !== "cyberware") return warn(localize("OnlyCyberwareHere"));
-        {
-          const cwt = itemData.system?.CyberWorkType ?? {};
-          const types = Array.isArray(cwt.Types) ? cwt.Types : (cwt.Type ? [cwt.Type] : []);
-          if (types.includes("Chip")) {
-            const item = await ensureLocalCopy(itemData);
-            await item.update({
-              "system.equipped": true,
-              "system.CyberWorkType.ChipActive": true,
-              "system.CyberBodyType.Location": ""
-            }, { render: false });
 
-            await this._cp_syncChipLevelsToSkills();
-            await this._cp_syncActiveFlagsToSkills();
+      const cwt = itemData.system?.CyberWorkType ?? {};
+      const types = Array.isArray(cwt.Types) ? cwt.Types : (cwt.Type ? [cwt.Type] : []);
+      const { item } = await this._cpEnsureDroppedItemOwned(data, resolved);
+      if (!item) return;
 
-            if (item.sheet?.rendered) item.sheet.render(true);
-            this.render(true);
-            return;
-          }
-        }
+      if (types.includes("Chip")) {
+        await item.update({
+          "system.equipped": true,
+          "system.CyberWorkType.ChipActive": true,
+          "system.CyberBodyType.Location": ""
+        }, { render: false });
+
+        await this._cp_syncChipLevelsToSkills();
+        await this._cp_syncActiveFlagsToSkills();
+
+        if (item.sheet?.rendered) item.sheet.render(true);
+        this.render(true);
+        return;
+      }
 
       const mount = String(itemData.system?.MountZone || itemData.system?.CyberBodyType?.Type || "");
       const updates = { "system.equipped": true };
@@ -1127,11 +1202,11 @@ export class CyberpunkActorSheet extends ActorSheet {
         updates["system.CyberBodyType.Location"] = "";
       }
 
-      const item = await ensureLocalCopy(itemData);
       await item.update(updates);
       return this.render(true);
     }
 
+    if (sameActorDrop) return false;
     return super._onDropItem(event, data);
   }
   async _cp_syncChipLevelsToSkills() {
@@ -1194,12 +1269,12 @@ export class CyberpunkActorSheet extends ActorSheet {
 
       if (Object.prototype.hasOwnProperty.call(patch, "isChipped")) {
         const $cb = html.find('input[name="system.isChipped"]');
-        if ($cb.length) $cb.prop('checked', !!patch.isChipped).trigger('change');
+        if ($cb.length) $cb.prop('checked', !!patch.isChipped);
       }
 
       if (Object.prototype.hasOwnProperty.call(patch, "chipLevel")) {
         const $in = html.find('input[name="system.chipLevel"], select[name="system.chipLevel"]');
-        if ($in.length) $in.val(String(patch.chipLevel)).trigger('change');
+        if ($in.length) $in.val(String(patch.chipLevel));
       }
     }
   }
@@ -1248,92 +1323,52 @@ export class CyberpunkActorSheet extends ActorSheet {
     }
   }
 
-  // Life tab (system.notes) autosave
-
   _cpSetupNotesAutosave(root) {
     if (!root) return;
-    if (!this.options?.editable) return;
+    const editable = this.isEditable ?? this.options?.editable ?? false;
+    if (!editable) return;
 
-    // Init state once per sheet instance
     if (!this._cpNotesAutosaveState) {
       this._cpNotesAutosaveState = {
-        timer: null,
         saving: false,
         pending: false,
-        lastSaved: null
+        lastSaved: String(this.actor.system?.notes ?? "")
       };
-      // baseline to reduce unnecessary writes
-      this._cpNotesAutosaveState.lastSaved = String(this.actor.system?.notes ?? "");
     }
 
-    // Remove previous handler (re-render safe)
     if (this._cpNotesAutosaveHandler) {
-      try {
-        root.removeEventListener("input", this._cpNotesAutosaveHandler, true);
-        root.removeEventListener("paste", this._cpNotesAutosaveHandler, true);
-        root.removeEventListener("keyup", this._cpNotesAutosaveHandler, true);
-        root.removeEventListener("blur", this._cpNotesAutosaveHandler, true);
-      } catch (_) {}
+      try { root.removeEventListener("save", this._cpNotesAutosaveHandler, true); } catch (_) {}
     }
 
     const handler = (ev) => {
-      const t = ev?.target;
-      if (!t?.closest) return;
+      const target = ev?.target;
+      if (!target?.closest) return;
 
-      // Only life tab editor
-      const inLife = t.closest('.tab.life[data-tab="life"]') || t.closest('.tab.life');
+      const inLife = target.closest('.tab.life[data-tab="life"]') || target.closest('.tab.life');
       if (!inLife) return;
+      if (!target.closest(".cp-notes-editor")) return;
 
-      // Only editor content area (covers v12/v13 variations)
-      const inEditor = t.closest(".editor-content") || t.closest(".ProseMirror") || t.closest('[contenteditable="true"]');
-      if (!inEditor) return;
-
-      this._cpQueueNotesAutosave(root);
+      setTimeout(() => this._cpFlushNotesAutosave(root, { force: true, serialize: false }), 0);
     };
 
-    // Capture=true catches rich-editor events more reliably
-    root.addEventListener("input", handler, true);
-    root.addEventListener("paste", handler, true);
-    root.addEventListener("keyup", handler, true);
-    root.addEventListener("blur", handler, true);
-
+    root.addEventListener("save", handler, true);
     this._cpNotesAutosaveHandler = handler;
   }
 
-  _cpQueueNotesAutosave(root) {
-    const st = this._cpNotesAutosaveState;
-    if (!st) return;
+  _cpReadNotesHTML(root, { serialize = false } = {}) {
+    const selectors = [
+      '.tab.life[data-tab="life"] .editor-content',
+      '.tab.life .editor-content',
+      '.tab.life[data-tab="life"] [contenteditable="true"]',
+      '.tab.life [contenteditable="true"]'
+    ];
 
-    if (st.timer) clearTimeout(st.timer);
-    st.timer = setTimeout(() => {
-      st.timer = null;
-      this._cpFlushNotesAutosave(root);
-    }, 900);
+    return serialize
+      ? saveRichEditorHTML(this, root, "system.notes", selectors)
+      : getRichEditorHTML(this, root, "system.notes", selectors);
   }
 
-  _cpReadNotesHTML(root) {
-    const ed = this.editors?.["system.notes"];
-    const inst = ed?.editor;
-
-    if (inst) {
-      try {
-        if (typeof inst.getHTML === "function") return String(inst.getHTML() ?? "");
-        if (typeof inst.getData === "function") return String(inst.getData() ?? "");
-        if (typeof inst.getContent === "function") return String(inst.getContent() ?? "");
-      } catch (_) {}
-    }
-
-    const el =
-      root?.querySelector?.('.tab.life[data-tab="life"] .editor-content') ||
-      root?.querySelector?.('.tab.life .editor-content') ||
-      root?.querySelector?.('.tab.life[data-tab="life"] .ProseMirror') ||
-      root?.querySelector?.('.tab.life .ProseMirror');
-
-    if (!el) return null;
-    return String(el.innerHTML ?? "");
-  }
-
-  async _cpFlushNotesAutosave(root) {
+  async _cpFlushNotesAutosave(root, { force = false, serialize = false } = {}) {
     const st = this._cpNotesAutosaveState;
     if (!st) return;
 
@@ -1342,37 +1377,160 @@ export class CyberpunkActorSheet extends ActorSheet {
       return;
     }
 
-    const html = this._cpReadNotesHTML(root);
+    const html = this._cpReadNotesHTML(root, { serialize });
     if (html == null) return;
-
-    if (st.lastSaved === html) return;
+    if (!force && st.lastSaved === html) return;
 
     st.saving = true;
     try {
       await this.actor.update({ "system.notes": html }, { render: false });
       st.lastSaved = html;
     } catch (err) {
-      console.warn("CP2020: notes autosave failed", err);
+      console.warn("CP2020: notes save failed", err);
     } finally {
       st.saving = false;
       if (st.pending) {
         st.pending = false;
-        // If something changed while we were saving, flush once more
-        await this._cpFlushNotesAutosave(root);
+        await this._cpFlushNotesAutosave(root, { force: true, serialize: false });
       }
+    }
+  }
+
+  _cpGetSavedRangedAttackOptions(item) {
+    const saved = item?.getFlag?.("cyberpunk2020", "lastRangedAttackOptions") ?? {};
+    return foundry.utils.duplicate(saved);
+  }
+
+  async _cpSaveRangedAttackOptions(item, fireOptions = {}) {
+    if (!item) return;
+    if (fireOptions.fireMode === undefined) return;
+
+    const saved = this._cpGetSavedRangedAttackOptions(item);
+    const fireMode = String(fireOptions.fireMode ?? "");
+
+    if (saved.fireMode === fireMode) return;
+
+    try {
+      await item.update({
+        "flags.cyberpunk2020.lastRangedAttackOptions": {
+          ...saved,
+          fireMode
+        }
+      }, { render: false });
+    } catch (err) {
+      console.warn("CP2020: failed to save ranged attack options", err);
+    }
+  }
+
+  async _cpSaveMeleeAttackOptions(item, fireOptions = {}) {
+    if (!item) return;
+
+    const fieldsToSave = [
+      "action",
+      "martialArt",
+      "cyberTerminus"
+    ];
+
+    const saved = this._cpGetSavedMeleeAttackOptions(item);
+    let changed = false;
+
+    for (const key of fieldsToSave) {
+      if (fireOptions[key] === undefined) continue;
+
+      const value = String(fireOptions[key] ?? "");
+
+      if (saved[key] !== value) {
+        saved[key] = value;
+        changed = true;
+      }
+    }
+
+    if (!changed) return;
+
+    try {
+      await item.update({
+        "flags.cyberpunk2020.lastMeleeAttackOptions": saved
+      }, { render: false });
+    } catch (err) {
+      console.warn("CP2020: failed to save melee attack options", err);
+    }
+  }
+
+    _cpGetSavedRangedAttackOptions(item) {
+    const saved = item?.getFlag?.("cyberpunk2020", "lastRangedAttackOptions") ?? {};
+    return foundry.utils.duplicate(saved);
+  }
+
+  async _cpSaveRangedAttackOptions(item, fireOptions = {}) {
+    if (!item) return;
+    if (fireOptions.fireMode === undefined) return;
+
+    const saved = this._cpGetSavedRangedAttackOptions(item);
+    const fireMode = String(fireOptions.fireMode ?? "");
+
+    if (saved.fireMode === fireMode) return;
+
+    try {
+      await item.update({
+        "flags.cyberpunk2020.lastRangedAttackOptions": {
+          ...saved,
+          fireMode
+        }
+      }, { render: false });
+    } catch (err) {
+      console.warn("CP2020: failed to save ranged attack options", err);
+    }
+  }
+
+  _cpGetSavedMeleeAttackOptions(item) {
+    const saved = item?.getFlag?.("cyberpunk2020", "lastMeleeAttackOptions") ?? {};
+    return foundry.utils.duplicate(saved);
+  }
+
+  async _cpSaveMeleeAttackOptions(item, fireOptions = {}) {
+    if (!item) return;
+
+    const fieldsToSave = [
+      "action",
+      "martialArt",
+      "cyberTerminus"
+    ];
+
+    const saved = this._cpGetSavedMeleeAttackOptions(item);
+    let changed = false;
+
+    for (const key of fieldsToSave) {
+      if (fireOptions[key] === undefined) continue;
+
+      const value = String(fireOptions[key] ?? "");
+
+      if (saved[key] !== value) {
+        saved[key] = value;
+        changed = true;
+      }
+    }
+
+    if (!changed) return;
+
+    try {
+      await item.update({
+        "flags.cyberpunk2020.lastMeleeAttackOptions": saved
+      }, { render: false });
+    } catch (err) {
+      console.warn("CP2020: failed to save melee attack options", err);
     }
   }
 
   /** @override */
   async close(options = {}) {
-    // Flush pending autosave before closing sheet
     try {
-      const root = this.element?.[0] || this.element;
-      if (this._cpNotesAutosaveState?.timer) {
-        clearTimeout(this._cpNotesAutosaveState.timer);
-        this._cpNotesAutosaveState.timer = null;
-      }
-      await this._cpFlushNotesAutosave(root);
+      const root = getHtmlElement(this.element);
+      await this._cpFlushNotesAutosave(root, { force: true, serialize: true });
+    } catch (_) {}
+
+    try {
+      this._cpChipTooltipCleanup?.();
+      this._cpChipTooltipCleanup = null;
     } catch (_) {}
 
     return super.close(options);

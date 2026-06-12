@@ -1,4 +1,4 @@
-<div class="field">
+<div class="field{{#if extraClasses}} {{extraClasses}}{{/if}}" data-path="{{edit}}">
     <label for="{{edit}}">{{CPLocal label}}</label>
     <span class="flex-pad"></span>
 
@@ -7,6 +7,9 @@
         class="number nogrow nowidth"
         name="{{edit}}"
         type="number"
+        data-min="{{min}}"
+        data-max="{{max}}"
+        {{#if step}}step="{{step}}"{{/if}}
 
         {{#if readOnly}}
             value="{{deepLookup . edit}}"

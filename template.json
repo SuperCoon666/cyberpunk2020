@@ -791,7 +791,7 @@
 		}
 	},
 	"Item": {
-		"types": ["skill", "weapon", "armor", "cyberware", "vehicle", "misc", "program"],
+		"types": ["skill", "weapon", "ammo", "armor", "cyberware", "vehicle", "misc", "program"],
 		"templates": {
 			"common": {
 				"flavor": "",
@@ -828,6 +828,7 @@
 			"concealability": "P",
 			"availability": "common",
 			"ammoType": "9mm",
+			"ammoItemId": "",
 			"damage": "2d6+1",
 			"rangeDamages": {
 				"pointBlank": "",
@@ -843,6 +844,43 @@
 			"range": 50,
 			"attackType": "",
 			"attackSkill": "ref"
+		},
+		"ammo": {
+			"templates": ["common"],
+			"equipped": true,
+
+			"ammoType": "",
+			"quantity": 0,
+
+			"armorMultSoft": 1,
+			"armorMultHard": 1,
+
+			"rawDamageMult": 1,
+			"penDamageMult": 1,
+			"bonusDamageFormula": "",
+			"accuracyMod": 0,
+
+			"stunSaveOnHit": false,
+			"stunSaveMod": 0,
+
+			"dotEnabled": false,
+			"dotTurns": 0,
+			"dotDamageFormula": "",
+
+			"blastRadius": 0,
+			"blastFullDamageWithin": 1,
+			"blastZones": 4,
+			"blastShrapnel": false,
+			"blastMultipliers": [0.5, 0.25, 0.125, 0.0625],
+			
+			"spreadMode": "single",
+			"spreadDistance": 0,
+			"spreadDamageShort": "",
+			"spreadDamageMedium": "",
+			"spreadDamageLong": "",
+			"spreadWidthShort": 1,
+			"spreadWidthMedium": 2,
+			"spreadWidthLong": 3
 		},
 		"armor": {
 			"templates": ["common"],
@@ -925,6 +963,7 @@
 					"concealability": "P",
 					"availability": "common",
 					"ammoType": "9mm",
+					"ammoItemId": "",
 					"damage": "2d6+1",
 					"rangeDamages": {
 						"pointBlank": "",

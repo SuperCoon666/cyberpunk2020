@@ -55,8 +55,8 @@
 
         {{!-- Biography Tab --}}
         <div class="tab life flexcol" data-group="primary" data-tab="life">
-            <div class="biography">
-                {{editor system.notes target="system.notes" button=true owner=owner editable=options.editable}}
+            <div class="biography cp-notes-editor" data-editor-target="system.notes">
+                {{editor system.notes target="system.notes" button=true editable=editable engine="prosemirror" collaborate=false}}
             </div>
         </div>
 

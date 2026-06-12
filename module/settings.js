@@ -37,4 +37,51 @@ export function registerSystemSettings() {
     type: Boolean,
     default: false
   });
+
+  // --- Optional rules: Reload ---
+  game.settings.register("cyberpunk2020", "reloadByMagazines", {
+    name: "SETTINGS.ReloadByMagazines",
+    hint: "SETTINGS.ReloadByMagazinesHint",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: false
+  });
+
+  // --- Permissions: Cyberware Humanity editing ---
+  game.settings.register("cyberpunk2020", "playersCanEditCyberwareHumanity", {
+    name: "SETTINGS.PlayersCanEditCyberwareHumanity",
+    hint: "SETTINGS.PlayersCanEditCyberwareHumanityHint",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: false,
+    onChange: () => {
+      for (const app of Object.values(ui.windows ?? {})) {
+        if (app instanceof ItemSheet && app.object?.type === "cyberware") {
+          app.render(false);
+        }
+      }
+    }
+  });
+
+  // --- Client UI: inline damage roll tooltip ---
+  game.settings.register("cyberpunk2020", "showInlineRollFormula", {
+    name: "SETTINGS.ShowInlineRollFormula",
+    hint: "SETTINGS.ShowInlineRollFormulaHint",
+    scope: "client",
+    config: true,
+    type: Boolean,
+    default: true
+  });
+
+  // --- Optional rules: Friday Night Fistfight 2 ---
+  game.settings.register("cyberpunk2020", "fnff2Enabled", {
+    name: "SETTINGS.FNFF2Enabled",
+    hint: "SETTINGS.FNFF2EnabledHint",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: false
+  });
 }
