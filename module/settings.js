@@ -65,6 +65,16 @@ export function registerSystemSettings() {
     }
   });
 
+  // --- Client UI: inline damage roll tooltip ---
+  game.settings.register("cyberpunk2020", "showInlineRollFormula", {
+    name: "SETTINGS.ShowInlineRollFormula",
+    hint: "SETTINGS.ShowInlineRollFormulaHint",
+    scope: "client",
+    config: true,
+    type: Boolean,
+    default: true
+  });
+
   // --- Optional rules: Friday Night Fistfight 2 ---
   game.settings.register("cyberpunk2020", "fnff2Enabled", {
     name: "SETTINGS.FNFF2Enabled",

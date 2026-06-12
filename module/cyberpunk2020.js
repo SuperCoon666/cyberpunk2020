@@ -137,6 +137,41 @@ Hooks.once('init', async function () {
           tip = document.createElement("div");
           tip.className = "cp-dice-tooltip";
           tip.innerHTML = tooltipHTML;
+
+          const showInlineRollFormula = game.settings.get(
+            "cyberpunk2020",
+            "showInlineRollFormula"
+          );
+
+          if (showInlineRollFormula) {
+            const summary = document.createElement("div");
+            summary.className = "cp-inline-roll-summary";
+
+            const formula = String(roll.formula ?? "").trim();
+            const result = String(roll.result ?? "").trim();
+            const totalValue = Number(roll.total);
+            const total = Number.isFinite(totalValue) ? String(roll.total) : "";
+
+            const formulaLine = document.createElement("div");
+            formulaLine.className = "cp-inline-roll-formula";
+            formulaLine.textContent = formula;
+
+            const resultLine = document.createElement("div");
+            resultLine.className = "cp-inline-roll-result";
+            resultLine.textContent = result && total
+              ? `${result} = ${total}`
+              : result || total;
+
+            if (formulaLine.textContent) summary.appendChild(formulaLine);
+            if (resultLine.textContent && resultLine.textContent !== formulaLine.textContent) {
+              summary.appendChild(resultLine);
+            }
+
+            if (summary.childElementCount > 0) {
+              tip.prepend(summary);
+            }
+          }
+
           document.body.appendChild(tip);
 
           requestAnimationFrame(() => {

@@ -716,6 +716,8 @@
     "SETTINGS.ReloadByMagazinesHint": "If enabled, reloading always consumes a full magazine (weapon capacity). If disabled, only missing rounds are consumed.",
     "SETTINGS.PlayersCanEditCyberwareHumanity": "Players can edit cyberware Humanity",
     "SETTINGS.PlayersCanEditCyberwareHumanityHint": "If enabled, players who can edit a cyberware item can also edit its Humanity Cost and Humanity Loss fields. If disabled, only the GM can edit those fields.",
+    "SETTINGS.ShowInlineRollFormula": "Show inline damage roll formula",
+    "SETTINGS.ShowInlineRollFormulaHint": "If enabled, damage roll tooltips show the formula, numeric modifiers, final result, and dice. If disabled, only dice are shown.",    
     "CYBERPUNK.NotEnoughAmmoToReload": "Not enough ammo to reload.",
     "CYBERPUNK.AmmoItemNotFoundReloadedLegacy": "Ammo item not found. Reloaded without ammo tracking.",
     "CYBERPUNK.FNFF2SkillDisabledWarn": "This Martial Arts style requires FNFF2 rules. Enable 'Friday Night Fistfight 2' in System Settings to use it."

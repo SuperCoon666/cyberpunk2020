@@ -1474,21 +1474,53 @@ div.statderive .value.rightborder {
 .chat-message a.cp-inline-roll:hover {
   text-decoration: underline;
 }
-/* Custom hover dice tooltip for cp-inline-roll (shows only dice faces/results) */
+/* Custom hover dice tooltip for cp-inline-roll */
 .cp-dice-tooltip {
   position: fixed;
   z-index: 1000;
   pointer-events: none;
-}
-
-/* Give the tooltip a readable container */
-.cp-dice-tooltip .dice-tooltip {
-  margin: 0;
+  max-width: 420px;
   padding: 6px 8px;
   border-radius: 6px;
   border: 1px solid var(--color-border-dark, rgba(0, 0, 0, 0.5));
   background: var(--color-bg, rgba(0, 0, 0, 0.85));
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+/* Foundry tooltip content is rendered inside our custom tooltip container */
+.cp-dice-tooltip .dice-tooltip {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.cp-dice-tooltip .cp-inline-roll-summary {
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--color-border-light-tertiary, rgba(255, 255, 255, 0.25));
+  font-size: 12px;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.cp-dice-tooltip .cp-inline-roll-formula {
+  font-weight: 600;
+}
+
+.cp-dice-tooltip .cp-inline-roll-result {
+  opacity: 0.9;
+}
+
+/* Hide all text/formula/headers/totals inside Foundry tooltip */
+.cp-dice-tooltip .dice-tooltip > header,
+.cp-dice-tooltip .dice-tooltip .dice-formula,
+.cp-dice-tooltip .dice-tooltip .dice-total,
+.cp-dice-tooltip .dice-tooltip .part-header,
+.cp-dice-tooltip .dice-tooltip .part-formula,
+.cp-dice-tooltip .dice-tooltip .part-total {
+  display: none !important;
 }
 
 /* Hide all text/formula/headers/totals inside Foundry tooltip */
