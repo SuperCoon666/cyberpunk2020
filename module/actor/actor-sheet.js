@@ -1136,18 +1136,20 @@ export class CyberpunkActorSheet extends ActorSheet {
 
     if (target === "cyber-inventory") {
       const resolved = await this._cpResolveDroppedItem(data);
-      const { itemData } = resolved;
+      const { itemData, sameActor } = resolved;
 
       if (itemData.type !== "cyberware") return warn(localize("OnlyCyberwareHere"));
 
       const { item } = await this._cpEnsureDroppedItemOwned(data, resolved);
       if (!item) return;
 
-      await item.update({
-        "system.equipped": false,
-        "system.CyberBodyType.Location": "",
-        "system.CyberWorkType.ChipActive": false
-      }, { render: false });
+      if (sameActor) {
+        await item.update({
+          "system.equipped": false,
+          "system.CyberBodyType.Location": "",
+          "system.CyberWorkType.ChipActive": false
+        }, { render: false });
+      }
 
       await this._cp_syncChipLevelsToSkills();
       await this._cp_syncActiveFlagsToSkills();
