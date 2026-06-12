@@ -566,31 +566,45 @@ export class CyberpunkActorSheet extends ActorSheet {
     // "Fire" button for weapons
     html.find('.fire-weapon').click(ev => {
       ev.stopPropagation();
-      let item = getEventItem(this, ev);
-      let isRanged = item.isRanged();
+
+      const item = getEventItem(this, ev);
+      const isRanged = item.isRanged();
+      const system = item._getWeaponSystem?.() ?? item.system ?? {};
+      const savedMeleeAttackOptions = isRanged
+        ? {}
+        : this._cpGetSavedMeleeAttackOptions(item);
 
       let modifierGroups = undefined;
-      let targetTokens = Array.from(game.users.current.targets.values()).map(target => {
+      const targetTokens = Array.from(game.users.current.targets.values()).map(target => {
         return {
-          name: target.document.name, 
-          id: target.id};
+          name: target.document.name,
+          id: target.id
+        };
       });
-      if(isRanged) {
+
+      if (isRanged) {
         modifierGroups = rangedModifiers(item, targetTokens);
       }
-      else if ((item._getWeaponSystem?.().attackType) === meleeAttackTypes.martial) {
-        modifierGroups = martialOptions(this.actor);
+      else if (system.attackType === meleeAttackTypes.martial) {
+        modifierGroups = martialOptions(this.actor, savedMeleeAttackOptions);
       }
       else {
-        modifierGroups = meleeBonkOptions();
+        modifierGroups = meleeBonkOptions(savedMeleeAttackOptions);
       }
 
-      let dialog = new ModifiersDialog(this.actor, {
+      const dialog = new ModifiersDialog(this.actor, {
         weapon: item,
         targetTokens: targetTokens,
         modifierGroups: modifierGroups,
-        onConfirm: (fireOptions) => item.__weaponRoll(fireOptions, targetTokens)
+        onConfirm: async (fireOptions) => {
+          if (!isRanged) {
+            await this._cpSaveMeleeAttackOptions(item, fireOptions);
+          }
+
+          return item.__weaponRoll(fireOptions, targetTokens);
+        }
       });
+
       dialog.render(true);
     });
 
@@ -1372,6 +1386,45 @@ export class CyberpunkActorSheet extends ActorSheet {
         st.pending = false;
         await this._cpFlushNotesAutosave(root, { force: true, serialize: false });
       }
+    }
+  }
+
+  _cpGetSavedMeleeAttackOptions(item) {
+    const saved = item?.getFlag?.("cyberpunk2020", "lastMeleeAttackOptions") ?? {};
+    return foundry.utils.duplicate(saved);
+  }
+
+  async _cpSaveMeleeAttackOptions(item, fireOptions = {}) {
+    if (!item) return;
+
+    const fieldsToSave = [
+      "action",
+      "martialArt",
+      "cyberTerminus"
+    ];
+
+    const saved = this._cpGetSavedMeleeAttackOptions(item);
+    let changed = false;
+
+    for (const key of fieldsToSave) {
+      if (fireOptions[key] === undefined) continue;
+
+      const value = String(fireOptions[key] ?? "");
+
+      if (saved[key] !== value) {
+        saved[key] = value;
+        changed = true;
+      }
+    }
+
+    if (!changed) return;
+
+    try {
+      await item.update({
+        "flags.cyberpunk2020.lastMeleeAttackOptions": saved
+      }, { render: false });
+    } catch (err) {
+      console.warn("CP2020: failed to save melee attack options", err);
     }
   }
 

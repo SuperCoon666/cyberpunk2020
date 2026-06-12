@@ -435,54 +435,91 @@ export function rangedModifiers(weapon, targetTokens=[]) {
     ];
 }
 
-export function martialOptions(actor) {
+export function martialOptions(actor, savedOptions = {}) {
+    const actionChoices = (() => {
+      const base = [
+        { groupName: "Defensive", choices: [
+          "Dodge",
+          "BlockParry"
+        ]},
+        { groupName: "Attacks", choices: [
+          "Strike",
+          "Kick",
+          "Disarm",
+          "SweepTrip"
+        ]},
+        { groupName: "Grapple", choices: [
+          "Grapple",
+          "Hold",
+          "Choke",
+          "Throw",
+          "Escape"
+        ]}
+      ];
+
+      if (isFnff2Enabled()) {
+        base[0].choices.unshift("AllOutParry", "AllOutDodge");
+        base[1].choices.splice(1, 0, "Punch");
+        base[1].choices.push("Ram", "JumpKick", "Cast");
+      }
+
+      return base;
+    })();
+
+    const flattenChoiceValues = (choices) => {
+      return choices.flatMap(choice => {
+        if (choice?.groupName) return choice.choices ?? [];
+        return [choice?.value ?? choice];
+      });
+    };
+
+    const savedAction = savedOptions?.action;
+    const actionDefault = flattenChoiceValues(actionChoices).includes(savedAction)
+      ? savedAction
+      : "Strike";
+
+    const martialChoices = [
+      { value: "Brawling", localKey: "SkillBrawling" },
+      ...((actor?.trainedMartials?.() ?? []).map(key => {
+        return {
+          value: key,
+          label: actor?.getMartialDisplayName?.(key) ?? key
+        };
+      }))
+    ];
+
+    const savedMartialArt = savedOptions?.martialArt;
+    const martialArtDefault = martialChoices
+      .map(choice => choice.value ?? choice)
+      .includes(savedMartialArt)
+        ? savedMartialArt
+        : "Brawling";
+
+    const cyberTerminusChoices = [
+        { value: "NoCyberlimb", localKey: "NoCyberlimb" },
+        { value: "CyberTerminusX2", localKey: "CyberTerminusX2" },
+        { value: "CyberTerminusX3", localKey: "CyberTerminusX3" }
+    ];
+
+    const savedCyberTerminus = savedOptions?.cyberTerminus;
+    const cyberTerminusDefault = cyberTerminusChoices
+      .map(choice => choice.value)
+      .includes(savedCyberTerminus)
+        ? savedCyberTerminus
+        : "NoCyberlimb";
+
     return [
         [{
             localKey: "Action",
             dataPath: "action",
-            defaultValue: "Strike",
-            choices: (() => {
-              const base = [
-                { groupName: "Defensive", choices: [
-                  "Dodge",
-                  "BlockParry"
-                ]},
-                { groupName: "Attacks", choices: [
-                  "Strike",
-                  "Kick",
-                  "Disarm",
-                  "SweepTrip"
-                ]},
-                { groupName: "Grapple", choices: [
-                  "Grapple",
-                  "Hold",
-                  "Choke",
-                  "Throw",
-                  "Escape"
-                ]}
-              ];
-
-              if (isFnff2Enabled()) {
-                base[0].choices.unshift("AllOutParry", "AllOutDodge");
-                base[1].choices.splice(1, 0, "Punch");
-                base[1].choices.push("Ram", "JumpKick", "Cast");
-              }
-
-              return base;
-            })(),
+            defaultValue: actionDefault,
+            choices: actionChoices,
         },
         {
             localKey: "MartialArt",
             dataPath: "martialArt",
-            choices: [
-              { value: "Brawling", localKey: "SkillBrawling" },
-              ...((actor?.trainedMartials?.() ?? []).map(key => {
-                return {
-                  value: key,
-                  label: actor?.getMartialDisplayName?.(key) ?? key
-                };
-              }))
-            ]
+            defaultValue: martialArtDefault,
+            choices: martialChoices
         },
         {
             localKey: "TargetArea",
@@ -494,18 +531,27 @@ export function martialOptions(actor) {
         {
             localKey: "CyberTerminus",
             dataPath: "cyberTerminus",
-            defaultValue: "NoCyberlimb",
-            choices: [
-                { value: "NoCyberlimb", localKey: "NoCyberlimb" },
-                { value: "CyberTerminusX2", localKey: "CyberTerminusX2" },
-                { value: "CyberTerminusX3", localKey: "CyberTerminusX3" }
-            ]
+            defaultValue: cyberTerminusDefault,
+            choices: cyberTerminusChoices
         }
     ]]
 }
 
 // Needs to be a function, or every time the modifiers dialog is launched, it'll add "extra mods" on
-export function meleeBonkOptions() {
+export function meleeBonkOptions(savedOptions = {}) {
+    const cyberTerminusChoices = [
+        { value: "NoCyberlimb", localKey: "NoCyberlimb" },
+        { value: "CyberTerminusX2", localKey: "CyberTerminusX2" },
+        { value: "CyberTerminusX3", localKey: "CyberTerminusX3" }
+    ];
+
+    const savedCyberTerminus = savedOptions?.cyberTerminus;
+    const cyberTerminusDefault = cyberTerminusChoices
+      .map(choice => choice.value)
+      .includes(savedCyberTerminus)
+        ? savedCyberTerminus
+        : "NoCyberlimb";
+
     return [[
         {
             localKey: "TargetArea",
@@ -517,16 +563,11 @@ export function meleeBonkOptions() {
         {
             localKey: "CyberTerminus",
             dataPath: "cyberTerminus",
-            defaultValue: "NoCyberlimb",
-            choices: [
-                { value: "NoCyberlimb", localKey: "NoCyberlimb" },
-                { value: "CyberTerminusX2", localKey: "CyberTerminusX2" },
-                { value: "CyberTerminusX3", localKey: "CyberTerminusX3" }
-            ]
+            defaultValue: cyberTerminusDefault,
+            choices: cyberTerminusChoices
         }
     ]]
 }
-
 /**
  * Get a body type modifier from the body type stat (body)
  * I couldn't figure out a single formula that'd work for it (cos of the weird widths of BT values)
