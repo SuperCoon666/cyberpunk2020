@@ -1,4 +1,4 @@
-import { createCyberpunkRollCard, evaluateCyberpunkRoll, rollToCyberpunkChatMessage } from "./compat.js";
+import { createCyberpunkRollCard, evaluateCyberpunkRoll, renderCyberpunkTemplate, rollToCyberpunkChatMessage } from "./compat.js";
 export const BaseDie = "1d10x10";
 export const DefaultRollTemplate = "systems/cyberpunk2020/templates/chat/default-roll.hbs";
 
@@ -145,7 +145,7 @@ export function classifyRollDice(roll) {
         await createCyberpunkRollCard({
             rolls: this.rolls,
             speaker,
-            content: await renderTemplate(templatePath, fullTemplateData)
+            content: await renderCyberpunkTemplate(templatePath, fullTemplateData)
         });
         return this;
     }

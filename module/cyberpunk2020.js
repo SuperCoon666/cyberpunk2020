@@ -65,7 +65,7 @@ Hooks.once('init', async function () {
     preloadHandlebarsTemplates();
 
     // Fumble inline results
-    Hooks.on("renderChatMessage", (message, html) => {
+    Hooks.on("renderChatMessageHTML", (message, html) => {
       const root = getHtmlElement(html);
       if (!root?.querySelectorAll) return;
 

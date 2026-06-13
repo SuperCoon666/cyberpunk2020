@@ -1,4 +1,4 @@
-<form class="{{cssClass}} flexcol" autocomplete="off">
+<div class="cyberpunk-actor-sheet-content flexcol">
     {{!-- Sheet Header --}}
     <header class="cyberheader">
         <div class="fieldrow">
@@ -13,7 +13,6 @@
             {{> (template "fields/string") label="Role" edit="system.role.value"}}
             {{> (template "fields/number") label="Age" edit="system.age" isNum=true}}
             {{> (template "fields/number") label="Points" edit="system.points"}}
-            </div>
         </div>
         
         <div class="flexrow">
@@ -27,12 +26,12 @@
 
     {{!-- Sheet Tab Navigation --}}
     <nav class="sheet-tabs tabs" data-group="primary">
-        <a class="item" data-tab="skills">{{localize 'CYBERPUNK.TabSkills'}}</a>
-        <a class="item" data-tab="combat">{{localize 'CYBERPUNK.TabCombat'}}</a>
-        <a class="item" data-tab="gear">{{localize 'CYBERPUNK.TabGear'}}</a>
-        <a class="item" data-tab="cyber">{{localize 'CYBERPUNK.TabCyber'}}</a>
-        <a class="item" data-tab="life">{{localize 'CYBERPUNK.Life'}}</a>
-        <a class="item" data-tab="netrun">{{localize 'CYBERPUNK.NetRun'}}</a>
+        <a class="item" data-group="primary" data-tab="skills">{{localize 'CYBERPUNK.TabSkills'}}</a>
+        <a class="item" data-group="primary" data-tab="combat">{{localize 'CYBERPUNK.TabCombat'}}</a>
+        <a class="item" data-group="primary" data-tab="gear">{{localize 'CYBERPUNK.TabGear'}}</a>
+        <a class="item" data-group="primary" data-tab="cyber">{{localize 'CYBERPUNK.TabCyber'}}</a>
+        <a class="item" data-group="primary" data-tab="life">{{localize 'CYBERPUNK.Life'}}</a>
+        <a class="item" data-group="primary" data-tab="netrun">{{localize 'CYBERPUNK.NetRun'}}</a>
     </nav>
 
     {{!-- Sheet Body --}}
@@ -64,5 +63,5 @@
             {{> "systems/cyberpunk2020/templates/actor/parts/netrunning.hbs"}}
         </div>
     </section>
-</form>
+</div>
 

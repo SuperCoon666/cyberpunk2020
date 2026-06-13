@@ -1988,4 +1988,132 @@ div.statderive .value.rightborder {
   font-weight: bold;
 }
 
+/* -----------------------------------------------------------------
+ *  FVTT v14 AppV2 actor sheet compatibility layer
+ * ----------------------------------------------------------------- */
+
+/*
+ * Old AppV1 styles expected:
+ * .cyberpunk section.window-content ...
+ *
+ * In AppV2 the rendered actor sheet has its own wrapper:
+ * .cyberpunk-actor-sheet-content
+ *
+ * This block restores the old visual model without rewriting
+ * the existing CSS rules.
+ */
+
+.application.cyberpunk.sheet.actor,
+.cyberpunk.sheet.actor {
+  color: black;
+  font-family: "Noto Sans", sans-serif;
+  font-weight: bold;
+}
+
+/* Main content area: reproduce the old Foundry v13 window-content surface. */
+.application.cyberpunk.sheet.actor .window-content,
+.cyberpunk.sheet.actor .window-content {
+  font-family: "Noto Sans", sans-serif;
+  font-weight: bold;
+  overflow-y: scroll;
+  overflow-x: hidden;
+  padding: 8px;
+  color: black;
+  background-color: #f1eee8;
+  background-image: url("../../../ui/parchment.jpg");
+  background-repeat: repeat;
+  container-type: inline-size;
+}
+
+/* The root part rendered by ActorSheetV2 must not introduce its own theme. */
+.application.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content {
+  min-height: 100%;
+  background: transparent;
+  color: black;
+  font-family: "Noto Sans", sans-serif;
+  font-weight: bold;
+}
+
+/* Restore old tab styling for the AppV2 actor wrapper. */
+.application.cyberpunk.sheet.actor nav.tabs,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content nav.tabs {
+  border-bottom: 2px solid black;
+  box-sizing: content-box;
+  flex: 0;
+  padding-top: 0px;
+  padding-bottom: 0px;
+}
+
+.application.cyberpunk.sheet.actor nav.tabs > .item,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content nav.tabs > .item {
+  padding-top: 4px;
+  padding-bottom: 4px;
+  flex-grow: 1;
+  color: black;
+  background: transparent;
+  text-shadow: unset;
+}
+
+.application.cyberpunk.sheet.actor nav.tabs > .item.active,
+.application.cyberpunk.sheet.actor nav.tabs > .item[aria-selected="true"],
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content nav.tabs > .item.active,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content nav.tabs > .item[aria-selected="true"] {
+  color: whitesmoke;
+  background-color: black;
+  text-shadow: unset;
+}
+
+/* Restore editor styling under the AppV2 wrapper. */
+.application.cyberpunk.sheet.actor .editor-content,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .editor-content {
+  font-weight: normal;
+  border: 2px solid black;
+  padding-left: 2px;
+  padding-right: 2px;
+  color: black;
+  background: transparent;
+}
+
+/* Restore meter-gauge styling under the AppV2 wrapper. */
+.application.cyberpunk.sheet.actor .meter-gauge,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .meter-gauge {
+  border: 2px solid black;
+}
+
+.application.cyberpunk.sheet.actor .meter-gauge > span,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .meter-gauge > span {
+  display: block;
+  min-height: 6px;
+  background-color: green;
+}
+
+.application.cyberpunk.sheet.actor .meter-gauge > span.danger,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .meter-gauge > span.danger {
+  background-color: darkorange;
+}
+
+/* AppV2/Foundry dark-theme guard for header text and transparent title input. */
+.application.cyberpunk.sheet.actor h1.title,
+.application.cyberpunk.sheet.actor h1.title > input,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content h1.title,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content h1.title > input {
+  color: black;
+  background: transparent;
+  text-shadow: unset;
+}
+
+/* Prevent AppV2 inherited theme colors from leaking into normal sheet text. */
+.application.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content h2,
+.application.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content h3,
+.application.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content p,
+.application.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .summary,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content h2,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content h3,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content p,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .summary {
+  color: black;
+  text-shadow: unset;
+}
+
 /*# sourceMappingURL=cyberpunk2020.css.map */

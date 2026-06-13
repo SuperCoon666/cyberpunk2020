@@ -4,34 +4,65 @@ import { ModifiersDialog } from "../dialog/modifiers.js"
 import { SortOrders, sortSkills } from "./skill-sort.js";
 import { getHtmlElement, getRichEditorHTML, itemFromDropData, saveRichEditorHTML } from "../compat.js";
 
-/** @extends {ActorSheet} */
-export class CyberpunkActorSheet extends ActorSheet {
+const { HandlebarsApplicationMixin } = foundry.applications.api;
+const { ActorSheetV2 } = foundry.applications.sheets;
+const { Tabs } = foundry.applications.ux;
+
+/** @extends {foundry.applications.sheets.ActorSheetV2} */
+export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2) {
 
   /** @override */
-  static get defaultOptions() {
-    return foundry.utils.mergeObject(super.defaultOptions, {
-      // Css classes
-      classes: ["cyberpunk", "sheet", "actor"],
-      template: "systems/cyberpunk2020/templates/actor/actor-sheet.hbs",
-      // Default window dimensions
+  static DEFAULT_OPTIONS = {
+    classes: ["cyberpunk", "sheet", "actor", "flexcol"],
+    tag: "form",
+    position: {
       width: 590,
-      height: 600,
-      tabs: [{ navSelector: ".sheet-tabs", contentSelector: ".sheet-body", initial: "skills" }]
-    });
-  }
-
-  /* -------------------------------------------- */
+      height: 600
+    },
+    window: {
+      resizable: true
+    },
+    form: {
+      submitOnChange: true,
+      closeOnSubmit: false
+    }
+  };
 
   /** @override */
-  getData(options) {
-    const sheetData = super.getData(options);
+  static PARTS = {
+    form: {
+      template: "systems/cyberpunk2020/templates/actor/actor-sheet.hbs"
+    }
+  };
+
+  /** @override */
+  static TABS = {
+    // primary: {
+    //   initial: "skills",
+    //   tabs: [
+    //     { id: "skills", label: "CYBERPUNK.TabSkills" },
+    //     { id: "combat", label: "CYBERPUNK.TabCombat" },
+    //     { id: "gear", label: "CYBERPUNK.TabGear" },
+    //     { id: "cyber", label: "CYBERPUNK.TabCyber" },
+    //     { id: "life", label: "CYBERPUNK.Life" },
+    //     { id: "netrun", label: "CYBERPUNK.NetRun" }
+    //   ]
+    // }
+  };
+
+  /** @override */
+  async _prepareContext(options) {
+    const sheetData = await super._prepareContext(options);
 
     const actor = this.actor;
     const system = actor.system;
 
+    sheetData.actor = actor;
+    sheetData.itemTypes = actor.itemTypes;
     sheetData.system = system;
     sheetData.owner = this.actor.isOwner;
     sheetData.editable = this.isEditable ?? this.options?.editable ?? false;
+    sheetData.cssClass = ["cyberpunk", "sheet", "actor"].join(" ");
 
     if (actor.type === 'character' || actor.type === 'npc') {
       // Sheet-only UI state; do not store search text in actor.system.
@@ -249,12 +280,237 @@ export class CyberpunkActorSheet extends ActorSheet {
   }
 
   /** @override */
-  activateListeners(html) {
-    const root = getHtmlElement(html);
+  async _onRender(context, options) {
+    await super._onRender(context, options);
 
-    if (root && this._cpAvatarCapture) {
+    const root = getHtmlElement(this.element);
+    if (!root) return;
+
+    this._cpActivateTabs(root);
+    this._cpActivateBasicActorActions(root);
+
+    const html = globalThis.jQuery ? globalThis.jQuery(root) : $(root);
+    this._activateListeners(root, html);
+  }
+
+    _cpActivateTabs(root) {
+    const nav = root.querySelector(".sheet-tabs");
+    const body = root.querySelector(".sheet-body");
+    if (!nav || !body) return;
+
+    const activeTab =
+      this._cpActiveTab
+      ?? nav.querySelector("[data-tab].active")?.dataset.tab
+      ?? body.querySelector(".tab.active")?.dataset.tab
+      ?? "skills";
+
+    const tabs = new Tabs({
+      navSelector: ".sheet-tabs",
+      contentSelector: ".sheet-body",
+      initial: activeTab
+    });
+
+    tabs.bind(root);
+    tabs.activate(activeTab, false);
+
+    nav.addEventListener("click", (event) => {
+      const target = event.target?.closest?.("[data-tab]");
+      if (!target) return;
+      this._cpActiveTab = target.dataset.tab || "skills";
+    });
+
+    this._cpTabs = tabs;
+  }
+
+    _cpActivateBasicActorActions(root) {
+    if (!root?.addEventListener) return;
+    if (root.dataset.cpBasicActorActionsBound === "1") return;
+
+    root.dataset.cpBasicActorActionsBound = "1";
+
+    const isEditable = this.isEditable ?? this.options?.editable ?? false;
+    if (!isEditable) return;
+
+    root.addEventListener("click", async (event) => {
+      const target = event.target;
+      if (!target?.closest) return;
+
+      const deleteButton = target.closest(".item-delete");
+      if (deleteButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation?.();
+
+        const item = this._cpGetItemFromTarget(deleteButton);
+        if (item) await this._cpConfirmDeleteItem(item);
+        return;
+      }
+
+      const statRoll = target.closest(".stat-roll");
+      if (statRoll) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const statName = statRoll.dataset.statName;
+        if (statName) this.actor.rollStat(statName);
+        return;
+      }
+
+      const itemEdit = target.closest(".item-edit");
+      if (itemEdit) {
+        if (target.closest(".fire-weapon, .item-roll, .item-delete, .item-unequip")) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation?.();
+
+        const item = this._cpGetItemFromTarget(itemEdit);
+        if (item) item.sheet.render(true);
+        return;
+      }
+
+      const skillRoll = target.closest(".skill-roll");
+      if (skillRoll) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        await this._cpRollSkillFromElement(skillRoll);
+        return;
+      }
+
+      const initiativeRoll = target.closest(".roll-initiative");
+      if (initiativeRoll) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const input = root.querySelector(".roll-initiative-modificator");
+        this.actor.addToCombatAndRollInitiative(input?.value ?? 0);
+        return;
+      }
+
+      const stunDeathSave = target.closest(".stun-death-save");
+      if (stunDeathSave) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const input = root.querySelector(".roll-stun-death-modificator");
+        this.actor.rollStunDeath(input?.value ?? 0);
+        return;
+      }
+
+      const damageBox = target.closest(".damage");
+      if (damageBox) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const damage = Number(damageBox.dataset.damage);
+        if (Number.isFinite(damage)) {
+          await this.actor.update({ "system.damage": damage });
+        }
+        return;
+      }
+
+      const itemRoll = target.closest(".item-roll");
+      if (itemRoll) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const item = this._cpGetItemFromTarget(itemRoll);
+        if (item) await item.roll();
+        return;
+      }
+
+      const chip = target.closest(".chipware-container .chipware[data-item-id]");
+      if (chip) {
+        if (target.closest(".item-unequip, .item-delete")) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const item = this._cpGetItemFromTarget(chip);
+        if (item) item.sheet.render(true);
+        return;
+      }
+    });
+
+    root.addEventListener("contextmenu", async (event) => {
+      const target = event.target;
+      if (!target?.closest) return;
+
+      const rowDelete = target.closest(".rc-item-delete");
+      if (!rowDelete) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+
+      const item = this._cpGetItemFromTarget(rowDelete);
+      if (item) await this._cpConfirmDeleteItem(item);
+    });
+  }
+
+  _cpGetItemFromTarget(target) {
+    const itemId = target?.dataset?.itemId
+      ?? target?.dataset?.skillId
+      ?? target?.closest?.("[data-item-id]")?.dataset?.itemId
+      ?? target?.closest?.("[data-skill-id]")?.dataset?.skillId;
+
+    if (!itemId) return null;
+    return this.actor.items.get(itemId) ?? null;
+  }
+
+  async _cpConfirmDeleteItem(item) {
+    if (!item) return;
+
+    const confirmed = await foundry.applications.api.DialogV2.confirm({
+      window: {
+        title: localize("ItemDeleteConfirmTitle")
+      },
+      content: `<p>${localizeParam("ItemDeleteConfirmText", { itemName: item.name })}</p>`,
+      modal: true,
+      rejectClose: false
+    });
+
+    if (confirmed) await item.delete();
+  }
+
+  async _cpRollSkillFromElement(element) {
+    const id = element?.dataset?.skillId;
+    if (!id) return;
+
+    const skill = this.actor.items.get(id);
+    if (!skill) return;
+
+    if (skill.system?.askMods) {
+      const dlg = new ModifiersDialog(this.actor, {
+        title: localize("ModifiersSkillTitle"),
+        showAdvDis: true,
+        modifierGroups: [[
+          { localKey: "ExtraModifiers", dataPath: "extraMod", defaultValue: 0 }
+        ]],
+        onConfirm: ({ extraMod = 0, advantage = false, disadvantage = false, hiddenAdvantage = false }) =>
+          this.actor.rollSkill(
+            id,
+            Number(extraMod) || 0,
+            !!advantage,
+            !!disadvantage,
+            !!hiddenAdvantage
+          )
+      });
+
+      return dlg.render(true);
+    }
+
+    return this.actor.rollSkill(id);
+  }
+
+  _activateListeners(rootElement, html) {
+    const root = getHtmlElement(rootElement) ?? getHtmlElement(html);
+    if (!root) return;
+
+    if (this._cpAvatarCaptureRoot && this._cpAvatarCapture) {
       try {
-        root.removeEventListener("click", this._cpAvatarCapture, { capture: true });
+        this._cpAvatarCaptureRoot.removeEventListener("click", this._cpAvatarCapture, { capture: true });
       } catch (_) {}
     }
 
@@ -264,6 +520,7 @@ export class CyberpunkActorSheet extends ActorSheet {
       if ((editable.dataset?.edit || "") !== "img") return;
 
       ev.preventDefault();
+      ev.stopPropagation();
       ev.stopImmediatePropagation?.();
 
       const fp = new FilePicker({
@@ -271,25 +528,17 @@ export class CyberpunkActorSheet extends ActorSheet {
         activeSource: "data",
         current: this.actor.img || "",
         callback: (path) => this.actor.update({ img: path }),
-        top: this.position.top + 40,
-        left: this.position.left + 10
+        top: (this.position?.top ?? 0) + 40,
+        left: (this.position?.left ?? 0) + 10
       });
 
       fp.render(true);
     };
 
-    if (root) {
-      root.addEventListener("click", cpAvatarCapture, { capture: true });
-      this._cpAvatarCapture = cpAvatarCapture;
-    }
+    root.addEventListener("click", cpAvatarCapture, { capture: true });
+    this._cpAvatarCapture = cpAvatarCapture;
+    this._cpAvatarCaptureRoot = root;
 
-    if (root) {
-      root.addEventListener("pointerdown", cpAvatarCapture, { capture: true });
-      root.addEventListener("click", cpAvatarCapture, { capture: true });
-      this._cpAvatarCapture = cpAvatarCapture;
-    }
-
-    super.activateListeners(html);
     // Life tab (system.notes) autosave
     this._cpSetupNotesAutosave(root);
     html.find('[data-drop-target]').on('dragover', (ev) => ev.preventDefault());
@@ -302,26 +551,9 @@ export class CyberpunkActorSheet extends ActorSheet {
       let itemId = ev.currentTarget.dataset.itemId;
       return sheet.actor.items.get(itemId);
     }
-    function deleteItemDialog(ev) {
-      ev.stopPropagation();
-      let item = getEventItem(this, ev);
-      let confirmDialog = new Dialog({
-        title: localize("ItemDeleteConfirmTitle"),
-        content: `<p>${localizeParam("ItemDeleteConfirmText", {itemName: item.name})}</p>`,
-        buttons: {
-          yes: {
-            label: localize("Yes"),
-            callback: () => item.delete()
-          },
-          no: { label: localize("No") },
-        },
-        default:"no"
-      });
-      confirmDialog.render(true);
-    }
 
     // If not editable, do nothing further
-    if (!this.options.editable) return;
+    if (!(this.isEditable ?? this.options?.editable ?? false)) return;
 
     // SDP: manual edit current — save and do not overwrite until the amount changes
     html.on('change', 'input[name^="system.sdp.current."]', ev => {
@@ -335,11 +567,8 @@ export class CyberpunkActorSheet extends ActorSheet {
       });
     });
 
-    // Stat roll
-    html.find('.stat-roll').click(ev => {
-      let statName = ev.currentTarget.dataset.statName;
-      this.actor.rollStat(statName);
-    });
+    // Stat roll is handled by _cpActivateBasicActorActions
+
     // Skill level changes
     const saveSkillLevel = async (event) => {
       const skill = this.actor.items.get(event.currentTarget.dataset.skillId);
@@ -481,38 +710,10 @@ export class CyberpunkActorSheet extends ActorSheet {
         }
       });
 
-    // Skill roll
-    html.find(".skill-roll").click(ev => {
-      const id = ev.currentTarget.dataset.skillId;
-      const skill = this.actor.items.get(id);
-      if (!skill) return;
+    // Skill roll is handled by _cpActivateBasicActorActions
 
-      if (skill.system?.askMods) {
-        const dlg = new ModifiersDialog(this.actor, {
-          title: localize("ModifiersSkillTitle"),
-          showAdvDis: true,
-          modifierGroups: [[
-            { localKey: "ExtraModifiers", dataPath: "extraMod", defaultValue: 0 }
-          ]],
-          onConfirm: ({ extraMod=0, advantage=false, disadvantage=false, hiddenAdvantage=false }) =>
-            this.actor.rollSkill(
-              id,
-              Number(extraMod) || 0,
-              !!advantage,
-              !!disadvantage,
-              !!hiddenAdvantage
-            )
-        });
-        return dlg.render(true);
-      }
-      this.actor.rollSkill(id);
-    });
+    // Initiative roll is handled by _cpActivateBasicActorActions
 
-    // Initiative
-    html.find(".roll-initiative").click(ev => {
-      const rollInitiativeModificatorInput = html.find(".roll-initiative-modificator")[0];
-      this.actor.addToCombatAndRollInitiative(rollInitiativeModificatorInput.value);
-    });
     html.find(".roll-initiative-modificator").change(ev => {
       const value = ev.target.value;
       this.actor.update({"system.initiativeMod": Number(value)});
@@ -523,48 +724,18 @@ export class CyberpunkActorSheet extends ActorSheet {
       const value = ev.target.value;
       this.actor.update({"system.StunDeathMod": Number(value)});
     });
-    html.find(".stun-death-save").click(ev => {
-      const rollModificatorInput = html.find(".roll-stun-death-modificator")[0]
-      this.actor.rollStunDeath(rollModificatorInput.value);
-    });
 
-    // Damage
-    html.find(".damage").click(ev => {
-      let damage = Number(ev.currentTarget.dataset.damage);
-      this.actor.update({
-        "system.damage": damage
-      });
-    });
+    // Stun/Death roll is handled by _cpActivateBasicActorActions
 
-    // Generic item roll (calls item.roll())
-    html.find('.item-roll').click(ev => {
-      // Roll is often within child events, don't bubble please
-      ev.stopPropagation();
-      let item = getEventItem(this, ev);
-      item.roll();
-    });
+    // Damage tracker clicks are handled by _cpActivateBasicActorActions
 
-    // Edit item
-    html.find('.item-edit').on('click', (ev) => {
-      if (ev.target.closest('.item-unequip')) return;
-      ev.stopPropagation();
-      const item = getEventItem(this, ev);
-      item.sheet.render(true);
-    });
+    // Generic item roll is handled by _cpActivateBasicActorActions
 
-    // Active chips: open chip sheet on click
-    html.find('.chipware-container .chipware[data-item-id]').on('click', (ev) => {
-      if (ev.target.closest('.item-unequip') || ev.target.closest('.item-delete')) return;
+    // Item sheet opening is handled by _cpActivateBasicActorActions
 
-      ev.stopPropagation();
-      const item = getEventItem(this, ev);
-      if (!item) return;
-      item.sheet.render(true);
-    });
+    // Active chip sheet opening is handled by _cpActivateBasicActorActions
 
-    // Delete item
-    html.find('.item-delete').click(deleteItemDialog.bind(this));
-    html.find('.rc-item-delete').bind("contextmenu", deleteItemDialog.bind(this)); 
+    // Item deletion is handled by _cpActivateBasicActorActions
 
     // "Fire" button for weapons
     html.find('.fire-weapon').click(ev => {
@@ -1265,16 +1436,17 @@ export class CyberpunkActorSheet extends ActorSheet {
       const sheet = skill?.sheet;
       if (!sheet?.rendered) continue;
 
-      const html = sheet.element;
+      const root = getHtmlElement(sheet.element);
+      if (!root?.querySelector) continue;
 
       if (Object.prototype.hasOwnProperty.call(patch, "isChipped")) {
-        const $cb = html.find('input[name="system.isChipped"]');
-        if ($cb.length) $cb.prop('checked', !!patch.isChipped);
+        const checkbox = root.querySelector('input[name="system.isChipped"]');
+        if (checkbox) checkbox.checked = !!patch.isChipped;
       }
 
       if (Object.prototype.hasOwnProperty.call(patch, "chipLevel")) {
-        const $in = html.find('input[name="system.chipLevel"], select[name="system.chipLevel"]');
-        if ($in.length) $in.val(String(patch.chipLevel));
+        const input = root.querySelector('input[name="system.chipLevel"], select[name="system.chipLevel"]');
+        if (input) input.value = String(patch.chipLevel);
       }
     }
   }
@@ -1522,7 +1694,7 @@ export class CyberpunkActorSheet extends ActorSheet {
   }
 
   /** @override */
-  async close(options = {}) {
+  async _preClose(options) {
     try {
       const root = getHtmlElement(this.element);
       await this._cpFlushNotesAutosave(root, { force: true, serialize: true });
@@ -1533,7 +1705,15 @@ export class CyberpunkActorSheet extends ActorSheet {
       this._cpChipTooltipCleanup = null;
     } catch (_) {}
 
-    return super.close(options);
+    try {
+      if (this._cpAvatarCaptureRoot && this._cpAvatarCapture) {
+        this._cpAvatarCaptureRoot.removeEventListener("click", this._cpAvatarCapture, { capture: true });
+      }
+      this._cpAvatarCaptureRoot = null;
+      this._cpAvatarCapture = null;
+    } catch (_) {}
+
+    return super._preClose(options);
   }
 
 }

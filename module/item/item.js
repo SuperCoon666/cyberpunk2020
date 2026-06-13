@@ -1,8 +1,7 @@
 import { weaponTypes, rangedAttackTypes, meleeAttackTypes, fireModes, ranges, rangeDCs, rangeResolve, strengthDamageBonus, getMartialActionBonus, martialActions, isFnff2Enabled, getFnff2DamageBonusSymbol, FNFF2_ONLY_MARTIAL_ART_IDS } from "../lookups.js"
 import { Multiroll, makeD10Roll } from "../dice.js"
 import { localize, localizeParam, rollLocation, cwHasType, cwIsEnabled, isFumbleRoll, buildRangedCombatFumbleData, buildSkillFumbleData, clamp } from "../utils.js";
-import { createCyberpunkChatMessage } from "../compat.js";
-
+import { createCyberpunkChatMessage, renderCyberpunkTemplate } from "../compat.js";
 /** @extends {Item} */
 export class CyberpunkItem extends Item {
 
@@ -661,7 +660,7 @@ export class CyberpunkItem extends Item {
       results.push({ hitsRoll, areaDamages });
     }
 
-    const html = await renderTemplate(
+    const html = await renderCyberpunkTemplate(
       "systems/cyberpunk2020/templates/chat/suppressive.hbs",
       { weaponName: this.name, rounds, width, saveDC, dmgFormula, results }
     );

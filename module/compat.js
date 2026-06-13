@@ -21,6 +21,18 @@ export function isFoundryV14Plus() {
   return getFoundryMajorVersion() >= 14;
 }
 
+export async function renderCyberpunkTemplate(path, data = {}, options = {}) {
+  const renderer =
+    foundry.applications?.handlebars?.renderTemplate
+    ?? globalThis.renderTemplate;
+
+  if (typeof renderer !== "function") {
+    throw new Error("Cyberpunk2020 | No Handlebars template renderer is available.");
+  }
+
+  return renderer(path, data, options);
+}
+
 export function getHtmlElement(html) {
   if (!html) return null;
 
