@@ -54,6 +54,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     sheetData.owner = this.actor.isOwner;
     sheetData.editable = this.isEditable ?? this.options?.editable ?? false;
     sheetData.cssClass = ["cyberpunk", "sheet", "actor"].join(" ");
+    sheetData.notesEditing = !!this._cpNotesEditing;
 
     if (actor.type === 'character' || actor.type === 'npc') {
       // Sheet-only UI state; do not store search text in actor.system.
@@ -281,6 +282,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     this._cpActivateActorFilePickers(root);
     this._cpActivateBasicActorActions(root);
     this._cpActivateActorFormControls(root);
+    this._cpActivateNotesEditor(root);
     this._cpActivateCyberwareControls(root);
     this._cpActivateNetrunningControls(root);
     this._cpActivateActorDragDrop(root);
@@ -300,6 +302,27 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       ?? body.querySelector(".tab.active")?.dataset.tab
       ?? "skills";
 
+    nav.addEventListener("click", async (event) => {
+      const target = event.target?.closest?.("[data-tab]");
+      if (!target) return;
+
+      const nextTab = target.dataset.tab || "skills";
+
+      if (this._cpNotesEditing && nextTab !== "life") {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation?.();
+
+        await this._cpExitNotesEditing(root, { render: false });
+        this._cpActiveTab = nextTab;
+
+        await this.render({ force: true });
+        return;
+      }
+
+      this._cpActiveTab = nextTab;
+    }, true);
+
     const tabs = new Tabs({
       navSelector: ".sheet-tabs",
       contentSelector: ".sheet-body",
@@ -308,12 +331,6 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
     tabs.bind(root);
     tabs.activate(activeTab, false);
-
-    nav.addEventListener("click", (event) => {
-      const target = event.target?.closest?.("[data-tab]");
-      if (!target) return;
-      this._cpActiveTab = target.dataset.tab || "skills";
-    });
 
     this._cpTabs = tabs;
   }
@@ -1073,8 +1090,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
     // Actor and netrunning file pickers are handled by _cpActivateActorFilePickers
 
-    // Life tab (system.notes) autosave
-    this._cpSetupNotesAutosave(root);
+    // Life tab notes autosave is handled by _cpActivateNotesEditor
 
     // Custom drop-target dragover is handled by _cpActivateActorDragDrop
 
@@ -1741,8 +1757,148 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     }
   }
 
+  _cpActivateNotesEditor(root) {
+    this._cpSetupNotesActions(root);
+    this._cpSetupNotesAutosave(root);
+  }
+
+  async _cpExitNotesEditing(root, { render = false } = {}) {
+    if (!this._cpNotesEditing) return;
+
+    await this._cpFlushNotesAutosave(root, { force: true, serialize: false });
+    this._cpNotesEditing = false;
+
+    if (render && this.rendered) {
+      await this.render({ force: true });
+    }
+  }
+
+  _cpSetupNotesActions(root) {
+    if (!root?.addEventListener) return;
+
+    if (this._cpNotesActionsRoot && this._cpNotesActionsHandler) {
+      try {
+        this._cpNotesActionsRoot.removeEventListener("click", this._cpNotesActionsHandler, true);
+      } catch (_) {}
+    }
+
+    const handler = async (event) => {
+      const target = event.target;
+      if (!target?.closest) return;
+
+      const editButton = target.closest('[data-action="notes-edit"]');
+      if (!editButton) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+
+      this._cpNotesEditing = true;
+      await this.render({ force: true });
+    };
+
+    root.addEventListener("click", handler, true);
+
+    this._cpNotesActionsRoot = root;
+    this._cpNotesActionsHandler = handler;
+  }
+
+  _cpSetupNotesEditorFormGuards(root) {
+    if (!root?.addEventListener) return;
+
+    if (this._cpNotesEditorGuardRoot && this._cpNotesEditorGuardHandler) {
+      for (const eventName of ["click", "submit"]) {
+        try {
+          this._cpNotesEditorGuardRoot.removeEventListener(eventName, this._cpNotesEditorGuardHandler, true);
+        } catch (_) {}
+      }
+    }
+
+    const handler = (event) => {
+      if (event.type === "submit") {
+        const submitter = event.submitter;
+        if (!submitter?.closest?.(".cp-notes-editor")) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation?.();
+        return;
+      }
+
+      const target = event.target;
+      if (!target?.closest) return;
+
+      const editButton = target.closest(".cp-notes-editor .editor-edit");
+      if (!editButton) return;
+
+      event.preventDefault();
+
+      const wasOpen = this._cpIsNotesEditorOpen(root);
+
+      window.setTimeout(() => {
+        if (!wasOpen && !this._cpIsNotesEditorOpen(root)) {
+          this._cpOpenNotesEditor(root);
+        }
+      }, 0);
+    };
+
+    root.addEventListener("click", handler, true);
+    root.addEventListener("submit", handler, true);
+
+    this._cpNotesEditorGuardRoot = root;
+    this._cpNotesEditorGuardHandler = handler;
+  }
+
+  _cpIsNotesEditorOpen(root) {
+    const proseMirror = getRichEditorElement(root, "system.notes");
+
+    if (proseMirror && "open" in proseMirror) {
+      return !!proseMirror.open;
+    }
+
+    return !!root?.querySelector?.(".cp-notes-editor .ProseMirror");
+  }
+
+  _cpOpenNotesEditor(root) {
+    const proseMirror = getRichEditorElement(root, "system.notes");
+
+    if (proseMirror) {
+      for (const methodName of ["edit", "activate", "toggle", "openEditor"]) {
+        if (typeof proseMirror[methodName] !== "function") continue;
+
+        try {
+          proseMirror[methodName]();
+          return true;
+        } catch (_) {
+          // Try the next ProseMirror API shape
+        }
+      }
+
+      try {
+        proseMirror.open = true;
+        proseMirror.setAttribute?.("open", "");
+        return true;
+      } catch (_) {
+        // Fall through to legacy editor activation if available
+      }
+    }
+
+    if (typeof this.activateEditor === "function") {
+      const content = String(this.actor.system?.notes ?? "");
+      this.activateEditor("system.notes", {
+        engine: "prosemirror",
+        collaborate: false
+      }, content);
+      return true;
+    }
+
+    console.warn("CP2020: notes editor could not be activated.");
+    return false;
+  }
+  
   _cpSetupNotesAutosave(root) {
-    if (!root) return;
+    if (!root?.addEventListener) return;
+
     const editable = this.isEditable ?? this.options?.editable ?? false;
     if (!editable) return;
 
@@ -1750,48 +1906,111 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       this._cpNotesAutosaveState = {
         saving: false,
         pending: false,
+        pendingForce: false,
+        pendingSerialize: false,
+        timer: null,
         lastSaved: String(this.actor.system?.notes ?? "")
       };
     }
 
-    if (this._cpNotesAutosaveHandler) {
-      try { root.removeEventListener("save", this._cpNotesAutosaveHandler, true); } catch (_) {}
+    if (this._cpNotesAutosaveRoot && this._cpNotesAutosaveHandler) {
+      for (const eventName of ["save", "input", "change", "close"]) {
+        try {
+          this._cpNotesAutosaveRoot.removeEventListener(eventName, this._cpNotesAutosaveHandler, true);
+        } catch (_) {}
+      }
     }
 
-    const handler = (ev) => {
-      const target = ev?.target;
-      if (!target?.closest) return;
+    const isNotesEvent = (event) => {
+      const target = event?.target;
+      if (!target?.closest) return false;
 
-      const inLife = target.closest('.tab.life[data-tab="life"]') || target.closest('.tab.life');
-      if (!inLife) return;
-      if (!target.closest(".cp-notes-editor")) return;
+      const editor = target.closest(".cp-notes-editor");
+      if (!editor) return false;
 
-      setTimeout(() => this._cpFlushNotesAutosave(root, { force: true, serialize: false }), 0);
+      const lifeTab = target.closest('.tab.life[data-tab="life"]') ?? target.closest(".tab.life");
+      return !!lifeTab;
     };
 
-    root.addEventListener("save", handler, true);
+    const scheduleFlush = ({ force = false, serialize = false, delay = 250 } = {}) => {
+      const state = this._cpNotesAutosaveState;
+      if (!state) return;
+
+      if (state.timer) {
+        clearTimeout(state.timer);
+        state.timer = null;
+      }
+
+      state.timer = setTimeout(() => {
+        state.timer = null;
+        this._cpFlushNotesAutosave(root, { force, serialize });
+      }, delay);
+    };
+
+    const handler = (event) => {
+      if (!isNotesEvent(event)) return;
+
+      if (event.type === "save" || event.type === "close") {
+        window.setTimeout(async () => {
+          await this._cpFlushNotesAutosave(root, { force: true, serialize: false });
+
+          if (this._cpNotesEditing) {
+            this._cpNotesEditing = false;
+            await this.render({ force: true });
+          }
+        }, 0);
+
+        return;
+      }
+
+      scheduleFlush({ force: false, serialize: false, delay: 350 });
+    };
+
+    for (const eventName of ["save", "input", "change", "close"]) {
+      root.addEventListener(eventName, handler, true);
+    }
+
+    this._cpNotesAutosaveRoot = root;
     this._cpNotesAutosaveHandler = handler;
   }
 
   _cpReadNotesHTML(root, { serialize = false } = {}) {
-    const selectors = [
-      '.tab.life[data-tab="life"] .editor-content',
-      '.tab.life .editor-content',
-      '.tab.life[data-tab="life"] [contenteditable="true"]',
-      '.tab.life [contenteditable="true"]'
-    ];
+    if (!root) return null;
 
-    return serialize
-      ? saveRichEditorHTML(this, root, "system.notes", selectors)
-      : getRichEditorHTML(this, root, "system.notes", selectors);
+    const container = root.querySelector?.('.cp-notes-editor[data-editor-target="system.notes"]')
+      ?? root.querySelector?.(".cp-notes-editor");
+
+    if (!container) return null;
+
+    const proseMirror = container.querySelector?.('prose-mirror[name="system.notes"]');
+
+    if (proseMirror) {
+      const editorContent = proseMirror.querySelector?.(".ProseMirror");
+      if (editorContent) return editorContent.innerHTML;
+
+      if (typeof proseMirror.value === "string") return proseMirror.value;
+      if (typeof proseMirror.getAttribute === "function") return proseMirror.getAttribute("value") ?? "";
+    }
+
+    const view = container.querySelector?.(".cp-notes-view");
+    if (view) return view.innerHTML;
+
+    return String(this.actor.system?.notes ?? "");
   }
 
   async _cpFlushNotesAutosave(root, { force = false, serialize = false } = {}) {
     const st = this._cpNotesAutosaveState;
     if (!st) return;
 
+    if (st.timer) {
+      clearTimeout(st.timer);
+      st.timer = null;
+    }
+
     if (st.saving) {
       st.pending = true;
+      st.pendingForce = st.pendingForce || force;
+      st.pendingSerialize = st.pendingSerialize || serialize;
       return;
     }
 
@@ -1807,9 +2026,19 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       console.warn("CP2020: notes save failed", err);
     } finally {
       st.saving = false;
+
       if (st.pending) {
+        const pendingForce = st.pendingForce;
+        const pendingSerialize = st.pendingSerialize;
+
         st.pending = false;
-        await this._cpFlushNotesAutosave(root, { force: true, serialize: false });
+        st.pendingForce = false;
+        st.pendingSerialize = false;
+
+        await this._cpFlushNotesAutosave(root, {
+          force: pendingForce || true,
+          serialize: pendingSerialize
+        });
       }
     }
   }
@@ -1943,7 +2172,14 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
   async _preClose(options) {
     try {
       const root = getHtmlElement(this.element);
-      await this._cpFlushNotesAutosave(root, { force: true, serialize: true });
+
+      if (this._cpNotesAutosaveState?.timer) {
+        clearTimeout(this._cpNotesAutosaveState.timer);
+        this._cpNotesAutosaveState.timer = null;
+      }
+
+      await this._cpFlushNotesAutosave(root, { force: true, serialize: false });
+      this._cpNotesEditing = false;
     } catch (_) {}
 
     try {
@@ -1952,11 +2188,23 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     } catch (_) {}
 
     try {
-      if (this._cpAvatarCaptureRoot && this._cpAvatarCapture) {
-        this._cpAvatarCaptureRoot.removeEventListener("click", this._cpAvatarCapture, { capture: true });
+      if (this._cpNotesAutosaveRoot && this._cpNotesAutosaveHandler) {
+        for (const eventName of ["save", "input", "change", "close"]) {
+          this._cpNotesAutosaveRoot.removeEventListener(eventName, this._cpNotesAutosaveHandler, true);
+        }
       }
-      this._cpAvatarCaptureRoot = null;
-      this._cpAvatarCapture = null;
+
+      this._cpNotesAutosaveRoot = null;
+      this._cpNotesAutosaveHandler = null;
+    } catch (_) {}
+
+    try {
+      if (this._cpNotesActionsRoot && this._cpNotesActionsHandler) {
+        this._cpNotesActionsRoot.removeEventListener("click", this._cpNotesActionsHandler, true);
+      }
+
+      this._cpNotesActionsRoot = null;
+      this._cpNotesActionsHandler = null;
     } catch (_) {}
 
     return super._preClose(options);

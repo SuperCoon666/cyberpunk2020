@@ -2116,4 +2116,215 @@ div.statderive .value.rightborder {
   text-shadow: unset;
 }
 
+/* -----------------------------------------------------------------
+ *  FVTT v14 AppV2 actor sheet Life / notes editor
+ * ----------------------------------------------------------------- */
+
+.application.cyberpunk.sheet.actor .window-content,
+.cyberpunk.sheet.actor .window-content {
+  min-height: 0;
+}
+
+.application.cyberpunk.sheet.actor form,
+.cyberpunk.sheet.actor form {
+  min-height: 0;
+}
+
+.application.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.application.cyberpunk.sheet.actor .sheet-body,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .sheet-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.application.cyberpunk.sheet.actor .sheet-body > .tab.life.active,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .sheet-body > .tab.life.active {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
+
+.application.cyberpunk.sheet.actor .cp-notes-editor,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .cp-notes-editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 0 0 8px 0;
+}
+
+.application.cyberpunk.sheet.actor .cp-notes-canvas,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .cp-notes-canvas {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  box-sizing: border-box;
+  border: 2px solid black;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.application.cyberpunk.sheet.actor .cp-notes-edit,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .cp-notes-edit {
+  position: absolute;
+  top: 4px;
+  right: 12px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: black;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.6;
+  box-shadow: none;
+}
+
+.application.cyberpunk.sheet.actor .cp-notes-edit i,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .cp-notes-edit i {
+  margin: 0;
+  padding: 0;
+  color: black;
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.75;
+}
+
+.application.cyberpunk.sheet.actor .cp-notes-edit:hover,
+.application.cyberpunk.sheet.actor .cp-notes-edit:focus,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .cp-notes-edit:hover,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .cp-notes-edit:focus {
+  opacity: 1;
+  background: transparent;
+  box-shadow: none;
+}
+
+.application.cyberpunk.sheet.actor .cp-notes-edit:hover i,
+.application.cyberpunk.sheet.actor .cp-notes-edit:focus i,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .cp-notes-edit:hover i,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .cp-notes-edit:focus i {
+  opacity: 1;
+}
+
+.application.cyberpunk.sheet.actor .cp-notes-view,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .cp-notes-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 8px 36px 8px 8px;
+  color: black !important;
+  background: transparent;
+  font-family: "Noto Sans", sans-serif;
+  font-size: 14px;
+  font-weight: normal;
+  font-variant: normal;
+  line-height: 1.35;
+  opacity: 1 !important;
+}
+
+.application.cyberpunk.sheet.actor .cp-notes-view *,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .cp-notes-view * {
+  color: black !important;
+  opacity: 1 !important;
+  font-weight: inherit;
+  font-variant: normal;
+  text-shadow: unset;
+}
+
+.application.cyberpunk.sheet.actor .cp-notes-prosemirror,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .cp-notes-prosemirror {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  box-sizing: border-box;
+  color: black;
+  background: transparent;
+}
+
+.application.cyberpunk.sheet.actor .cp-notes-prosemirror .editor-container,
+.application.cyberpunk.sheet.actor .cp-notes-prosemirror .editor-content,
+.application.cyberpunk.sheet.actor .cp-notes-prosemirror .ProseMirror,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .cp-notes-prosemirror .editor-container,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .cp-notes-prosemirror .editor-content,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .cp-notes-prosemirror .ProseMirror {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  box-sizing: border-box;
+  color: black;
+  background: transparent;
+  font-family: "Noto Sans", sans-serif;
+  font-size: 14px;
+  font-weight: normal;
+  font-variant: normal;
+  line-height: 1.35;
+  text-shadow: unset;
+}
+
+.application.cyberpunk.sheet.actor .cp-notes-prosemirror .editor-content,
+.application.cyberpunk.sheet.actor .cp-notes-prosemirror .editor-container,
+.application.cyberpunk.sheet.actor .cp-notes-prosemirror .ProseMirror,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .cp-notes-prosemirror .editor-content,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .cp-notes-prosemirror .editor-container,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .cp-notes-prosemirror .ProseMirror {
+  border: 0 !important;
+  outline: 0;
+  box-shadow: none;
+}
+
+.application.cyberpunk.sheet.actor .cp-notes-prosemirror .ProseMirror,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .cp-notes-prosemirror .ProseMirror {
+  overflow: auto;
+  padding: 8px;
+}
+
+.application.cyberpunk.sheet.actor .cp-notes-prosemirror menu,
+.application.cyberpunk.sheet.actor .cp-notes-prosemirror .editor-menu,
+.application.cyberpunk.sheet.actor .cp-notes-prosemirror [role="menubar"],
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .cp-notes-prosemirror menu,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .cp-notes-prosemirror .editor-menu,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .cp-notes-prosemirror [role="menubar"] {
+  position: relative;
+  z-index: 2;
+  margin: -1px -1px 0 -1px;
+  border-radius: 0 !important;
+  box-sizing: border-box;
+}
+
+.application.cyberpunk.sheet.actor .cp-notes-prosemirror menu *,
+.application.cyberpunk.sheet.actor .cp-notes-prosemirror .editor-menu *,
+.application.cyberpunk.sheet.actor .cp-notes-prosemirror [role="menubar"] *,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .cp-notes-prosemirror menu *,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .cp-notes-prosemirror .editor-menu *,
+.cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .cp-notes-prosemirror [role="menubar"] * {
+  border-radius: 0 !important;
+}
+
 /*# sourceMappingURL=cyberpunk2020.css.map */

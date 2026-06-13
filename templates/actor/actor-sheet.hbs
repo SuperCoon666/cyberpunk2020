@@ -55,7 +55,33 @@
         {{!-- Biography Tab --}}
         <div class="tab life flexcol" data-group="primary" data-tab="life">
             <div class="biography cp-notes-editor" data-editor-target="system.notes">
-                {{editor system.notes target="system.notes" button=true editable=editable engine="prosemirror" collaborate=false}}
+                <div class="cp-notes-canvas {{#if notesEditing}}is-editing{{else}}is-viewing{{/if}}">
+                    {{#if editable}}
+                        {{#unless notesEditing}}
+                            <button
+                                type="button"
+                                class="cp-notes-edit"
+                                data-action="notes-edit"
+                                title="{{localize 'CYBERPUNK.LifeNotesEdit'}}"
+                                aria-label="{{localize 'CYBERPUNK.LifeNotesEdit'}}"
+                            >
+                                <i class="fas fa-edit"></i>
+                            </button>
+                        {{/unless}}
+                    {{/if}}
+
+                    {{#if notesEditing}}
+                        <prose-mirror
+                            class="cp-notes-prosemirror"
+                            name="system.notes"
+                            value="{{system.notes}}"
+                        >{{{system.notes}}}</prose-mirror>
+                    {{else}}
+                        <div class="cp-notes-view">
+                            {{{system.notes}}}
+                        </div>
+                    {{/if}}
+                </div>
             </div>
         </div>
 
