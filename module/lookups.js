@@ -2,6 +2,12 @@
 // Any given string value is the same as its key in the localization file, and will be used for translation
 import { cloneSystemDefault, DEFAULT_HIT_LOCATIONS, STAT_KEYS } from "./constants.js";
 
+export const COMBAT_SENSE_SKILL_IDS = new Set([
+  "BjBZ8zc7wh52MSwK", // Combat Sense
+  "L2hC8GzV0mRqE7xS"  // Чувство Боя
+]);
+export const AWARENESS_NOTICE_SKILL_ID = "jBfPdSDGwvIEq66p";
+
 export let weaponTypes = {
     pistol: "Pistol",
     submachinegun: "SMG",

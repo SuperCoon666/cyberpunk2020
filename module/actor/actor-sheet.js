@@ -1,4 +1,4 @@
-import { martialOptions, meleeAttackTypes, meleeBonkOptions, rangedModifiers, weaponTypes, FNFF2_ONLY_MARTIAL_ART_IDS, isFnff2Enabled } from "../lookups.js"
+import { martialOptions, meleeAttackTypes, meleeBonkOptions, rangedModifiers, weaponTypes, FNFF2_ONLY_MARTIAL_ART_IDS, isFnff2Enabled, COMBAT_SENSE_SKILL_IDS } from "../lookups.js"
 import { deleteFieldUpdate, localize, localizeParam, cwHasType, cwIsEnabled } from "../utils.js"
 import { ModifiersDialog } from "../dialog/modifiers.js"
 import { SortOrders, sortSkills } from "./skill-sort.js";
@@ -35,20 +35,11 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     }
   };
 
-  /** @override */
-  static TABS = {
-    // primary: {
-    //   initial: "skills",
-    //   tabs: [
-    //     { id: "skills", label: "CYBERPUNK.TabSkills" },
-    //     { id: "combat", label: "CYBERPUNK.TabCombat" },
-    //     { id: "gear", label: "CYBERPUNK.TabGear" },
-    //     { id: "cyber", label: "CYBERPUNK.TabCyber" },
-    //     { id: "life", label: "CYBERPUNK.Life" },
-    //     { id: "netrun", label: "CYBERPUNK.NetRun" }
-    //   ]
-    // }
-  };
+  /**
+   * Kept empty while the actor sheet still uses the legacy monolithic template
+   * Tabs are temporarily bound in _cpActivateTabs()
+   */
+  static TABS = {};
 
   /** @override */
   async _prepareContext(options) {
@@ -288,6 +279,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
     this._cpActivateTabs(root);
     this._cpActivateBasicActorActions(root);
+    this._cpActivateActorFormControls(root);
 
     const html = globalThis.jQuery ? globalThis.jQuery(root) : $(root);
     this._activateListeners(root, html);
@@ -504,6 +496,251 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     return this.actor.rollSkill(id);
   }
 
+    _cpActivateActorFormControls(root) {
+    if (!root?.addEventListener) return;
+    if (root.dataset.cpActorFormControlsBound === "1") return;
+
+    root.dataset.cpActorFormControlsBound = "1";
+
+    const isEditable = this.isEditable ?? this.options?.editable ?? false;
+    if (!isEditable) return;
+
+    const skillSearch = root.querySelector("input.skill-search");
+    const skillClear = root.querySelector(".skill-search-clear");
+
+    const toggleSkillClear = () => {
+      if (!skillClear || !skillSearch) return;
+      skillClear.classList.toggle("is-visible", !!skillSearch.value);
+    };
+    
+    if (skillSearch && this._cpSkillFilter != null) {
+      skillSearch.value = this._cpSkillFilter;
+    }
+
+    if (this._restoreSkillCaret != null && skillSearch) {
+      skillSearch.focus();
+      const pos = Math.min(this._restoreSkillCaret, skillSearch.value.length);
+      try {
+        skillSearch.setSelectionRange(pos, pos);
+      } catch (_) {}
+      this._restoreSkillCaret = null;
+    }
+
+    toggleSkillClear();
+    this._cpApplySkillFilterToDOM(root, this._cpSkillFilter ?? "");
+
+    root.addEventListener("click", async (event) => {
+      const target = event.target;
+      if (!target?.closest) return;
+
+      const skillLevel = target.closest(".skill-level");
+      if (skillLevel) {
+        skillLevel.select?.();
+        return;
+      }
+
+      const askMods = target.closest(".skill-ask-mod");
+      if (askMods) {
+        event.stopPropagation();
+        return;
+      }
+
+      const clearSkillSearch = target.closest('[data-action="clear-skill-search"]');
+      if (clearSkillSearch) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const input = root.querySelector("input.skill-search");
+        if (input) {
+          input.value = "";
+          input.focus({ preventScroll: true });
+        }
+
+        this._restoreSkillCaret = null;
+        this._cpSkillFilter = "";
+        toggleSkillClear();
+        this._cpApplySkillFilterToDOM(root, "");
+      }
+    });
+
+    root.addEventListener("pointerdown", (event) => {
+      const target = event.target;
+      if (!target?.closest?.('[data-action="clear-skill-search"]')) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+    });
+
+    root.addEventListener("mousedown", (event) => {
+      const target = event.target;
+      if (!target?.closest?.('[data-action="clear-skill-search"]')) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+    });
+
+    root.addEventListener("keydown", (event) => {
+      const target = event.target;
+      if (!target?.matches?.(".skill-level")) return;
+
+      if (event.key === "Enter") {
+        event.preventDefault();
+        target.blur();
+      }
+    });
+
+    root.addEventListener("input", (event) => {
+      const target = event.target;
+      if (!target?.matches?.("input.skill-search")) return;
+
+      const value = target.value || "";
+
+      if (skillClear) skillClear.classList.toggle("is-visible", !!value);
+
+      this._restoreSkillCaret = target.selectionStart ?? value.length;
+      this._cpSkillFilter = value;
+      this._cpApplySkillFilterToDOM(root, value);
+    });
+
+    root.addEventListener("change", async (event) => {
+      const target = event.target;
+      if (!target?.matches) return;
+
+      if (target.matches('input[name^="system.sdp.current."]')) {
+        const path = target.getAttribute("name");
+        const zone = path?.split(".").pop();
+        if (!zone) return;
+
+        await this.actor.update({
+          [`system.sdp.current.${zone}`]: Number(target.value || 0)
+        });
+        return;
+      }
+
+      if (target.matches(".skill-level")) {
+        await this._cpSaveSkillLevelFromInput(target);
+        return;
+      }
+
+      if (target.matches(".skill-sort > select, .skill-sort select")) {
+        await this.actor.sortSkills(target.value);
+        return;
+      }
+
+      if (target.matches(".skill-ask-mod")) {
+        await this._cpUpdateAskModsFromInput(target);
+        return;
+      }
+
+      if (target.matches(".roll-initiative-modificator")) {
+        await this.actor.update({ "system.initiativeMod": Number(target.value) });
+        return;
+      }
+
+      if (target.matches(".roll-stun-death-modificator")) {
+        await this.actor.update({ "system.StunDeathMod": Number(target.value) });
+      }
+    });
+  }
+
+  async _cpUpdateAskModsFromInput(input) {
+    const skillId = input.dataset.skillId;
+    const skill = this.actor.items.get(skillId);
+    if (!skill) return ui.notifications.warn(localize("SkillNotFound"));
+
+    try {
+      await skill.update({ "system.askMods": !!input.checked });
+    } catch (err) {
+      console.error(err);
+      ui.notifications.error(localize("UpdateAskModsError"));
+      input.checked = !input.checked;
+    }
+  }
+  _cpApplySkillFilterToDOM(root, filter) {
+    const normalized = String(filter ?? "").trim().toUpperCase();
+    const rows = root.querySelectorAll(".field.skill[data-item-id]");
+
+    for (const row of rows) {
+      const skillId = row.dataset.itemId;
+      const skill = this.actor.items.get(skillId);
+
+      const displayName = skill
+        ? (this.actor.getSkillDisplayName?.(skill) ?? skill.name)
+        : "";
+
+      const haystack = `${skill?.name ?? ""} ${displayName}`.toUpperCase();
+      const visible = !normalized || haystack.includes(normalized);
+
+      row.style.display = visible ? "" : "none";
+    }
+  }
+
+  async _cpSaveSkillLevelFromInput(input) {
+    const skill = this.actor.items.get(input.dataset.skillId);
+    if (!skill) return;
+
+    const isChipped = !!skill.system.isChipped;
+    const value = Number.parseInt(input.value, 10);
+    const safeValue = Number.isFinite(value) ? value : 0;
+
+    const targetKey = isChipped ? "system.chipLevel" : "system.level";
+    await skill.update({ [targetKey]: safeValue }, { render: false });
+
+    if (isChipped) {
+      const skillId = skill.id;
+      const skillName = skill.name;
+
+      const chips = this.actor.items.filter((item) => {
+        if (item.type !== "cyberware") return false;
+        if (!cwHasType(item, "Chip")) return false;
+        if (item.system?.equipped === false) return false;
+
+        const map = item.system?.CyberWorkType?.ChipSkills;
+        if (!map) return false;
+
+        if (skillId && Object.prototype.hasOwnProperty.call(map, skillId)) return true;
+        return Object.prototype.hasOwnProperty.call(map, skillName);
+      });
+
+      if (chips.length) {
+        const updates = [];
+
+        for (const chip of chips) {
+          const map = chip.system?.CyberWorkType?.ChipSkills || {};
+          const key =
+            skillId && Object.prototype.hasOwnProperty.call(map, skillId)
+              ? skillId
+              : skillName;
+
+          updates.push({
+            _id: chip.id,
+            [`system.CyberWorkType.ChipSkills.${key}`]: safeValue
+          });
+        }
+
+        await this.actor.updateEmbeddedDocuments("Item", updates, { render: false });
+
+        for (const chip of chips) {
+          if (chip.sheet?.rendered) chip.sheet.render(true);
+        }
+      }
+    }
+
+    const combatSenseSkill = this.actor.items.find(item =>
+      item.type === "skill"
+      && COMBAT_SENSE_SKILL_IDS.has(item.id ?? item._id)
+    );
+
+    await this.actor.update(
+      { "system.CombatSenseMod": Number(combatSenseSkill?.system?.level ?? 0) },
+      { render: false }
+    );
+
+    await this.render({ force: true });
+
+    if (skill.sheet?.rendered) skill.sheet.render(true);
+  }
+
   _activateListeners(rootElement, html) {
     const root = getHtmlElement(rootElement) ?? getHtmlElement(html);
     if (!root) return;
@@ -555,175 +792,25 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     // If not editable, do nothing further
     if (!(this.isEditable ?? this.options?.editable ?? false)) return;
 
-    // SDP: manual edit current — save and do not overwrite until the amount changes
-    html.on('change', 'input[name^="system.sdp.current."]', ev => {
-      const input = ev.currentTarget;
-      const path = input.getAttribute('name');
-      const zone = path.split('.').pop();
-      const value = Number(input.value || 0);
-
-      this.actor.update({
-        [`system.sdp.current.${zone}`]: value
-      });
-    });
+    // SDP manual edit is handled by _cpActivateActorFormControls
 
     // Stat roll is handled by _cpActivateBasicActorActions
 
-    // Skill level changes
-    const saveSkillLevel = async (event) => {
-      const skill = this.actor.items.get(event.currentTarget.dataset.skillId);
-      if (!skill) return;
+    // Skill level changes are handled by _cpActivateActorFormControls
 
-      const isChipped = !!skill.system.isChipped;
-      const value = Number.parseInt(event.currentTarget.value, 10);
-      const safeValue = Number.isFinite(value) ? value : 0;
+    // Skill sorting is handled by _cpActivateActorFormControls
 
-      const targetKey = isChipped ? "system.chipLevel" : "system.level";
-      await skill.update({ [targetKey]: safeValue }, { render: false });
+    // Skill search is handled by _cpActivateActorFormControls
 
-      if (isChipped) {
-        const skillId = skill.id;
-        const skillName = skill.name;
-
-        const chips = this.actor.items.filter((i) => {
-          if (i.type !== "cyberware") return false;
-          if (!cwHasType(i, "Chip")) return false;
-          if (i.system?.equipped === false) return false;
-          const map = i.system?.CyberWorkType?.ChipSkills;
-          if (!map) return false;
-
-          if (skillId && Object.prototype.hasOwnProperty.call(map, skillId)) return true;
-
-          return Object.prototype.hasOwnProperty.call(map, skillName);
-        });
-
-        if (chips.length) {
-          const updates = [];
-          for (const ch of chips) {
-            const map = ch.system?.CyberWorkType?.ChipSkills || {};
-            const key =
-              (skillId && Object.prototype.hasOwnProperty.call(map, skillId)) ? skillId : skillName;
-
-            updates.push({
-              _id: ch.id,
-              [`system.CyberWorkType.ChipSkills.${key}`]: safeValue
-            });
-          }
-
-          await this.actor.updateEmbeddedDocuments("Item", updates, { render: false });
-
-          for (const ch of chips) if (ch.sheet?.rendered) ch.sheet.render(true);
-        }
-      }
-
-      const combatSenseItemFind =
-        this.actor.items.find(item => item.type === 'skill' && item.name.includes('Combat'))?.system.level
-        ?? this.actor.items.find(item => item.type === 'skill' && item.name.includes('Боя'))?.system.level
-        ?? 0;
-      await this.actor.update({ "system.CombatSenseMod": Number(combatSenseItemFind) }, { render: false });
-
-      if (this.rendered) this.render(true);
-
-      if (skill.sheet?.rendered) skill.sheet.render(true);
-    };
-
-    html.find(".skill-level").click((event) => event.target.select());
-    html.on("change", ".skill-level", saveSkillLevel);
-    html.on("keydown", ".skill-level", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        event.currentTarget.blur();
-      }
-    });
-    // Skill sorting
-    html.find(".skill-sort > select").change(ev => {
-      let sort = ev.currentTarget.value;
-      this.actor.sortSkills(sort);
-    });
-
-    // Skill search: auto-filter + clear button
-    const $skillSearch = html.find('input.skill-search');
-    const $skillClear = html.find('.skill-search-clear');
-
-    const toggleClear = () => $skillClear.toggleClass('is-visible', !!$skillSearch.val());
-
-    // Restore caret position after re-render (so typing continues without jumping)
-    if (this._restoreSkillCaret != null) {
-      const el = $skillSearch[0];
-      if (el) {
-        el.focus();
-        const pos = Math.min(this._restoreSkillCaret, el.value.length);
-        try { el.setSelectionRange(pos, pos); } catch(_) {}
-      }
-      this._restoreSkillCaret = null;
-    }
-
-    toggleClear();
-
-    // Auto-search while typing
-    let searchTypingTimer;
-    $skillSearch.on('input', (ev) => {
-      const val = ev.currentTarget.value || "";
-      toggleClear();
-
-        this._restoreSkillCaret = ev.currentTarget.selectionStart ?? val.length;
-
-      this._cpSkillFilter = val;
-
-      clearTimeout(searchTypingTimer);
-      searchTypingTimer = setTimeout(() => this.render(false), 120);
-    });
-
-    html.on('pointerdown mousedown', '[data-action="clear-skill-search"]', (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-    });
-
-    // Clear the field and instantly reset the filter
-    html.on('click', '[data-action="clear-skill-search"]', (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-
-      $skillSearch.val('');
-      this._restoreSkillCaret = 0;
-      this._cpSkillFilter = "";
-      this.render(false);
-    });
-
-    // Prompt for modifiers
-    html.find(".skill-ask-mod")
-      .on("click", ev => ev.stopPropagation())
-      .on("change", async ev => {
-        ev.stopPropagation();
-
-        const cb = ev.currentTarget;
-        const skillId = cb.dataset.skillId;
-        const skill = this.actor.items.get(skillId);
-        if (!skill) return ui.notifications.warn(localize("SkillNotFound"));
-
-        try {
-          await skill.update({ "system.askMods": cb.checked });
-        } catch (err) {
-          console.error(err);
-          ui.notifications.error(localize("UpdateAskModsError"));
-          cb.checked = !cb.checked;
-        }
-      });
+    // Ask-modifiers checkbox is handled by _cpActivateActorFormControls
 
     // Skill roll is handled by _cpActivateBasicActorActions
 
     // Initiative roll is handled by _cpActivateBasicActorActions
 
-    html.find(".roll-initiative-modificator").change(ev => {
-      const value = ev.target.value;
-      this.actor.update({"system.initiativeMod": Number(value)});
-    });
+    // Initiative modifier changes are handled by _cpActivateActorFormControls
 
-    // Stun/Death save
-    html.find(".roll-stun-death-modificator").change(ev => {
-      const value = ev.target.value;
-      this.actor.update({"system.StunDeathMod": Number(value)});
-    });
+    // Stun/Death modifier changes are handled by _cpActivateActorFormControls
 
     // Stun/Death roll is handled by _cpActivateBasicActorActions
 
