@@ -720,5 +720,9 @@
     "CYBERPUNK.NotEnoughAmmoToReload": "Недостаточно патронов для перезарядки.",
     "CYBERPUNK.AmmoItemNotFoundReloadedLegacy": "Патроны не найдены. Перезарядка выполнена без учёта БК.",
     "CYBERPUNK.FNFF2SkillDisabledWarn": "Этот стиль боевых искусств требует правил FNFF2. Включите «Friday Night Fistfight 2» в настройках системы, чтобы использовать его.",
-    "CYBERPUNK.FilePickerUnavailable": "Средство выбора файлов недоступно."
+    "CYBERPUNK.FilePickerUnavailable": "Средство выбора файлов недоступно.",
+    "CYBERPUNK.NetIconChange": "Нажмите, чтобы изменить иконку",
+    "CYBERPUNK.NetRunnerIconAlt": "Иконка нетраннера",
+    "CYBERPUNK.CyberwareAnatomyAlt": "Мужская анатомическая схема",
+    "CYBERPUNK.LifeNotesEdit": "Редактировать заметки жизни"
 }

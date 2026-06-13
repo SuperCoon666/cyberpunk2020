@@ -721,5 +721,9 @@
     "CYBERPUNK.NotEnoughAmmoToReload": "Not enough ammo to reload.",
     "CYBERPUNK.AmmoItemNotFoundReloadedLegacy": "Ammo item not found. Reloaded without ammo tracking.",
     "CYBERPUNK.FNFF2SkillDisabledWarn": "This Martial Arts style requires FNFF2 rules. Enable 'Friday Night Fistfight 2' in System Settings to use it.",
-    "CYBERPUNK.FilePickerUnavailable": "File picker is not available."
+    "CYBERPUNK.FilePickerUnavailable": "File picker is not available.",
+    "CYBERPUNK.NetIconChange": "Click to change icon",
+    "CYBERPUNK.NetRunnerIconAlt": "Runner icon",
+    "CYBERPUNK.CyberwareAnatomyAlt": "Male anatomy",
+    "CYBERPUNK.LifeNotesEdit": "Edit life notes"
 }

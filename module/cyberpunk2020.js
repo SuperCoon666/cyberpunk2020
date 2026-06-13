@@ -20,6 +20,9 @@ import * as migrations from "./migrate.js";
 import { registerSystemSettings } from "./settings.js"
 import { getHtmlElement } from "./compat.js";
 
+const { Actors, Items } = foundry.documents.collections;
+const { ActorSheet, ItemSheet } = foundry.appv1.sheets;
+
 Hooks.once('init', async function () {
 
     // Place classes in system namespace for later reference.

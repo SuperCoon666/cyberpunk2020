@@ -6,7 +6,13 @@ export const COMBAT_SENSE_SKILL_IDS = new Set([
   "BjBZ8zc7wh52MSwK", // Combat Sense
   "L2hC8GzV0mRqE7xS"  // Чувство Боя
 ]);
+
 export const AWARENESS_NOTICE_SKILL_ID = "jBfPdSDGwvIEq66p";
+
+export const INTERFACE_SKILL_IDS = new Set([
+  "sqHlfxm32pNENNFZ", // Interface
+  "Nc1zY8vB6qWt4pXj"  // Интерфейс
+]);
 
 export let weaponTypes = {
     pistol: "Pistol",

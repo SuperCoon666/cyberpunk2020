@@ -1,3 +1,7 @@
+const loadCyberpunkTemplates =
+  foundry.applications?.handlebars?.loadTemplates
+  ?? globalThis.loadTemplates;
+
 /**
  * Define a set of template paths to pre-load
  * Pre-loaded templates are compiled and cached for fast access when rendering
@@ -5,7 +9,7 @@
  */
 export const preloadHandlebarsTemplates = async function() {
     // Path to partial from foundry path. For cyberpunk, is "systems/cyberpunk2020/templates/actor/parts/___.hbs". Is .hbs as they're handlebars files
-    return loadTemplates([
+        return loadCyberpunkTemplates([
         "systems/cyberpunk2020/templates/actor/parts/statsrow.hbs",
         "systems/cyberpunk2020/templates/actor/parts/woundtracker.hbs",
         "systems/cyberpunk2020/templates/actor/parts/skills.hbs",

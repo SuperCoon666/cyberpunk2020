@@ -1,4 +1,4 @@
-import { martialOptions, meleeAttackTypes, meleeBonkOptions, rangedModifiers, weaponTypes, FNFF2_ONLY_MARTIAL_ART_IDS, isFnff2Enabled, COMBAT_SENSE_SKILL_IDS } from "../lookups.js"
+import { martialOptions, meleeAttackTypes, meleeBonkOptions, rangedModifiers, weaponTypes, FNFF2_ONLY_MARTIAL_ART_IDS, isFnff2Enabled, COMBAT_SENSE_SKILL_IDS, INTERFACE_SKILL_IDS } from "../lookups.js";
 import { deleteFieldUpdate, localize, localizeParam, cwHasType, cwIsEnabled } from "../utils.js"
 import { ModifiersDialog } from "../dialog/modifiers.js"
 import { SortOrders, sortSkills } from "./skill-sort.js";
@@ -115,7 +115,8 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     const allSkills = this.actor.items.filter(i => i.type === "skill");
 
     const interfaceName = game.i18n.localize("CYBERPUNK.SkillInterface");
-    let interfaceItem = allSkills.find(i => i.name === interfaceName);
+    const interfaceItem = allSkills.find(i => INTERFACE_SKILL_IDS.has(i.id ?? i._id))
+      ?? allSkills.find(i => i.name === interfaceName); // Legacy fallback for old/manual data
 
     let interfaceValue = 0;
     let interfaceItemId = null;
@@ -286,9 +287,6 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     this._cpActivateCyberwareControls(root);
     this._cpActivateNetrunningControls(root);
     this._cpActivateActorDragDrop(root);
-
-    const html = globalThis.jQuery ? globalThis.jQuery(root) : $(root);
-    this._activateListeners(root, html);
   }
 
   _cpActivateTabs(root) {
@@ -565,6 +563,37 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     return this.actor.items.get(itemId) ?? null;
   }
 
+    _cpGetOpenItemApplications(item) {
+    if (!item?.apps) return [];
+
+    if (item.apps instanceof Map) {
+      return Array.from(item.apps.values());
+    }
+
+    if (Array.isArray(item.apps)) {
+      return item.apps;
+    }
+
+    return Object.values(item.apps);
+  }
+
+  _cpRenderOpenItemApplications(items) {
+    const list = Array.isArray(items) ? items : [items];
+    const ApplicationV2 = foundry.applications?.api?.ApplicationV2;
+
+    for (const item of list) {
+      for (const app of this._cpGetOpenItemApplications(item)) {
+        if (!app?.rendered || typeof app.render !== "function") continue;
+
+        if (ApplicationV2 && app instanceof ApplicationV2) {
+          app.render({ force: true });
+        } else {
+          app.render(true);
+        }
+      }
+    }
+  }
+
   async _cpConfirmDeleteItem(item) {
     if (!item) return;
 
@@ -753,7 +782,13 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
     const toggleSkillClear = () => {
       if (!skillClear || !skillSearch) return;
-      skillClear.classList.toggle("is-visible", !!skillSearch.value);
+
+      const visible = !!skillSearch.value;
+
+      skillClear.classList.toggle("is-visible", visible);
+      skillClear.hidden = !visible;
+      skillClear.setAttribute("aria-hidden", visible ? "false" : "true");
+      skillClear.style.display = visible ? "inline-block" : "none";
     };
 
     if (skillSearch && this._cpSkillFilter != null) {
@@ -788,7 +823,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
         return;
       }
 
-      const clearSkillSearch = target.closest('[data-action="clear-skill-search"]');
+      const clearSkillSearch = target.closest('[data-action="clear-skill-search"], .skill-search-clear');
       if (clearSkillSearch) {
         event.preventDefault();
         event.stopPropagation();
@@ -808,7 +843,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
     root.addEventListener("pointerdown", (event) => {
       const target = event.target;
-      if (!target?.closest?.('[data-action="clear-skill-search"]')) return;
+      if (!target?.closest?.('[data-action="clear-skill-search"], .skill-search-clear')) return;
 
       event.preventDefault();
       event.stopPropagation();
@@ -816,7 +851,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
     root.addEventListener("mousedown", (event) => {
       const target = event.target;
-      if (!target?.closest?.('[data-action="clear-skill-search"]')) return;
+      if (!target?.closest?.('[data-action="clear-skill-search"], .skill-search-clear')) return;
 
       event.preventDefault();
       event.stopPropagation();
@@ -838,10 +873,10 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
       const value = target.value || "";
 
-      if (skillClear) skillClear.classList.toggle("is-visible", !!value);
-
       this._restoreSkillCaret = target.selectionStart ?? value.length;
       this._cpSkillFilter = value;
+
+      toggleSkillClear();
       this._cpApplySkillFilterToDOM(root, value);
     });
 
@@ -988,11 +1023,8 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
     if (this.rendered) await this.render({ force: true });
 
-    for (const chip of chips) {
-      if (chip.sheet?.rendered) chip.sheet.render(true);
-    }
-
-    if (skill.sheet?.rendered) skill.sheet.render(true);
+    this._cpRenderOpenItemApplications(chips);
+    this._cpRenderOpenItemApplications(skill);
   }
 
   _cpFindChipItemsForSkill(skill) {
@@ -1063,9 +1095,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
         await this.actor.updateEmbeddedDocuments("Item", updates, { render: false });
 
-        for (const chip of chips) {
-          if (chip.sheet?.rendered) chip.sheet.render(true);
-        }
+        this._cpRenderOpenItemApplications(chips);
       }
     }
 
@@ -1081,125 +1111,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
     await this.render({ force: true });
 
-    if (skill.sheet?.rendered) skill.sheet.render(true);
-  }
-
-  _activateListeners(rootElement, html) {
-    const root = getHtmlElement(rootElement) ?? getHtmlElement(html);
-    if (!root) return;
-
-    // Actor and netrunning file pickers are handled by _cpActivateActorFilePickers
-
-    // Life tab notes autosave is handled by _cpActivateNotesEditor
-
-    // Custom drop-target dragover is handled by _cpActivateActorDragDrop
-
-    // If not editable, do nothing further
-    if (!(this.isEditable ?? this.options?.editable ?? false)) return;
-
-    // SDP manual edit is handled by _cpActivateActorFormControls
-
-    // Stat roll is handled by _cpActivateBasicActorActions
-
-    // Skill level changes are handled by _cpActivateActorFormControls
-
-    // Skill sorting is handled by _cpActivateActorFormControls
-
-    // Skill search is handled by _cpActivateActorFormControls
-
-    // Ask-modifiers checkbox is handled by _cpActivateActorFormControls
-
-    // Skill roll is handled by _cpActivateBasicActorActions
-
-    // Initiative roll is handled by _cpActivateBasicActorActions
-
-    // Initiative modifier changes are handled by _cpActivateActorFormControls
-
-    // Stun/Death modifier changes are handled by _cpActivateActorFormControls
-
-    // Stun/Death roll is handled by _cpActivateBasicActorActions
-
-    // Damage tracker clicks are handled by _cpActivateBasicActorActions
-
-    // Generic item roll is handled by _cpActivateBasicActorActions
-
-    // Item sheet opening is handled by _cpActivateBasicActorActions
-
-    // Active chip sheet opening is handled by _cpActivateBasicActorActions
-
-    // Item deletion is handled by _cpActivateBasicActorActions
-
-    // Weapon fire is handled by _cpActivateBasicActorActions
-
-    // Netrunning program edit/delete is handled by _cpActivateNetrunningControls
-
-    // Netrunning program drag sources are handled by _cpActivateActorDragDrop
-
-    // Legacy data-edit inputs are no longer used by the actor sheet
-
-    // Interface skill roll is handled by _cpActivateNetrunningControls
-
-    // Active program context menu is handled by _cpActivateNetrunningControls
-
-    // Netrunning icon filepicker is handled by _cpActivateActorFilePickers
-
-    if (this._cpChipTooltipCleanup) {
-      try { this._cpChipTooltipCleanup(); } catch (_) {}
-      this._cpChipTooltipCleanup = null;
-    }
-
-    const tooltip = document.createElement("div");
-    tooltip.className = "chip-tooltip";
-    document.body.appendChild(tooltip);
-
-    const documentTooltipListeners = [];
-
-    function hideTooltip() {
-      tooltip.style.display = "none";
-    }
-
-    function showTooltip(chip) {
-      const fullName = chip.dataset.full;
-      if (!fullName) return;
-
-      tooltip.textContent = fullName;
-      tooltip.style.display = "block";
-
-      const rect = chip.getBoundingClientRect();
-      const tooltipRect = tooltip.getBoundingClientRect();
-
-      tooltip.style.top = `${rect.top - tooltipRect.height - 6}px`;
-      tooltip.style.left = `${rect.left + rect.width / 2}px`;
-      tooltip.style.transform = "translateX(-50%)";
-    }
-
-    function attachChipwareTooltips(root) {
-      root.querySelectorAll(".chipware").forEach(chip => {
-        chip.addEventListener("mouseenter", () => showTooltip(chip));
-        chip.addEventListener("mouseleave", hideTooltip);
-      });
-    }
-
-    attachChipwareTooltips(getHtmlElement(html) ?? document);
-    ["drop", "dragend", "click", "mousedown", "mouseup"].forEach(eventName => {
-      document.addEventListener(eventName, hideTooltip);
-      documentTooltipListeners.push(eventName);
-    });
-
-    this._cpChipTooltipCleanup = () => {
-      hideTooltip();
-      tooltip.remove();
-      for (const eventName of documentTooltipListeners) {
-        document.removeEventListener(eventName, hideTooltip);
-      }
-    };
-    
-    // Chip toggle is handled by _cpActivateCyberwareControls
-
-
-    // Generic actor item drag sources are handled by _cpActivateActorDragDrop
-
-    // Active cyberware/chipware unequip is handled by _cpActivateCyberwareControls
+    this._cpRenderOpenItemApplications(skill);
   }
 
   _cpActivateActorDragDrop(root) {
@@ -1252,12 +1164,20 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
       event.preventDefault();
       event.stopPropagation();
+      event.stopImmediatePropagation?.();
+
+      if (this._cpDropHandling) return;
 
       const data = this._cpGetDragDropData(event);
       if (!data) return;
 
-      await this._onDropItem(event, data);
-    });
+      this._cpDropHandling = true;
+      try {
+        await this._onDropItem(event, data);
+      } finally {
+        this._cpDropHandling = false;
+      }
+    }, true);
   }
 
   _cpPrepareActorDragSources(root) {
@@ -1465,7 +1385,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     await this._cp_syncChipLevelsToSkills();
     await this._cp_syncActiveFlagsToSkills();
 
-    if (item.sheet?.rendered) item.sheet.render(true);
+    this._cpRenderOpenItemApplications(item);
     await this.render({ force: true });
   }
 
@@ -1562,7 +1482,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       await this._cp_syncChipLevelsToSkills();
       await this._cp_syncActiveFlagsToSkills();
 
-      if (item.sheet?.rendered) item.sheet.render(true);
+      this._cpRenderOpenItemApplications(item);
       await this.render({ force: true });
       return;
     }
@@ -1587,7 +1507,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       await this._cp_syncChipLevelsToSkills();
       await this._cp_syncActiveFlagsToSkills();
 
-      if (item.sheet?.rendered) item.sheet.render(true);
+      this._cpRenderOpenItemApplications(item);
       await this.render({ force: true });
       return;
     }
@@ -1614,7 +1534,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
         await this._cp_syncChipLevelsToSkills();
         await this._cp_syncActiveFlagsToSkills();
 
-        if (item.sheet?.rendered) item.sheet.render(true);
+        this._cpRenderOpenItemApplications(item);
         await this.render({ force: true });
         return;
       }
@@ -1682,10 +1602,9 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
       this._cp_forceRefreshOpenSkillSheets(updatedMap);
 
-      for (const sid of updatedIds) {
-        const sk = actor.items.get(sid);
-        if (sk?.sheet?.rendered) sk.sheet.render(true);
-      }
+      this._cpRenderOpenItemApplications(
+        updatedIds.map(sid => actor.items.get(sid)).filter(Boolean)
+      );
     }
   }
 
@@ -1695,20 +1614,23 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
     for (const [sid, patch] of Object.entries(updatedMap)) {
       const skill = this.actor.items.get(sid);
-      const sheet = skill?.sheet;
-      if (!sheet?.rendered) continue;
+      if (!skill) continue;
 
-      const root = getHtmlElement(sheet.element);
-      if (!root?.querySelector) continue;
+      for (const sheet of this._cpGetOpenItemApplications(skill)) {
+        if (!sheet?.rendered) continue;
 
-      if (Object.prototype.hasOwnProperty.call(patch, "isChipped")) {
-        const checkbox = root.querySelector('input[name="system.isChipped"]');
-        if (checkbox) checkbox.checked = !!patch.isChipped;
-      }
+        const root = getHtmlElement(sheet.element);
+        if (!root?.querySelector) continue;
 
-      if (Object.prototype.hasOwnProperty.call(patch, "chipLevel")) {
-        const input = root.querySelector('input[name="system.chipLevel"], select[name="system.chipLevel"]');
-        if (input) input.value = String(patch.chipLevel);
+        if (Object.prototype.hasOwnProperty.call(patch, "isChipped")) {
+          const checkbox = root.querySelector('input[name="system.isChipped"]');
+          if (checkbox) checkbox.checked = !!patch.isChipped;
+        }
+
+        if (Object.prototype.hasOwnProperty.call(patch, "chipLevel")) {
+          const input = root.querySelector('input[name="system.chipLevel"], select[name="system.chipLevel"]');
+          if (input) input.value = String(patch.chipLevel);
+        }
       }
     }
   }
@@ -1750,10 +1672,9 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
       this._cp_forceRefreshOpenSkillSheets(updatedMap);
 
-      for (const sid of updatedIds) {
-        const sk = actor.items.get(sid);
-        if (sk?.sheet?.rendered) sk.sheet.render(true);
-      }
+      this._cpRenderOpenItemApplications(
+        updatedIds.map(sid => actor.items.get(sid)).filter(Boolean)
+      );
     }
   }
 
@@ -1801,99 +1722,6 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
     this._cpNotesActionsRoot = root;
     this._cpNotesActionsHandler = handler;
-  }
-
-  _cpSetupNotesEditorFormGuards(root) {
-    if (!root?.addEventListener) return;
-
-    if (this._cpNotesEditorGuardRoot && this._cpNotesEditorGuardHandler) {
-      for (const eventName of ["click", "submit"]) {
-        try {
-          this._cpNotesEditorGuardRoot.removeEventListener(eventName, this._cpNotesEditorGuardHandler, true);
-        } catch (_) {}
-      }
-    }
-
-    const handler = (event) => {
-      if (event.type === "submit") {
-        const submitter = event.submitter;
-        if (!submitter?.closest?.(".cp-notes-editor")) return;
-
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation?.();
-        return;
-      }
-
-      const target = event.target;
-      if (!target?.closest) return;
-
-      const editButton = target.closest(".cp-notes-editor .editor-edit");
-      if (!editButton) return;
-
-      event.preventDefault();
-
-      const wasOpen = this._cpIsNotesEditorOpen(root);
-
-      window.setTimeout(() => {
-        if (!wasOpen && !this._cpIsNotesEditorOpen(root)) {
-          this._cpOpenNotesEditor(root);
-        }
-      }, 0);
-    };
-
-    root.addEventListener("click", handler, true);
-    root.addEventListener("submit", handler, true);
-
-    this._cpNotesEditorGuardRoot = root;
-    this._cpNotesEditorGuardHandler = handler;
-  }
-
-  _cpIsNotesEditorOpen(root) {
-    const proseMirror = getRichEditorElement(root, "system.notes");
-
-    if (proseMirror && "open" in proseMirror) {
-      return !!proseMirror.open;
-    }
-
-    return !!root?.querySelector?.(".cp-notes-editor .ProseMirror");
-  }
-
-  _cpOpenNotesEditor(root) {
-    const proseMirror = getRichEditorElement(root, "system.notes");
-
-    if (proseMirror) {
-      for (const methodName of ["edit", "activate", "toggle", "openEditor"]) {
-        if (typeof proseMirror[methodName] !== "function") continue;
-
-        try {
-          proseMirror[methodName]();
-          return true;
-        } catch (_) {
-          // Try the next ProseMirror API shape
-        }
-      }
-
-      try {
-        proseMirror.open = true;
-        proseMirror.setAttribute?.("open", "");
-        return true;
-      } catch (_) {
-        // Fall through to legacy editor activation if available
-      }
-    }
-
-    if (typeof this.activateEditor === "function") {
-      const content = String(this.actor.system?.notes ?? "");
-      this.activateEditor("system.notes", {
-        engine: "prosemirror",
-        collaborate: false
-      }, content);
-      return true;
-    }
-
-    console.warn("CP2020: notes editor could not be activated.");
-    return false;
   }
   
   _cpSetupNotesAutosave(root) {
@@ -1977,23 +1805,10 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
   _cpReadNotesHTML(root, { serialize = false } = {}) {
     if (!root) return null;
 
-    const container = root.querySelector?.('.cp-notes-editor[data-editor-target="system.notes"]')
-      ?? root.querySelector?.(".cp-notes-editor");
+    const reader = serialize ? saveRichEditorHTML : getRichEditorHTML;
+    const html = reader(this, root, "system.notes", [".cp-notes-view"]);
 
-    if (!container) return null;
-
-    const proseMirror = container.querySelector?.('prose-mirror[name="system.notes"]');
-
-    if (proseMirror) {
-      const editorContent = proseMirror.querySelector?.(".ProseMirror");
-      if (editorContent) return editorContent.innerHTML;
-
-      if (typeof proseMirror.value === "string") return proseMirror.value;
-      if (typeof proseMirror.getAttribute === "function") return proseMirror.getAttribute("value") ?? "";
-    }
-
-    const view = container.querySelector?.(".cp-notes-view");
-    if (view) return view.innerHTML;
+    if (html != null) return html;
 
     return String(this.actor.system?.notes ?? "");
   }
@@ -2036,7 +1851,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
         st.pendingSerialize = false;
 
         await this._cpFlushNotesAutosave(root, {
-          force: pendingForce || true,
+          force: pendingForce,
           serialize: pendingSerialize
         });
       }
@@ -2044,66 +1859,6 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
   }
 
   _cpGetSavedRangedAttackOptions(item) {
-    const saved = item?.getFlag?.("cyberpunk2020", "lastRangedAttackOptions") ?? {};
-    return foundry.utils.duplicate(saved);
-  }
-
-  async _cpSaveRangedAttackOptions(item, fireOptions = {}) {
-    if (!item) return;
-    if (fireOptions.fireMode === undefined) return;
-
-    const saved = this._cpGetSavedRangedAttackOptions(item);
-    const fireMode = String(fireOptions.fireMode ?? "");
-
-    if (saved.fireMode === fireMode) return;
-
-    try {
-      await item.update({
-        "flags.cyberpunk2020.lastRangedAttackOptions": {
-          ...saved,
-          fireMode
-        }
-      }, { render: false });
-    } catch (err) {
-      console.warn("CP2020: failed to save ranged attack options", err);
-    }
-  }
-
-  async _cpSaveMeleeAttackOptions(item, fireOptions = {}) {
-    if (!item) return;
-
-    const fieldsToSave = [
-      "action",
-      "martialArt",
-      "cyberTerminus"
-    ];
-
-    const saved = this._cpGetSavedMeleeAttackOptions(item);
-    let changed = false;
-
-    for (const key of fieldsToSave) {
-      if (fireOptions[key] === undefined) continue;
-
-      const value = String(fireOptions[key] ?? "");
-
-      if (saved[key] !== value) {
-        saved[key] = value;
-        changed = true;
-      }
-    }
-
-    if (!changed) return;
-
-    try {
-      await item.update({
-        "flags.cyberpunk2020.lastMeleeAttackOptions": saved
-      }, { render: false });
-    } catch (err) {
-      console.warn("CP2020: failed to save melee attack options", err);
-    }
-  }
-
-    _cpGetSavedRangedAttackOptions(item) {
     const saved = item?.getFlag?.("cyberpunk2020", "lastRangedAttackOptions") ?? {};
     return foundry.utils.duplicate(saved);
   }
