@@ -280,6 +280,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     this._cpActivateTabs(root);
     this._cpActivateBasicActorActions(root);
     this._cpActivateActorFormControls(root);
+    this._cpActivateCyberwareControls(root);
 
     const html = globalThis.jQuery ? globalThis.jQuery(root) : $(root);
     this._activateListeners(root, html);
@@ -512,7 +513,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       if (!skillClear || !skillSearch) return;
       skillClear.classList.toggle("is-visible", !!skillSearch.value);
     };
-    
+
     if (skillSearch && this._cpSkillFilter != null) {
       skillSearch.value = this._cpSkillFilter;
     }
@@ -673,6 +674,106 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
       row.style.display = visible ? "" : "none";
     }
+  }
+
+    _cpActivateCyberwareControls(root) {
+    if (!root?.addEventListener) return;
+
+    this._cpActivateChipTooltips(root);
+
+    if (root.dataset.cpCyberwareControlsBound === "1") return;
+    root.dataset.cpCyberwareControlsBound = "1";
+
+    const isEditable = this.isEditable ?? this.options?.editable ?? false;
+    if (!isEditable) return;
+
+    root.addEventListener("mousedown", (event) => {
+      const target = event.target;
+      if (!target?.closest?.(".item-unequip")) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+    });
+
+    root.addEventListener("click", async (event) => {
+      const target = event.target;
+      if (!target?.closest) return;
+
+      const unequipButton = target.closest(".item-unequip");
+      if (unequipButton) {
+        await this._onActiveUnequip(event);
+        return;
+      }
+    });
+
+    root.addEventListener("change", async (event) => {
+      const target = event.target;
+      if (!target?.matches?.(".chip-toggle input[data-skill-id]")) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      await this._cpSetSkillChipActiveFromInput(target);
+    });
+  }
+
+  async _cpSetSkillChipActiveFromInput(input) {
+    const checked = !!input.checked;
+    const skillId = input.dataset.skillId;
+    const skill = this.actor.items.get(skillId);
+
+    if (!skill || skill.type !== "skill") return;
+
+    const chips = this._cpFindChipItemsForSkill(skill);
+
+    if (chips.length) {
+      const updates = chips.map(chip => ({
+        _id: chip.id,
+        "system.CyberWorkType.ChipActive": checked
+      }));
+
+      await this.actor.updateEmbeddedDocuments("Item", updates, { render: false });
+
+      await this._cp_syncChipLevelsToSkills();
+      await this._cp_syncActiveFlagsToSkills();
+    } else {
+      await skill.update({
+        "system.isChipped": checked,
+        ...deleteFieldUpdate("system.chipped")
+      }, { render: false });
+    }
+
+    if (this.rendered) await this.render({ force: true });
+
+    for (const chip of chips) {
+      if (chip.sheet?.rendered) chip.sheet.render(true);
+    }
+
+    if (skill.sheet?.rendered) skill.sheet.render(true);
+  }
+
+  _cpFindChipItemsForSkill(skill) {
+    const skillId = skill.id ?? skill._id;
+    const legacySkillName = skill.name;
+
+    return this.actor.items.filter(item => {
+      if (item.type !== "cyberware") return false;
+      if (!cwHasType(item, "Chip")) return false;
+      if (item.system?.equipped === false) return false;
+
+      const map = item.system?.CyberWorkType?.ChipSkills;
+      if (!map) return false;
+
+      if (skillId && Object.prototype.hasOwnProperty.call(map, skillId)) return true;
+
+      // Legacy fallback for old chip data that was stored by localized skill name.
+      return Object.prototype.hasOwnProperty.call(map, legacySkillName);
+    });
+  }
+
+  _cpActivateChipTooltips(root) {
+      // Chipware tooltips are handled by _cpActivateCyberwareControls
   }
 
   async _cpSaveSkillLevelFromInput(input) {
@@ -1043,45 +1144,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       }
     };
     
-    html.on("change", ".chip-toggle input[data-skill-id]", async (ev) => {
-      const checked = !!ev.currentTarget.checked;
-      const skillId = ev.currentTarget.dataset.skillId;
-      const skill = this.actor.items.get(skillId);
-      if (!skill || skill.type !== "skill") return;
-
-      const skillName = skill.name;
-
-      const chips = this.actor.items.filter(i => {
-        if (i.type !== "cyberware") return false;
-        if (!cwHasType(i, "Chip")) return false;
-        if (i.system?.equipped === false) return false;
-        const map = i.system?.CyberWorkType?.ChipSkills;
-        if (!map) return false;
-
-        return (skillId && Object.prototype.hasOwnProperty.call(map, skillId)) ||
-              Object.prototype.hasOwnProperty.call(map, skillName);
-      });
-
-      if (chips.length) {
-        const updates = chips.map(ch => ({
-          _id: ch.id,
-          "system.CyberWorkType.ChipActive": checked
-        }));
-        await this.actor.updateEmbeddedDocuments("Item", updates, { render: false });
-
-        await this._cp_syncChipLevelsToSkills();
-        await this._cp_syncActiveFlagsToSkills();
-      } else {
-        await skill.update({
-          "system.isChipped": checked,
-          ...deleteFieldUpdate("system.chipped")
-        }, { render: false });
-      }
-
-      if (this.rendered) this.render(true);
-      for (const ch of chips) if (ch.sheet?.rendered) ch.sheet.render(true);
-      if (skill.sheet?.rendered) skill.sheet.render(true);
-    });
+    // Chip toggle is handled by _cpActivateCyberwareControls
 
 
     // Drag sources for owned Actor Items.
@@ -1114,12 +1177,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       });
     };
 
-    html.on('mousedown', '.item-unequip', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation?.();
-    });
-    html.on('click', '.item-unequip', (e) => this._onActiveUnequip(e));
+    // Active cyberware/chipware unequip is handled by _cpActivateCyberwareControls
 
     makeDraggable(getHtmlElement(html) ?? html);
   }
@@ -1271,13 +1329,14 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
   async _onActiveUnequip(event) {
     event.preventDefault();
     event.stopPropagation();
-    if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+    event.stopImmediatePropagation?.();
 
-    const target = event.currentTarget;
+    const target = event.target?.closest?.(".item-unequip") ?? event.currentTarget;
     const id = target?.dataset?.itemId
-            || target.closest('[data-item-id]')?.dataset?.itemId;
+      || target?.closest?.("[data-item-id]")?.dataset?.itemId;
 
     if (!id) return;
+
     const item = this.actor.items.get(id);
     if (!item) return;
 
@@ -1291,7 +1350,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     await this._cp_syncActiveFlagsToSkills();
 
     if (item.sheet?.rendered) item.sheet.render(true);
-    this.render(true);
+    await this.render({ force: true });
   }
 
   /** @override */
