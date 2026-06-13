@@ -283,6 +283,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     this._cpActivateActorFormControls(root);
     this._cpActivateCyberwareControls(root);
     this._cpActivateNetrunningControls(root);
+    this._cpActivateActorDragDrop(root);
 
     const html = globalThis.jQuery ? globalThis.jQuery(root) : $(root);
     this._activateListeners(root, html);
@@ -323,7 +324,8 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       ?? globalThis.FilePicker;
 
     if (typeof FilePickerImplementation !== "function") {
-      throw new Error("Cyberpunk2020 | No FilePicker implementation is available.");
+      ui.notifications.error(localize("FilePickerUnavailable"));
+      return null;
     }
 
     return new FilePickerImplementation(options);
@@ -357,6 +359,8 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
           left: (this.position?.left ?? 0) + 10
         });
 
+        if (!fp) return;
+
         fp.render(true);
         return;
       }
@@ -384,6 +388,8 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
           top: (this.position?.top ?? 0) + 40,
           left: (this.position?.left ?? 0) + 10
         });
+
+        if (!fp) return;
 
         fp.render(true);
       }
@@ -1069,7 +1075,8 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
     // Life tab (system.notes) autosave
     this._cpSetupNotesAutosave(root);
-    html.find('[data-drop-target]').on('dragover', (ev) => ev.preventDefault());
+
+    // Custom drop-target dragover is handled by _cpActivateActorDragDrop
 
     // If not editable, do nothing further
     if (!(this.isEditable ?? this.options?.editable ?? false)) return;
@@ -1110,23 +1117,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
     // Netrunning program edit/delete is handled by _cpActivateNetrunningControls
 
-    html.find('.netrun-program').each((_, programElem) => {
-      programElem.setAttribute("draggable", true);
-
-      programElem.addEventListener("dragstart", ev => {
-        const itemId = programElem.dataset.itemId;
-        const item = this.actor.items.get(itemId);
-        if ( !item ) return;
-
-        this._cpWriteOwnedItemDragData(ev, item);
-
-        programElem.classList.add("is-dragging");
-      });
-
-      programElem.addEventListener("dragend", ev => {
-        programElem.classList.remove("is-dragging");
-      });
-    });
+    // Netrunning program drag sources are handled by _cpActivateActorDragDrop
 
     // Legacy data-edit inputs are no longer used by the actor sheet
 
@@ -1190,39 +1181,105 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     // Chip toggle is handled by _cpActivateCyberwareControls
 
 
-    // Drag sources for owned Actor Items.
-    const makeDraggable = (root) => {
-      const el = getHtmlElement(root);
-      if (!el?.querySelectorAll) return;
-
-      const selector = [
-        '.field[data-item-id]',
-        '.item[data-item-id]',
-        '.skill[data-item-id]',
-        '.gear[data-item-id]',
-        '.fire-weapon[data-item-id]',
-        '.netrun-program[data-item-id]',
-        '.chipware[data-item-id]'
-      ].join(',');
-
-      el.querySelectorAll(selector).forEach((node) => {
-        if (node.dataset.draggableInit === '1') return;
-        if (node.closest?.('.item-delete, .item-unequip, .item-controls')) return;
-
-        node.dataset.draggableInit = '1';
-        node.setAttribute('draggable', 'true');
-        node.addEventListener('dragstart', (ev) => {
-          const id = node.dataset.itemId;
-          const it = this.actor.items.get(id);
-          if (!it) return;
-          this._cpWriteOwnedItemDragData(ev, it);
-        });
-      });
-    };
+    // Generic actor item drag sources are handled by _cpActivateActorDragDrop
 
     // Active cyberware/chipware unequip is handled by _cpActivateCyberwareControls
+  }
 
-    makeDraggable(getHtmlElement(html) ?? html);
+  _cpActivateActorDragDrop(root) {
+    if (!root?.addEventListener) return;
+
+    this._cpPrepareActorDragSources(root);
+
+    if (root.dataset.cpActorDragDropBound === "1") return;
+    root.dataset.cpActorDragDropBound = "1";
+
+    root.addEventListener("dragstart", (event) => {
+      const target = event.target;
+      if (!target?.closest) return;
+
+      const dragSource = target.closest("[data-item-id][draggable='true']");
+      if (!dragSource) return;
+
+      if (target.closest(".item-delete, .item-unequip, .item-controls, button, input, select, textarea")) {
+        event.preventDefault();
+        return;
+      }
+
+      const item = this._cpGetItemFromTarget(dragSource);
+      if (!item) return;
+
+      dragSource.classList.add("is-dragging");
+      this._cpWriteOwnedItemDragData(event, item);
+    });
+
+    root.addEventListener("dragend", (event) => {
+      const target = event.target;
+      if (!target?.closest) return;
+
+      const dragSource = target.closest(".is-dragging");
+      if (dragSource) dragSource.classList.remove("is-dragging");
+    });
+
+    root.addEventListener("dragover", (event) => {
+      const target = event.target;
+      if (!target?.closest?.("[data-drop-target]")) return;
+
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+    });
+
+    root.addEventListener("drop", async (event) => {
+      const target = event.target;
+      const dropTarget = target?.closest?.("[data-drop-target]");
+      if (!dropTarget) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const data = this._cpGetDragDropData(event);
+      if (!data) return;
+
+      await this._onDropItem(event, data);
+    });
+  }
+
+  _cpPrepareActorDragSources(root) {
+    const selector = [
+      ".field[data-item-id]",
+      ".item[data-item-id]",
+      ".skill[data-item-id]",
+      ".gear[data-item-id]",
+      ".fire-weapon[data-item-id]",
+      ".netrun-program[data-item-id]",
+      ".chipware[data-item-id]",
+      ".netrun-active-icon[data-item-id]"
+    ].join(",");
+
+    root.querySelectorAll(selector).forEach((node) => {
+      if (node.closest?.(".item-delete, .item-unequip, .item-controls")) return;
+
+      node.setAttribute("draggable", "true");
+      node.dataset.cpDragSource = "1";
+    });
+  }
+
+  _cpGetDragDropData(event) {
+    const transfer = event.dataTransfer;
+    if (!transfer) return null;
+
+    const raw =
+      transfer.getData("text/plain")
+      || transfer.getData("application/json");
+
+    if (!raw) return null;
+
+    try {
+      return JSON.parse(raw);
+    } catch (err) {
+      console.warn("Cyberpunk2020 | Failed to parse drag/drop data.", err, raw);
+      return null;
+    }
   }
 
   /**
@@ -1462,7 +1519,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
           "system.ramUsed": usedMu + newMu
         });
 
-        this.render(true);
+        await this.render({ force: true });
       }
 
       return;
@@ -1490,7 +1547,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       await this._cp_syncActiveFlagsToSkills();
 
       if (item.sheet?.rendered) item.sheet.render(true);
-      this.render(true);
+      await this.render({ force: true });
       return;
     }
 
@@ -1515,7 +1572,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       await this._cp_syncActiveFlagsToSkills();
 
       if (item.sheet?.rendered) item.sheet.render(true);
-      this.render(true);
+      await this.render({ force: true });
       return;
     }
 
@@ -1542,7 +1599,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
         await this._cp_syncActiveFlagsToSkills();
 
         if (item.sheet?.rendered) item.sheet.render(true);
-        this.render(true);
+        await this.render({ force: true });
         return;
       }
 
@@ -1563,7 +1620,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       }
 
       await item.update(updates);
-      return this.render(true);
+      return this.render({ force: true });
     }
 
     if (sameActorDrop) return false;

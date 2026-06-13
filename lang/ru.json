@@ -719,5 +719,6 @@
     "SETTINGS.ShowInlineRollFormulaHint": "Если включено, подсказка урона показывает формулу, числовые модификаторы, итог и кубы. Если выключено, отображаются только кубы.",
     "CYBERPUNK.NotEnoughAmmoToReload": "Недостаточно патронов для перезарядки.",
     "CYBERPUNK.AmmoItemNotFoundReloadedLegacy": "Патроны не найдены. Перезарядка выполнена без учёта БК.",
-    "CYBERPUNK.FNFF2SkillDisabledWarn": "Этот стиль боевых искусств требует правил FNFF2. Включите «Friday Night Fistfight 2» в настройках системы, чтобы использовать его."
+    "CYBERPUNK.FNFF2SkillDisabledWarn": "Этот стиль боевых искусств требует правил FNFF2. Включите «Friday Night Fistfight 2» в настройках системы, чтобы использовать его.",
+    "CYBERPUNK.FilePickerUnavailable": "Средство выбора файлов недоступно."
 }
