@@ -725,5 +725,16 @@
     "CYBERPUNK.NetIconChange": "Click to change icon",
     "CYBERPUNK.NetRunnerIconAlt": "Runner icon",
     "CYBERPUNK.CyberwareAnatomyAlt": "Male anatomy",
-    "CYBERPUNK.LifeNotesEdit": "Edit life notes"
+    "CYBERPUNK.LifeNotesEdit": "Edit life notes",
+    "TYPES.Actor.character": "Character",
+    "TYPES.Actor.npc": "NPC",
+    "TYPES.Item.skill": "Skill",
+    "TYPES.Item.program": "Program",
+    "TYPES.Item.weapon": "Weapon",
+    "TYPES.Item.ammo": "Ammo",
+    "TYPES.Item.armor": "Armor",
+    "TYPES.Item.cyberware": "Cyberware",
+    "TYPES.Item.vehicle": "Vehicle",
+    "TYPES.Item.misc": "Misc",
+    "CYBERPUNK.ItemNotesEdit": "Edit item notes"
 }

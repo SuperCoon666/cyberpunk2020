@@ -1,10 +1,4 @@
-
-{{!-- Use as 
-    {{#> systems/cyberpunk2020/templates/item/item-sheet.hbs}}
-        settings tab contents
-    {{/systems/cyberpunk2020/templates/item/item-sheet.hbs}}
- --}}
-<form class="cyberpunk {{cssClass}}" autocomplete="off">
+<div class="cyberpunk-item-sheet-content flexcol">
     <header class="flexrow nowrap">
         <div class="flexcol item-info">
             <span class="infoline">
@@ -28,9 +22,35 @@
     <section class="sheet-body">
         
         {{!-- Notes Tab --}}
-        <div class="tab" data-group="primary" data-tab="notes">
+        <div class="tab notes flexcol" data-group="primary" data-tab="notes">
             <div class="cp-notes-editor" data-editor-target="system.notes">
-                {{editor system.notes target="system.notes" button=true editable=editable engine="prosemirror" collaborate=false}}
+                <div class="cp-notes-canvas {{#if notesEditing}}is-editing{{else}}is-viewing{{/if}}">
+                    {{#if editable}}
+                        {{#unless notesEditing}}
+                            <button
+                                type="button"
+                                class="cp-notes-edit"
+                                data-action="notes-edit"
+                                title="{{localize 'CYBERPUNK.ItemNotesEdit'}}"
+                                aria-label="{{localize 'CYBERPUNK.ItemNotesEdit'}}"
+                            >
+                                <i class="fas fa-edit"></i>
+                            </button>
+                        {{/unless}}
+                    {{/if}}
+
+                    {{#if notesEditing}}
+                        <prose-mirror
+                            class="cp-notes-prosemirror"
+                            name="system.notes"
+                            value="{{system.notes}}"
+                        >{{{system.notes}}}</prose-mirror>
+                    {{else}}
+                        <div class="cp-notes-view">
+                            {{{system.notes}}}
+                        </div>
+                    {{/if}}
+                </div>
             </div>
         </div>
 
@@ -47,4 +67,4 @@
             {{/if}}
         </div>
     </section>
-</form>
+</div>

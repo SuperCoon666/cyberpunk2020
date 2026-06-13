@@ -1,6 +1,27 @@
-<div class="field">
-    <label for="{{edit}}">{{CPLocal label}}</label>
+<div class="field boolean-field {{#if (equals edit "system.isChipped")}}chip-boolean-field{{else}}checkbox-boolean-field{{/if}}" data-edit="{{edit}}">
+    <label>{{CPLocal label}}</label>
     <span class="flex-pad"></span>
-    <input {{#if readOnly}}readonly{{/if}} class="nogrow" name="{{edit}}" 
-        type="checkbox" {{#if (deepLookup . edit)}}checked{{/if}}/>
+
+    {{#if (equals edit "system.isChipped")}}
+        <label class="chip-toggle item-chip-toggle" data-edit="{{edit}}">
+            <div class="chip-icon {{#unless (deepLookup . edit)}}inactive{{/unless}}"></div>
+            <input
+                class="chip-toggle-checkbox"
+                {{#if readOnly}}readonly{{/if}}
+                name="{{edit}}"
+                type="checkbox"
+                {{#if (deepLookup . edit)}}checked{{/if}}
+            />
+        </label>
+    {{else}}
+        <span class="skill-mod-toggle item-boolean-toggle">
+            <input
+                class="item-boolean-checkbox"
+                {{#if readOnly}}readonly{{/if}}
+                name="{{edit}}"
+                type="checkbox"
+                {{#if (deepLookup . edit)}}checked{{/if}}
+            />
+        </span>
+    {{/if}}
 </div>

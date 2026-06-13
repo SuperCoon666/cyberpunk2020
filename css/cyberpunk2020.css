@@ -1369,26 +1369,162 @@ div.statderive .value.rightborder {
   max-width: 100%;
 }
 
-/* Item sheets: slightly wider number inputs */
-.cyberpunk.sheet.item .field > input[type="number"]:not(.smallnumber) {
+/* Item sheet fields: match the compact actor skill-row geometry under AppV2. */
+.application.cyberpunk.sheet.item .field-list,
+.cyberpunk.sheet.item .field-list {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 3px;
+  align-items: start;
+}
+
+.application.cyberpunk.sheet.item .field-list .field,
+.cyberpunk.sheet.item .field-list .field {
+  min-width: 0;
+  min-height: 28px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.application.cyberpunk.sheet.item .field-list .field > label,
+.cyberpunk.sheet.item .field-list .field > label {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.application.cyberpunk.sheet.item .field-list .field > .flex-pad,
+.cyberpunk.sheet.item .field-list .field > .flex-pad {
+  flex: 1 1 auto;
+  min-width: 4px;
+}
+
+.application.cyberpunk.sheet.item .field-list .field > input,
+.application.cyberpunk.sheet.item .field-list .field > select,
+.cyberpunk.sheet.item .field-list .field > input,
+.cyberpunk.sheet.item .field-list .field > select {
+  align-self: center;
+  box-sizing: border-box;
+  margin: 0;
+  height: 24px;
+  min-height: 24px;
+  max-height: 24px;
+  line-height: 24px;
+}
+
+.application.cyberpunk.sheet.item .field-list .field > input[type="number"]:not(.smallnumber),
+.cyberpunk.sheet.item .field-list .field > input[type="number"]:not(.smallnumber) {
+  flex: 0 0 3.6em;
   width: 3.6em;
   min-width: 3.6em;
+  max-width: 3.6em;
   padding: 0 4px;
   text-align: center;
 }
 
-.cyberpunk.sheet.item .field-list {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+.application.cyberpunk.sheet.item .field-list .field > input[type="text"],
+.cyberpunk.sheet.item .field-list .field > input[type="text"] {
+  flex: 0 1 10em;
+  width: 10em;
+  min-width: 4em;
+  max-width: 50%;
+  padding: 0 6px;
 }
 
-/* Important: allow grid children to shrink instead of pushing the column */
-.cyberpunk.sheet.item .field-list .field {
-  min-width: 0;
-}
-.cyberpunk.sheet.item .field-list .field label {
-  min-width: 0;
+.application.cyberpunk.sheet.item .field-list .field > select,
+.cyberpunk.sheet.item .field-list .field > select {
+  flex: 0 1 10em;
+  width: 10em;
+  min-width: 5em;
+  max-width: 55%;
+  padding: 0 6px;
 }
 
+/* Item sheet boolean fields: reuse the same visual patterns as actor skill rows. */
+
+/* Common right-side control cell. */
+.application.cyberpunk.sheet.item .field-list .field.boolean-field > .item-chip-toggle,
+.application.cyberpunk.sheet.item .field-list .field.boolean-field > .item-boolean-toggle,
+.cyberpunk.sheet.item .field-list .field.boolean-field > .item-chip-toggle,
+.cyberpunk.sheet.item .field-list .field.boolean-field > .item-boolean-toggle {
+  flex: 0 0 32px;
+  width: 32px;
+  min-width: 32px;
+  max-width: 32px;
+
+  align-self: stretch;
+  display: block;
+  position: relative;
+
+  margin: 0;
+  padding: 0 !important;
+  line-height: 0;
+
+  background-color: black;
+  color: whitesmoke;
+  box-sizing: border-box;
+}
+
+/* Chipped: exact same chip-icon approach as actor skill rows. */
+.application.cyberpunk.sheet.item .field-list .field.boolean-field.chip-boolean-field .item-chip-toggle,
+.cyberpunk.sheet.item .field-list .field.boolean-field.chip-boolean-field .item-chip-toggle {
+  cursor: pointer;
+}
+
+.application.cyberpunk.sheet.item .field-list .field.boolean-field.chip-boolean-field .chip-toggle-checkbox,
+.cyberpunk.sheet.item .field-list .field.boolean-field.chip-boolean-field .chip-toggle-checkbox {
+  display: none;
+}
+
+.application.cyberpunk.sheet.item .field-list .field.boolean-field.chip-boolean-field .chip-icon,
+.cyberpunk.sheet.item .field-list .field.boolean-field.chip-boolean-field .chip-icon {
+  border: 0;
+  border-radius: 0;
+  background-size: cover;
+  height: 1.5em;
+  width: 1.5em;
+  background-image: url("../img/chip.png");
+}
+
+/* Generic booleans: same native checkbox pattern as .skill-mod-toggle in actor skill rows. */
+.application.cyberpunk.sheet.item .field-list .field.boolean-field.checkbox-boolean-field .item-boolean-toggle,
+.cyberpunk.sheet.item .field-list .field.boolean-field.checkbox-boolean-field .item-boolean-toggle {
+  cursor: pointer;
+}
+
+.application.cyberpunk.sheet.item .field-list .field.boolean-field.checkbox-boolean-field .item-boolean-checkbox,
+.cyberpunk.sheet.item .field-list .field.boolean-field.checkbox-boolean-field .item-boolean-checkbox {
+  display: block !important;
+  -webkit-appearance: checkbox;
+  appearance: auto;
+
+  position: relative;
+  top: 50%;
+  transform: translateY(-50%);
+
+  width: 13px;
+  min-width: 13px;
+  max-width: 13px;
+  height: 13px;
+  min-height: 13px;
+  max-height: 13px;
+
+  margin: 0 auto !important;
+  padding: 0 !important;
+
+  box-sizing: border-box;
+  line-height: 13px;
+
+  background-color: initial;
+  color: initial;
+  font: initial;
+  font-variant: normal;
+
+  cursor: pointer;
+}
 /* Trigger button */
 .cyberpunk .field .ammo-ms-trigger {
   display: flex;
@@ -2324,6 +2460,305 @@ div.statderive .value.rightborder {
 .cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .cp-notes-prosemirror menu *,
 .cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .cp-notes-prosemirror .editor-menu *,
 .cyberpunk.sheet.actor .cyberpunk-actor-sheet-content .cp-notes-prosemirror [role="menubar"] * {
+  border-radius: 0 !important;
+}
+
+/* -----------------------------------------------------------------
+ *  FVTT v14 AppV2 item sheet compatibility layer
+ * ----------------------------------------------------------------- */
+
+/*
+ * Old AppV1 item sheets relied on:
+ * .cyberpunk section.window-content ...
+ *
+ * In AppV2 the item sheet still has the .cyberpunk application class,
+ * but the old section.window-content selector no longer maps cleanly.
+ *
+ * Keep this bridge narrow. Do not restyle .field labels or generic text here,
+ * because the existing .cyberpunk .field rules already define the black/white
+ * field design used by item sheets.
+ */
+
+.application.cyberpunk.sheet.item,
+.cyberpunk.sheet.item {
+  color: black;
+  font-family: "Noto Sans", sans-serif;
+  font-weight: bold;
+}
+
+.application.cyberpunk.sheet.item .window-content,
+.cyberpunk.sheet.item .window-content {
+  font-family: "Noto Sans", sans-serif;
+  font-weight: bold;
+  overflow-y: scroll;
+  overflow-x: hidden;
+  padding: 8px;
+  color: black;
+  background-color: #f1eee8;
+  background-image: url("../../../ui/parchment.jpg");
+  background-repeat: repeat;
+  container-type: inline-size;
+}
+
+.application.cyberpunk.sheet.item .cyberpunk-item-sheet-content,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content {
+  min-height: 100%;
+  background: transparent;
+  color: black;
+  font-family: "Noto Sans", sans-serif;
+  font-weight: bold;
+}
+
+.application.cyberpunk.sheet.item nav.tabs,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content nav.tabs {
+  border-bottom: 2px solid black;
+  box-sizing: content-box;
+  flex: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.application.cyberpunk.sheet.item nav.tabs > .item,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content nav.tabs > .item {
+  padding-top: 4px;
+  padding-bottom: 4px;
+  flex-grow: 1;
+  color: black;
+  background: transparent;
+  text-shadow: unset;
+}
+
+.application.cyberpunk.sheet.item nav.tabs > .item.active,
+.application.cyberpunk.sheet.item nav.tabs > .item[aria-selected="true"],
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content nav.tabs > .item.active,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content nav.tabs > .item[aria-selected="true"] {
+  color: whitesmoke;
+  background-color: black;
+  text-shadow: unset;
+}
+
+.application.cyberpunk.sheet.item .editor-content,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content .editor-content {
+  font-weight: normal;
+  border: 2px solid black;
+  padding-left: 2px;
+  padding-right: 2px;
+  color: black;
+  background: transparent;
+}
+
+.application.cyberpunk.sheet.item h1.title,
+.application.cyberpunk.sheet.item h1.title > input,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content h1.title,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content h1.title > input {
+  color: black;
+  background: transparent;
+  text-shadow: unset;
+}
+
+/* -----------------------------------------------------------------
+ *  FVTT v14 AppV2 item sheet notes editor
+ * ----------------------------------------------------------------- */
+
+.application.cyberpunk.sheet.item form,
+.cyberpunk.sheet.item form {
+  min-height: 0;
+}
+
+.application.cyberpunk.sheet.item .cyberpunk-item-sheet-content,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.application.cyberpunk.sheet.item .sheet-body,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content .sheet-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.application.cyberpunk.sheet.item .sheet-body > .tab.notes.active,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content .sheet-body > .tab.notes.active {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
+
+.application.cyberpunk.sheet.item .cp-notes-editor,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content .cp-notes-editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 0 0 8px 0;
+}
+
+.application.cyberpunk.sheet.item .cp-notes-canvas,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content .cp-notes-canvas {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  box-sizing: border-box;
+  border: 2px solid black;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.application.cyberpunk.sheet.item .cp-notes-edit,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content .cp-notes-edit {
+  position: absolute;
+  top: 4px;
+  right: 12px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: black;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.6;
+  box-shadow: none;
+}
+
+.application.cyberpunk.sheet.item .cp-notes-edit i,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content .cp-notes-edit i {
+  margin: 0;
+  padding: 0;
+  color: black;
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.75;
+}
+
+.application.cyberpunk.sheet.item .cp-notes-edit:hover,
+.application.cyberpunk.sheet.item .cp-notes-edit:focus,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content .cp-notes-edit:hover,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content .cp-notes-edit:focus {
+  opacity: 1;
+  background: transparent;
+  box-shadow: none;
+}
+
+.application.cyberpunk.sheet.item .cp-notes-edit:hover i,
+.application.cyberpunk.sheet.item .cp-notes-edit:focus i,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content .cp-notes-edit:hover i,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content .cp-notes-edit:focus i {
+  opacity: 1;
+}
+
+.application.cyberpunk.sheet.item .cp-notes-view,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content .cp-notes-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 8px 36px 8px 8px;
+  color: black !important;
+  background: transparent;
+  font-family: "Noto Sans", sans-serif;
+  font-size: 14px;
+  font-weight: normal;
+  font-variant: normal;
+  line-height: 1.35;
+  opacity: 1 !important;
+}
+
+.application.cyberpunk.sheet.item .cp-notes-view *,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content .cp-notes-view * {
+  color: black !important;
+  opacity: 1 !important;
+  font-weight: inherit;
+  font-variant: normal;
+  text-shadow: unset;
+}
+
+.application.cyberpunk.sheet.item .cp-notes-prosemirror,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content .cp-notes-prosemirror {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  box-sizing: border-box;
+  color: black;
+  background: transparent;
+}
+
+.application.cyberpunk.sheet.item .cp-notes-prosemirror .editor-container,
+.application.cyberpunk.sheet.item .cp-notes-prosemirror .editor-content,
+.application.cyberpunk.sheet.item .cp-notes-prosemirror .ProseMirror,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content .cp-notes-prosemirror .editor-container,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content .cp-notes-prosemirror .editor-content,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content .cp-notes-prosemirror .ProseMirror {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  box-sizing: border-box;
+  color: black;
+  background: transparent;
+  font-family: "Noto Sans", sans-serif;
+  font-size: 14px;
+  font-weight: normal;
+  font-variant: normal;
+  line-height: 1.35;
+  text-shadow: unset;
+}
+
+.application.cyberpunk.sheet.item .cp-notes-prosemirror .editor-content,
+.application.cyberpunk.sheet.item .cp-notes-prosemirror .editor-container,
+.application.cyberpunk.sheet.item .cp-notes-prosemirror .ProseMirror,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content .cp-notes-prosemirror .editor-content,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content .cp-notes-prosemirror .editor-container,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content .cp-notes-prosemirror .ProseMirror {
+  border: 0 !important;
+  outline: 0;
+  box-shadow: none;
+}
+
+.application.cyberpunk.sheet.item .cp-notes-prosemirror .ProseMirror,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content .cp-notes-prosemirror .ProseMirror {
+  overflow: auto;
+  padding: 8px;
+}
+
+.application.cyberpunk.sheet.item .cp-notes-prosemirror menu,
+.application.cyberpunk.sheet.item .cp-notes-prosemirror .editor-menu,
+.application.cyberpunk.sheet.item .cp-notes-prosemirror [role="menubar"],
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content .cp-notes-prosemirror menu,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content .cp-notes-prosemirror .editor-menu,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content .cp-notes-prosemirror [role="menubar"] {
+  position: relative;
+  z-index: 2;
+  margin: -1px -1px 0 -1px;
+  border-radius: 0 !important;
+  box-sizing: border-box;
+}
+
+.application.cyberpunk.sheet.item .cp-notes-prosemirror menu *,
+.application.cyberpunk.sheet.item .cp-notes-prosemirror .editor-menu *,
+.application.cyberpunk.sheet.item .cp-notes-prosemirror [role="menubar"] *,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content .cp-notes-prosemirror menu *,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content .cp-notes-prosemirror .editor-menu *,
+.cyberpunk.sheet.item .cyberpunk-item-sheet-content .cp-notes-prosemirror [role="menubar"] * {
   border-radius: 0 !important;
 }
 

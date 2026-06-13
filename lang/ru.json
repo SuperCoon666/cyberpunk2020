@@ -724,5 +724,16 @@
     "CYBERPUNK.NetIconChange": "Нажмите, чтобы изменить иконку",
     "CYBERPUNK.NetRunnerIconAlt": "Иконка нетраннера",
     "CYBERPUNK.CyberwareAnatomyAlt": "Мужская анатомическая схема",
-    "CYBERPUNK.LifeNotesEdit": "Редактировать заметки жизни"
+    "CYBERPUNK.LifeNotesEdit": "Редактировать заметки жизни",
+    "TYPES.Actor.character": "Персонаж",
+    "TYPES.Actor.npc": "NPC",
+    "TYPES.Item.skill": "Навык",
+    "TYPES.Item.program": "Программа",
+    "TYPES.Item.weapon": "Оружие",
+    "TYPES.Item.ammo": "Боеприпасы",
+    "TYPES.Item.armor": "Броня",
+    "TYPES.Item.cyberware": "Киберснаряжение",
+    "TYPES.Item.vehicle": "Транспорт",
+    "TYPES.Item.misc": "Разное",
+    "CYBERPUNK.ItemNotesEdit": "Редактировать заметки предмета"
 }

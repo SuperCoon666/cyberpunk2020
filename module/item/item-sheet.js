@@ -3,32 +3,53 @@ import { formulaHasDice } from "../dice.js";
 import { deleteFieldUpdate, localize, cwHasType, getSkillIndex } from "../utils.js";
 import { createCyberpunkChatMessage, getHtmlElement, getPublicMessageMode, getRichEditorHTML, saveRichEditorHTML, rollToCyberpunkChatMessage } from "../compat.js";
 
-/** @extends {ItemSheet} */
-export class CyberpunkItemSheet extends ItemSheet {
+const { HandlebarsApplicationMixin } = foundry.applications.api;
+const { ItemSheetV2 } = foundry.applications.sheets;
+const { Tabs } = foundry.applications.ux;
+
+/** @extends {foundry.applications.sheets.ItemSheetV2} */
+export class CyberpunkItemSheet extends HandlebarsApplicationMixin(ItemSheetV2) {
 
   /** @override */
-  static get defaultOptions() {
-    return foundry.utils.mergeObject(super.defaultOptions, {
-      classes: ["cyberpunk", "sheet", "item"],
+  static DEFAULT_OPTIONS = {
+    classes: ["cyberpunk", "sheet", "item", "flexcol"],
+    tag: "form",
+    position: {
       width: 520,
-      height: 480,
-      tabs: [{ navSelector: ".sheet-tabs", contentSelector: ".sheet-body", initial: "description" }]
-    });
-  }
+      height: 480
+    },
+    window: {
+      resizable: true
+    },
+    form: {
+      submitOnChange: true,
+      closeOnSubmit: false
+    }
+  };
 
   /** @override */
-  get template() {
-    return "systems/cyberpunk2020/templates/item/item-sheet.hbs";
-  }
+  static PARTS = {
+    form: {
+      template: "systems/cyberpunk2020/templates/item/item-sheet.hbs"
+    }
+  };
 
-  /* -------------------------------------------- */
+  /**
+   * Kept empty while the item sheet still uses the legacy monolithic template.
+   * Tabs are bound manually in _cpActivateTabs().
+   */
+  static TABS = {};
 
   /** @override */
-  async getData() {
-    const data = await super.getData();
+  async _prepareContext(options) {
+    const data = await super._prepareContext(options);
+
+    data.item = this.item;
     data.system = this.item.system;
     data.owner = this.item.isOwner;
     data.editable = this.isEditable ?? this.options?.editable ?? false;
+    data.cssClass = ["cyberpunk", "sheet", "item"].join(" ");
+    data.notesEditing = this._cpNotesEditing ?? false;
     data.isGM = game.user.isGM;
     data.canEditCyberwareHumanity = game.user.isGM
       || game.settings.get("cyberpunk2020", "playersCanEditCyberwareHumanity");
@@ -37,7 +58,7 @@ export class CyberpunkItemSheet extends ItemSheet {
       case "weapon":
         this._prepareWeapon(data);
         break;
-    
+
       case "armor":
         this._prepareArmor(data);
         break;
@@ -46,17 +67,18 @@ export class CyberpunkItemSheet extends ItemSheet {
         this._prepareSkill(data);
         break;
 
-      case "cyberware": 
-        await this._prepareCyberware(data); 
+      case "cyberware":
+        await this._prepareCyberware(data);
         break;
-      
+
       case "ammo":
-          this._prepareAmmo(data);
-          break;
+        this._prepareAmmo(data);
+        break;
 
       default:
         break;
     }
+
     return data;
   }
 
@@ -658,12 +680,72 @@ async _prepareCyberware(sheet) {
   }
 
   /** @override */
-  setPosition(options = {}) {
-    const position = super.setPosition(options);
-    const sheetBody = this.element.find(".sheet-body");
-    const bodyHeight = position.height - 192;
-    sheetBody.css("height", bodyHeight);
-    return position;
+  async _onRender(context, options) {
+    await super._onRender(context, options);
+
+    const root = getHtmlElement(this.element);
+    if (!root) return;
+
+    this._cpActivateTabs(root);
+    this._cpActivateNotesEditor(root);
+  }
+
+  _cpActivateTabs(root) {
+    const nav = root.querySelector(".sheet-tabs");
+    const body = root.querySelector(".sheet-body");
+    if (!nav || !body) return;
+
+    const activeTab =
+      this._cpActiveTab
+      ?? nav.querySelector("[data-tab].active")?.dataset.tab
+      ?? body.querySelector(".tab.active")?.dataset.tab
+      ?? "settings";
+
+    nav.addEventListener("click", async (event) => {
+      const target = event.target?.closest?.("[data-tab]");
+      if (!target) return;
+
+      const nextTab = target.dataset.tab || "settings";
+
+      if (this._cpNotesEditing && nextTab !== "notes") {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation?.();
+
+        await this._cpExitNotesEditing(root, { render: false });
+        this._cpActiveTab = nextTab;
+
+        await this.render({ force: true });
+        return;
+      }
+
+      this._cpActiveTab = nextTab;
+    }, true);
+
+    const tabs = new Tabs({
+      navSelector: ".sheet-tabs",
+      contentSelector: ".sheet-body",
+      initial: activeTab
+    });
+
+    tabs.bind(root);
+    tabs.activate(activeTab, false);
+
+    this._cpTabs = tabs;
+  }
+
+  /** @override */
+  _onPosition(position) {
+    super._onPosition(position);
+
+    const root = getHtmlElement(this.element);
+    const sheetBody = root?.querySelector?.(".sheet-body");
+    if (!sheetBody) return;
+
+    const height = Number(position?.height);
+    if (!Number.isFinite(height)) return;
+
+    sheetBody.style.height = `${Math.max(0, height - 192)}px`;
   }
 
   /** @override */
@@ -1350,8 +1432,55 @@ async _prepareCyberware(sheet) {
     });
   }
 
+  _cpActivateNotesEditor(root) {
+    this._cpSetupNotesActions(root);
+    this._cpSetupNotesAutosave(root);
+  }
+
+  async _cpExitNotesEditing(root, { render = false } = {}) {
+    if (!this._cpNotesEditing) return;
+
+    await this._cpFlushNotesAutosave(root, { force: true, serialize: false });
+    this._cpNotesEditing = false;
+
+    if (render && this.rendered) {
+      await this.render({ force: true });
+    }
+  }
+
+  _cpSetupNotesActions(root) {
+    if (!root?.addEventListener) return;
+
+    if (this._cpNotesActionsRoot && this._cpNotesActionsHandler) {
+      try {
+        this._cpNotesActionsRoot.removeEventListener("click", this._cpNotesActionsHandler, true);
+      } catch (_) {}
+    }
+
+    const handler = async (event) => {
+      const target = event.target;
+      if (!target?.closest) return;
+
+      const editButton = target.closest('[data-action="notes-edit"]');
+      if (!editButton) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+
+      this._cpNotesEditing = true;
+      await this.render({ force: true });
+    };
+
+    root.addEventListener("click", handler, true);
+
+    this._cpNotesActionsRoot = root;
+    this._cpNotesActionsHandler = handler;
+  }
+
   _cpSetupNotesAutosave(root) {
-    if (!root) return;
+    if (!root?.addEventListener) return;
+
     const editable = this.isEditable ?? this.options?.editable ?? false;
     if (!editable) return;
 
@@ -1359,44 +1488,98 @@ async _prepareCyberware(sheet) {
       this._cpNotesAutosaveState = {
         saving: false,
         pending: false,
+        pendingForce: false,
+        pendingSerialize: false,
+        timer: null,
         lastSaved: String(this.item.system?.notes ?? "")
       };
     }
 
-    if (this._cpNotesAutosaveHandler) {
-      try { root.removeEventListener("save", this._cpNotesAutosaveHandler, true); } catch (_) {}
+    if (this._cpNotesAutosaveRoot && this._cpNotesAutosaveHandler) {
+      for (const eventName of ["save", "input", "change", "close"]) {
+        try {
+          this._cpNotesAutosaveRoot.removeEventListener(eventName, this._cpNotesAutosaveHandler, true);
+        } catch (_) {}
+      }
     }
 
-    const handler = (ev) => {
-      const target = ev?.target;
-      if (!target?.closest) return;
-      if (!target.closest('.tab[data-tab="notes"]')) return;
-      if (!target.closest(".cp-notes-editor")) return;
+    const isNotesEvent = (event) => {
+      const target = event?.target;
+      if (!target?.closest) return false;
 
-      setTimeout(() => this._cpFlushNotesAutosave(root, { force: true, serialize: false }), 0);
+      const editor = target.closest(".cp-notes-editor");
+      if (!editor) return false;
+
+      const notesTab = target.closest('.tab[data-tab="notes"]');
+      return !!notesTab;
     };
 
-    root.addEventListener("save", handler, true);
+    const scheduleFlush = ({ force = false, serialize = false, delay = 250 } = {}) => {
+      const state = this._cpNotesAutosaveState;
+      if (!state) return;
+
+      if (state.timer) {
+        clearTimeout(state.timer);
+        state.timer = null;
+      }
+
+      state.timer = setTimeout(() => {
+        state.timer = null;
+        this._cpFlushNotesAutosave(root, { force, serialize });
+      }, delay);
+    };
+
+    const handler = (event) => {
+      if (!isNotesEvent(event)) return;
+
+      if (event.type === "save" || event.type === "close") {
+        window.setTimeout(async () => {
+          await this._cpFlushNotesAutosave(root, { force: true, serialize: false });
+
+          if (this._cpNotesEditing) {
+            this._cpNotesEditing = false;
+            await this.render({ force: true });
+          }
+        }, 0);
+
+        return;
+      }
+
+      scheduleFlush({ force: false, serialize: false, delay: 350 });
+    };
+
+    for (const eventName of ["save", "input", "change", "close"]) {
+      root.addEventListener(eventName, handler, true);
+    }
+
+    this._cpNotesAutosaveRoot = root;
     this._cpNotesAutosaveHandler = handler;
   }
 
   _cpReadNotesHTML(root, { serialize = false } = {}) {
-    const selectors = [
-      '.tab[data-tab="notes"] .editor-content',
-      '.tab[data-tab="notes"] [contenteditable="true"]'
-    ];
+    if (!root) return null;
 
-    return serialize
-      ? saveRichEditorHTML(this, root, "system.notes", selectors)
-      : getRichEditorHTML(this, root, "system.notes", selectors);
+    const reader = serialize ? saveRichEditorHTML : getRichEditorHTML;
+    const html = reader(this, root, "system.notes", [".cp-notes-view"]);
+
+    if (html != null) return html;
+
+    return String(this.item.system?.notes ?? "");
   }
 
   async _cpFlushNotesAutosave(root, { force = false, serialize = false } = {}) {
     const st = this._cpNotesAutosaveState;
     if (!st) return;
 
+    if (st.timer) {
+      clearTimeout(st.timer);
+      st.timer = null;
+    }
+
     if (st.saving) {
       st.pending = true;
+      st.pendingForce = st.pendingForce || force;
+      st.pendingSerialize = st.pendingSerialize || serialize;
       return;
     }
 
@@ -1412,26 +1595,63 @@ async _prepareCyberware(sheet) {
       console.warn("CP2020: item notes save failed", err);
     } finally {
       st.saving = false;
+
       if (st.pending) {
+        const pendingForce = st.pendingForce;
+        const pendingSerialize = st.pendingSerialize;
+
         st.pending = false;
-        await this._cpFlushNotesAutosave(root, { force: true, serialize: false });
+        st.pendingForce = false;
+        st.pendingSerialize = false;
+
+        await this._cpFlushNotesAutosave(root, {
+          force: pendingForce,
+          serialize: pendingSerialize
+        });
       }
     }
   }
 
   /** @override */
-  async close(options = {}) {
+  async _preClose(options) {
     try {
       const root = getHtmlElement(this.element);
-      await this._cpFlushNotesAutosave(root, { force: true, serialize: true });
+
+      if (this._cpNotesAutosaveState?.timer) {
+        clearTimeout(this._cpNotesAutosaveState.timer);
+        this._cpNotesAutosaveState.timer = null;
+      }
+
+      await this._cpFlushNotesAutosave(root, { force: true, serialize: false });
+      this._cpNotesEditing = false;
     } catch (_) {}
 
-    return super.close(options);
+    try {
+      if (this._cpNotesAutosaveRoot && this._cpNotesAutosaveHandler) {
+        for (const eventName of ["save", "input", "change", "close"]) {
+          this._cpNotesAutosaveRoot.removeEventListener(eventName, this._cpNotesAutosaveHandler, true);
+        }
+      }
+
+      this._cpNotesAutosaveRoot = null;
+      this._cpNotesAutosaveHandler = null;
+    } catch (_) {}
+
+    try {
+      if (this._cpNotesActionsRoot && this._cpNotesActionsHandler) {
+        this._cpNotesActionsRoot.removeEventListener("click", this._cpNotesActionsHandler, true);
+      }
+
+      this._cpNotesActionsRoot = null;
+      this._cpNotesActionsHandler = null;
+    } catch (_) {}
+
+    return super._preClose(options);
   }
 
   /** @override */
-  async _updateObject(event, formData) {
-    const data = foundry.utils.expandObject(formData);
+  _processFormData(event, form, formData) {
+    const data = super._processFormData(event, form, formData);
 
     if (this.item.type === "cyberware") {
       const pickLastString = (v) => {
@@ -1499,7 +1719,7 @@ async _prepareCyberware(sheet) {
       }
     }
 
-    await this.item.update(data);
+    return data;
   }
 
   /**
