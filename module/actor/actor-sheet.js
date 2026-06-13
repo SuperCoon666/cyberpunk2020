@@ -278,15 +278,17 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     if (!root) return;
 
     this._cpActivateTabs(root);
+    this._cpActivateActorFilePickers(root);
     this._cpActivateBasicActorActions(root);
     this._cpActivateActorFormControls(root);
     this._cpActivateCyberwareControls(root);
+    this._cpActivateNetrunningControls(root);
 
     const html = globalThis.jQuery ? globalThis.jQuery(root) : $(root);
     this._activateListeners(root, html);
   }
 
-    _cpActivateTabs(root) {
+  _cpActivateTabs(root) {
     const nav = root.querySelector(".sheet-tabs");
     const body = root.querySelector(".sheet-body");
     if (!nav || !body) return;
@@ -315,7 +317,84 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     this._cpTabs = tabs;
   }
 
-    _cpActivateBasicActorActions(root) {
+  _cpCreateFilePicker(options) {
+    const FilePickerImplementation =
+      foundry.applications?.apps?.FilePicker?.implementation
+      ?? globalThis.FilePicker;
+
+    if (typeof FilePickerImplementation !== "function") {
+      throw new Error("Cyberpunk2020 | No FilePicker implementation is available.");
+    }
+
+    return new FilePickerImplementation(options);
+  }
+
+  _cpActivateActorFilePickers(root) {
+    if (!root?.addEventListener) return;
+
+    if (this._cpAvatarCaptureRoot && this._cpAvatarCapture) {
+      try {
+        this._cpAvatarCaptureRoot.removeEventListener("click", this._cpAvatarCapture, { capture: true });
+      } catch (_) {}
+    }
+
+    const onFilePickerClick = (event) => {
+      const target = event.target;
+      if (!target?.closest) return;
+
+      const avatar = target.closest('[data-edit="img"]');
+      if (avatar) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation?.();
+
+        const fp = this._cpCreateFilePicker({
+          type: "image",
+          activeSource: "data",
+          current: this.actor.img || "",
+          callback: (path) => this.actor.update({ img: path }),
+          top: (this.position?.top ?? 0) + 40,
+          left: (this.position?.left ?? 0) + 10
+        });
+
+        fp.render(true);
+        return;
+      }
+
+      const netrunIconPicker = target.closest(".netrun-icon-frame.filepicker");
+      if (netrunIconPicker) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation?.();
+
+        const currentPath = this.actor.system.icon || "";
+
+        const fp = this._cpCreateFilePicker({
+          type: "image",
+          current: currentPath,
+          callback: async (path) => {
+            await this.actor.update({ "system.icon": path });
+
+            const icon = root.querySelector(".netrun-icon-frame img");
+            if (icon) icon.src = path;
+
+            const input = root.querySelector('input[name="system.icon"]');
+            if (input) input.value = path;
+          },
+          top: (this.position?.top ?? 0) + 40,
+          left: (this.position?.left ?? 0) + 10
+        });
+
+        fp.render(true);
+      }
+    };
+
+    root.addEventListener("click", onFilePickerClick, { capture: true });
+    this._cpAvatarCapture = onFilePickerClick;
+    this._cpAvatarCaptureRoot = root;
+  }
+
+  _cpActivateBasicActorActions(root) {
     if (!root?.addEventListener) return;
     if (root.dataset.cpBasicActorActionsBound === "1") return;
 
@@ -336,6 +415,17 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
         const item = this._cpGetItemFromTarget(deleteButton);
         if (item) await this._cpConfirmDeleteItem(item);
+        return;
+      }
+
+      const fireWeapon = target.closest(".fire-weapon");
+      if (fireWeapon) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation?.();
+
+        const item = this._cpGetItemFromTarget(fireWeapon);
+        if (item) this._cpOpenWeaponAttackDialog(item);
         return;
       }
 
@@ -497,7 +587,136 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     return this.actor.rollSkill(id);
   }
 
-    _cpActivateActorFormControls(root) {
+  _cpOpenWeaponAttackDialog(item) {
+    if (!item) return;
+
+    const isRanged = item.isRanged();
+    const system = item._getWeaponSystem?.() ?? item.system ?? {};
+    const savedAttackOptions = isRanged
+      ? this._cpGetSavedRangedAttackOptions(item)
+      : this._cpGetSavedMeleeAttackOptions(item);
+
+    let modifierGroups;
+    const targetTokens = Array.from(game.users.current.targets.values()).map(target => ({
+      name: target.document.name,
+      id: target.id
+    }));
+
+    if (isRanged) {
+      modifierGroups = rangedModifiers(item, targetTokens, savedAttackOptions);
+    }
+    else if (system.attackType === meleeAttackTypes.martial) {
+      modifierGroups = martialOptions(this.actor, savedAttackOptions);
+    }
+    else {
+      modifierGroups = meleeBonkOptions(savedAttackOptions);
+    }
+
+    const dialog = new ModifiersDialog(this.actor, {
+      weapon: item,
+      targetTokens,
+      modifierGroups,
+      onConfirm: async (fireOptions) => {
+        if (isRanged) {
+          await this._cpSaveRangedAttackOptions(item, fireOptions);
+        } else {
+          await this._cpSaveMeleeAttackOptions(item, fireOptions);
+        }
+
+        return item.__weaponRoll(fireOptions, targetTokens);
+      }
+    });
+
+    dialog.render(true);
+  }
+
+  _cpActivateNetrunningControls(root) {
+    if (!root?.addEventListener) return;
+    if (root.dataset.cpNetrunningControlsBound === "1") return;
+
+    root.dataset.cpNetrunningControlsBound = "1";
+
+    const isEditable = this.isEditable ?? this.options?.editable ?? false;
+    if (!isEditable) return;
+
+    root.addEventListener("click", async (event) => {
+      const target = event.target;
+      if (!target?.closest) return;
+
+      const interfaceSkill = target.closest(".interface-skill-roll");
+      if (interfaceSkill) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const skillId = interfaceSkill.dataset.skillId;
+        if (!skillId) {
+          ui.notifications.warn(localize("InterfaceSkillNotFound"));
+          return;
+        }
+
+        this.actor.rollSkill(skillId);
+        return;
+      }
+
+      const programEdit = target.closest(".netrun-program .fa-edit");
+      if (programEdit) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const program = programEdit.closest(".netrun-program");
+        const item = this._cpGetItemFromTarget(program);
+        if (item) item.sheet.render(true);
+        return;
+      }
+
+      const programDelete = target.closest(".netrun-program .fa-trash");
+      if (programDelete) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation?.();
+
+        const program = programDelete.closest(".netrun-program");
+        const item = this._cpGetItemFromTarget(program);
+        if (item) await this._cpConfirmDeleteItem(item);
+      }
+    });
+
+    root.addEventListener("contextmenu", async (event) => {
+      const target = event.target;
+      if (!target?.closest) return;
+
+      const activeIcon = target.closest(".netrun-active-icon");
+      if (!activeIcon) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const itemId = activeIcon.dataset.itemId;
+      if (!itemId) return;
+
+      const currentActive = [...(this.actor.system.activePrograms || [])];
+      const idx = currentActive.indexOf(itemId);
+      if (idx < 0) return;
+
+      currentActive.splice(idx, 1);
+
+      let sumMU = 0;
+      for (const progId of currentActive) {
+        const progItem = this.actor.items.get(progId);
+        if (!progItem) continue;
+        sumMU += Number(progItem.system.mu) || 0;
+      }
+
+      await this.actor.update({
+        "system.activePrograms": currentActive,
+        "system.ramUsed": sumMU
+      });
+
+      ui.notifications.info(localize("ProgramDeactivated"));
+    });
+  }
+
+  _cpActivateActorFormControls(root) {
     if (!root?.addEventListener) return;
     if (root.dataset.cpActorFormControlsBound === "1") return;
 
@@ -846,49 +1065,11 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     const root = getHtmlElement(rootElement) ?? getHtmlElement(html);
     if (!root) return;
 
-    if (this._cpAvatarCaptureRoot && this._cpAvatarCapture) {
-      try {
-        this._cpAvatarCaptureRoot.removeEventListener("click", this._cpAvatarCapture, { capture: true });
-      } catch (_) {}
-    }
-
-    const cpAvatarCapture = (ev) => {
-      const editable = ev.target?.closest?.("[data-edit]");
-      if (!editable) return;
-      if ((editable.dataset?.edit || "") !== "img") return;
-
-      ev.preventDefault();
-      ev.stopPropagation();
-      ev.stopImmediatePropagation?.();
-
-      const fp = new FilePicker({
-        type: "image",
-        activeSource: "data",
-        current: this.actor.img || "",
-        callback: (path) => this.actor.update({ img: path }),
-        top: (this.position?.top ?? 0) + 40,
-        left: (this.position?.left ?? 0) + 10
-      });
-
-      fp.render(true);
-    };
-
-    root.addEventListener("click", cpAvatarCapture, { capture: true });
-    this._cpAvatarCapture = cpAvatarCapture;
-    this._cpAvatarCaptureRoot = root;
+    // Actor and netrunning file pickers are handled by _cpActivateActorFilePickers
 
     // Life tab (system.notes) autosave
     this._cpSetupNotesAutosave(root);
     html.find('[data-drop-target]').on('dragover', (ev) => ev.preventDefault());
-
-    /**
-     * Get an owned item from a click event, for any event trigger with a data-item-id property
-     * @param {*} ev 
-    */
-    function getEventItem(sheet, ev) {
-      let itemId = ev.currentTarget.dataset.itemId;
-      return sheet.actor.items.get(itemId);
-    }
 
     // If not editable, do nothing further
     if (!(this.isEditable ?? this.options?.editable ?? false)) return;
@@ -925,80 +1106,9 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
     // Item deletion is handled by _cpActivateBasicActorActions
 
-    // "Fire" button for weapons
-    html.find('.fire-weapon').click(ev => {
-      ev.stopPropagation();
+    // Weapon fire is handled by _cpActivateBasicActorActions
 
-      const item = getEventItem(this, ev);
-      const isRanged = item.isRanged();
-      const system = item._getWeaponSystem?.() ?? item.system ?? {};
-      const savedAttackOptions = isRanged
-        ? this._cpGetSavedRangedAttackOptions(item)
-        : this._cpGetSavedMeleeAttackOptions(item);
-
-      let modifierGroups = undefined;
-      const targetTokens = Array.from(game.users.current.targets.values()).map(target => {
-        return {
-          name: target.document.name,
-          id: target.id
-        };
-      });
-
-      if (isRanged) {
-        modifierGroups = rangedModifiers(item, targetTokens, savedAttackOptions);
-      }
-      else if (system.attackType === meleeAttackTypes.martial) {
-        modifierGroups = martialOptions(this.actor, savedAttackOptions);
-      }
-      else {
-        modifierGroups = meleeBonkOptions(savedAttackOptions);
-      }
-
-      const dialog = new ModifiersDialog(this.actor, {
-        weapon: item,
-        targetTokens: targetTokens,
-        modifierGroups: modifierGroups,
-        onConfirm: async (fireOptions) => {
-          if (isRanged) {
-            await this._cpSaveRangedAttackOptions(item, fireOptions);
-          } else {
-            await this._cpSaveMeleeAttackOptions(item, fireOptions);
-          }
-
-          return item.__weaponRoll(fireOptions, targetTokens);
-        }
-      });
-
-      dialog.render(true);
-    });
-
-    function getNetrunProgramItem(sheet, ev) {
-      ev.stopPropagation();
-      const itemId = ev.currentTarget.closest(".netrun-program").dataset.itemId;
-      return sheet.actor.items.get(itemId);
-    }
-    html.find('.netrun-program .fa-edit').click(ev => {
-      const item = getNetrunProgramItem(this, ev);
-      if (!item) return;
-      item.sheet.render(true);
-    });
-    html.find('.netrun-program .fa-trash').click(ev => {
-      const item = getNetrunProgramItem(this, ev);
-      if (!item) return;
-      let confirmDialog = new Dialog({
-        title: localize("ItemDeleteConfirmTitle"),
-        content: `<p>${localizeParam("ItemDeleteConfirmText", {itemName: item.name})}</p>`,
-        buttons: {
-          yes: {
-            label: localize("Yes"),
-            callback: () => item.delete()
-          },
-          no: { label: localize("No") },
-        },
-        default:"no"
-      });
-      confirmDialog.render(true);
-    });
+    // Netrunning program edit/delete is handled by _cpActivateNetrunningControls
 
     html.find('.netrun-program').each((_, programElem) => {
       programElem.setAttribute("draggable", true);
@@ -1018,80 +1128,13 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       });
     });
 
-    html.find('input[data-edit], select[data-edit], textarea[data-edit]').on('change', ev => {
-      ev.preventDefault();
-      const input = ev.currentTarget;
-      const path = input.dataset.edit;
-      const dtype = input.dataset.dtype;
-      let value = input.value;
+    // Legacy data-edit inputs are no longer used by the actor sheet
 
-      if (dtype === "Number") {
-        value = Number(value || 0);
-        if (input.type === "checkbox") value = input.checked ? 1 : 0;
-      }
-      else if (dtype === "Boolean") {
-        value = input.checked;
-      }
+    // Interface skill roll is handled by _cpActivateNetrunningControls
 
-      this.actor.update({ [path]: value });
-    });
+    // Active program context menu is handled by _cpActivateNetrunningControls
 
-    const interfaceSkillElems = html.find('.interface-skill-roll');
-
-    interfaceSkillElems.on('click', ev => {
-      ev.preventDefault();
-      const skillId = ev.currentTarget.dataset.skillId;
-      if (!skillId) {
-        ui.notifications.warn(localize("InterfaceSkillNotFound"));
-        return;
-      }
-      this.actor.rollSkill(skillId);
-    });
-
-    html.find('.netrun-active-icon').on('contextmenu', async ev => {
-      ev.preventDefault();
-      const div = ev.currentTarget;
-      const itemId = div.dataset.itemId;
-      if (!itemId) return;
-      const currentActive = [...(this.actor.system.activePrograms || [])];
-      const idx = currentActive.indexOf(itemId);
-      if (idx < 0) return;
-
-      currentActive.splice(idx, 1);
-
-      let sumMU = 0;
-      for (let progId of currentActive) {
-        let progItem = this.actor.items.get(progId);
-        if (!progItem) continue;
-        sumMU += Number(progItem.system.mu) || 0;
-      }
-
-      await this.actor.update({
-        "system.activePrograms": currentActive,
-        "system.ramUsed": sumMU
-      });
-
-      ui.notifications.info(localize("ProgramDeactivated"));
-    });
-
-    html.find('.filepicker').on('click', async (ev) => {
-      ev.preventDefault();
-      const currentPath = this.actor.system.icon || "";
-      
-      const fp = new FilePicker({
-        type: "image",
-        current: currentPath,
-        callback: (path) => {
-          this.actor.update({"system.icon": path});
-          html.find(".netrun-icon-frame img").attr("src", path);
-          html.find('input[name="system.icon"]').val(path);
-        },
-        top: this.position.top + 40,
-        left: this.position.left + 10
-      });
-
-      fp.render(true);
-    });
+    // Netrunning icon filepicker is handled by _cpActivateActorFilePickers
 
     if (this._cpChipTooltipCleanup) {
       try { this._cpChipTooltipCleanup(); } catch (_) {}
