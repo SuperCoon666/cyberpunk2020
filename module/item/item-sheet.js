@@ -1247,14 +1247,50 @@ async _prepareCyberware(sheet) {
       if (this._cpCyberwareSkillSearchRoot && this._cpCyberwareSkillSearchChangeHandler) {
         this._cpCyberwareSkillSearchRoot.removeEventListener("change", this._cpCyberwareSkillSearchChangeHandler, true);
       }
+
+      if (this._cpCyberwareSkillSearchRoot && this._cpCyberwareSkillSearchMouseDownHandler) {
+        this._cpCyberwareSkillSearchRoot.removeEventListener("mousedown", this._cpCyberwareSkillSearchMouseDownHandler, true);
+      }
+
+      if (this._cpCyberwareSkillSearchRoot && this._cpCyberwareSkillSearchClickHandler) {
+        this._cpCyberwareSkillSearchRoot.removeEventListener("click", this._cpCyberwareSkillSearchClickHandler, true);
+      }
     } catch (_) {}
 
     this._cpCyberwareSkillSearchRoot = null;
     this._cpCyberwareSkillSearchInputHandler = null;
     this._cpCyberwareSkillSearchChangeHandler = null;
+    this._cpCyberwareSkillSearchMouseDownHandler = null;
+    this._cpCyberwareSkillSearchClickHandler = null;
   }
 
-  async _cpAddCyberwareSkillFromInput(input) {
+  async _cpSyncCyberwareChipSkills() {
+    if (typeof this._cp_syncChipLevelsToSkills === "function") {
+      await this._cp_syncChipLevelsToSkills();
+    }
+
+    if (typeof this._cp_syncActiveFlagsToSkills === "function") {
+      await this._cp_syncActiveFlagsToSkills();
+    }
+  }
+
+  async _cpRenderCyberwareSkillKeySheets(skillKey) {
+    const actor = this.item.actor ?? this.actor ?? null;
+    if (!actor || !skillKey) return;
+
+    const byId = actor.items.get(skillKey);
+    if (byId?.type === "skill") {
+      await this._cpRenderOpenSheet(byId);
+    }
+
+    // Legacy fallback: older maps may still store localized skill names as keys.
+    const byName = actor.items.filter((item) => item.type === "skill" && item.name === skillKey);
+    for (const skill of byName) {
+      await this._cpRenderOpenSheet(skill);
+    }
+  }
+
+  async _cpAddCyberwareSkillFromInput(input, pathPrefix, { syncChipSkills = false } = {}) {
     if (!input) return false;
 
     const rawValue = String(input.value ?? "").trim();
@@ -1263,14 +1299,20 @@ async _prepareCyberware(sheet) {
     const skillKey = this._resolveSkillKey(rawValue);
     if (!skillKey) return false;
 
-    const current = this.item.system?.CyberWorkType?.Skill || {};
+    const current = foundry.utils.getProperty(this.item.system, pathPrefix.replace(/^system\./, "")) || {};
     if (current[skillKey] != null) {
       input.value = "";
       input.blur();
       return true;
     }
 
-    await this._cpSetCyberwarePath(`system.CyberWorkType.Skill.${skillKey}`, 0);
+    await this._cpSetCyberwarePath(`${pathPrefix}.${skillKey}`, 0);
+
+    if (syncChipSkills) {
+      await this._cpSyncCyberwareChipSkills();
+      await this._cpRenderCyberwareSkillKeySheets(skillKey);
+      await this._cpRenderCyberwareDependentSheets(this.item.actor ?? this.actor ?? null);
+    }
 
     input.value = "";
     input.blur();
@@ -1288,10 +1330,18 @@ async _prepareCyberware(sheet) {
     if (!editable) return;
 
     const handleSkillSearch = async (event) => {
-      const input = event.target?.closest?.("input[name='cw-skill-search']");
+      const input = event.target?.closest?.("input[name='cw-skill-search'], input[name='cw-chip-skill-search']");
       if (!input || !root.contains(input)) return;
 
-      const added = await this._cpAddCyberwareSkillFromInput(input);
+      const isChipSkillSearch = input.name === "cw-chip-skill-search";
+      const pathPrefix = isChipSkillSearch
+        ? "system.CyberWorkType.ChipSkills"
+        : "system.CyberWorkType.Skill";
+
+      const added = await this._cpAddCyberwareSkillFromInput(input, pathPrefix, {
+        syncChipSkills: isChipSkillSearch
+      });
+
       if (!added) return;
 
       event.preventDefault();
@@ -1299,12 +1349,52 @@ async _prepareCyberware(sheet) {
       event.stopImmediatePropagation?.();
     };
 
+    const handleSkillSearchMouseDown = (event) => {
+      const input = event.target?.closest?.("input[name='cw-skill-search'], input[name='cw-chip-skill-search']");
+      if (!input || !root.contains(input)) return;
+      if (root.ownerDocument.activeElement !== input) return;
+
+      const listId = input.getAttribute("list");
+      if (!listId) return;
+
+      event.preventDefault();
+
+      input.removeAttribute("list");
+      input.blur();
+
+      setTimeout(() => {
+        input.setAttribute("list", listId);
+        input.focus();
+      }, 150);
+    };
+
+    const handleSkillRemove = async (event) => {
+      const control = event.target?.closest?.(".cw-remove-chipskill");
+      if (!control || !root.contains(control)) return;
+
+      const skillKey = String(control.dataset.key ?? "");
+      if (!skillKey) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+
+      await this._cpDeleteCyberwarePath(`system.CyberWorkType.ChipSkills.${skillKey}`);
+      await this._cpSyncCyberwareChipSkills();
+      await this._cpRenderCyberwareSkillKeySheets(skillKey);
+      await this._cpRenderCyberwareDependentSheets(this.item.actor ?? this.actor ?? null);
+    };
+
     root.addEventListener("input", handleSkillSearch, true);
     root.addEventListener("change", handleSkillSearch, true);
+    root.addEventListener("mousedown", handleSkillSearchMouseDown, true);
+    root.addEventListener("click", handleSkillRemove, true);
 
     this._cpCyberwareSkillSearchRoot = root;
     this._cpCyberwareSkillSearchInputHandler = handleSkillSearch;
     this._cpCyberwareSkillSearchChangeHandler = handleSkillSearch;
+    this._cpCyberwareSkillSearchMouseDownHandler = handleSkillSearchMouseDown;
+    this._cpCyberwareSkillSearchClickHandler = handleSkillRemove;
   }
 
   _cpActivateSkillItemControls(root) {
