@@ -907,9 +907,11 @@ div.statderive .value.rightborder {
 /* Drop-down menu */
 .cyberpunk .field .cw-ms-menu {
   position: absolute;
-  left: 0; right: 0; top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  top: calc(100% + 2px);
   display: none;
-  z-index: 1000;
+  z-index: 10000;
   border: 1px solid var(--color-border, #444);
   background: var(--color-bg, #111);
   padding: 6px;
@@ -918,6 +920,15 @@ div.statderive .value.rightborder {
   box-shadow: 0 4px 12px rgba(0,0,0,.35);
 }
 .cyberpunk .field .cw-ms.open .cw-ms-menu { display: block; }
+.cyberpunk .field .cw-ms.open {
+  z-index: 1001;
+}
+
+.cyberpunk .field .cw-ms.drop-up .cw-ms-menu {
+  top: auto;
+  bottom: calc(100% + 2px);
+}
+
 .cyberpunk .field .cw-ms-opt { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
 .cyberpunk .field .cw-ms-opt input { margin: 0; }
 
@@ -1383,6 +1394,10 @@ div.statderive .value.rightborder {
   min-height: 28px;
   box-sizing: border-box;
   overflow: hidden;
+}
+.application.cyberpunk.sheet.item .field-list .field.cw-ms-field,
+.cyberpunk.sheet.item .field-list .field.cw-ms-field {
+  overflow: visible;
 }
 
 .application.cyberpunk.sheet.item .field-list .field > label,
@@ -2760,6 +2775,34 @@ div.statderive .value.rightborder {
 .cyberpunk.sheet.item .cyberpunk-item-sheet-content .cp-notes-prosemirror .editor-menu *,
 .cyberpunk.sheet.item .cyberpunk-item-sheet-content .cp-notes-prosemirror [role="menubar"] * {
   border-radius: 0 !important;
+}
+
+/* Vehicle accel/decel buttons should keep the old .field look under AppV2. */
+.application.cyberpunk.sheet.item button.field.accel,
+.application.cyberpunk.sheet.item button.field.decel,
+.cyberpunk.sheet.item button.field.accel,
+.cyberpunk.sheet.item button.field.decel {
+  border: 2px solid black;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.application.cyberpunk.sheet.item button.field.accel:hover,
+.application.cyberpunk.sheet.item button.field.decel:hover,
+.application.cyberpunk.sheet.item button.field.accel:focus,
+.application.cyberpunk.sheet.item button.field.decel:focus,
+.cyberpunk.sheet.item button.field.accel:hover,
+.cyberpunk.sheet.item button.field.decel:hover,
+.cyberpunk.sheet.item button.field.accel:focus,
+.cyberpunk.sheet.item button.field.decel:focus {
+  box-shadow: none;
+  outline: none;
 }
 
 /*# sourceMappingURL=cyberpunk2020.css.map */

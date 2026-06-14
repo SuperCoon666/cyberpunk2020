@@ -688,6 +688,63 @@ async _prepareCyberware(sheet) {
 
     this._cpActivateTabs(root);
     this._cpActivateNotesEditor(root);
+    this._cpActivateVehicleSpeedControls(root);
+    this._cpActivateBasicItemActions(root);
+    this._cpActivateCyberwareBasicControls(root);
+    this._cpActivateCyberwareMechanicTypeControls(root);
+    this._cpActivateCyberwareSkillSearchControls(root);
+    this._cpActivateSkillItemControls(root);
+  }
+
+  _cpActivateVehicleSpeedControls(root) {
+    if (!root?.ownerDocument) return;
+
+    if (this._cpVehicleSpeedRoot && this._cpVehicleSpeedHandler) {
+      try {
+        this._cpVehicleSpeedRoot.ownerDocument.removeEventListener("click", this._cpVehicleSpeedHandler, true);
+      } catch (_) {}
+    }
+
+    const handler = async (event) => {
+      const target = event.target;
+      if (!target?.closest) return;
+
+      const control = target.closest(".accel, .decel");
+      if (!control) return;
+      if (!root.contains(control)) return;
+      if (this.item.type !== "vehicle") return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+
+      const readNumber = (selector, path, fallback = 0) => {
+        const input = root.querySelector(selector);
+        const raw = input?.value ?? foundry.utils.getProperty(this.item.system, path) ?? fallback;
+        const value = Number(String(raw).replace(",", "."));
+        return Number.isFinite(value) ? value : fallback;
+      };
+
+      const current = readNumber('input[name="system.speed.value"]', "speed.value", 0);
+      const acceleration = readNumber('input[name="system.speed.acceleration"]', "speed.acceleration", 0);
+      const max = readNumber('input[name="system.speed.max"]', "speed.max", current);
+
+      const direction = control.classList.contains("decel") ? -1 : 1;
+      const rawNext = current + (acceleration * direction);
+      const upperLimit = Number.isFinite(max) ? max : rawNext;
+      const next = Math.max(0, Math.min(rawNext, upperLimit));
+
+      const valueInput = root.querySelector('input[name="system.speed.value"]');
+      if (valueInput) valueInput.value = String(next);
+
+      await this.item.update({ "system.speed.value": next }, { render: false });
+      await this.render({ force: true });
+    };
+
+    root.ownerDocument.addEventListener("click", handler, true);
+
+    this._cpVehicleSpeedRoot = root;
+    this._cpVehicleSpeedHandler = handler;
   }
 
   _cpActivateTabs(root) {
@@ -746,6 +803,711 @@ async _prepareCyberware(sheet) {
     if (!Number.isFinite(height)) return;
 
     sheetBody.style.height = `${Math.max(0, height - 192)}px`;
+  }
+
+  _cpActivateBasicItemActions(root) {
+    if (!root?.addEventListener) return;
+    if (root.dataset.cpBasicItemActionsBound === "1") return;
+
+    root.dataset.cpBasicItemActionsBound = "1";
+
+    const editable = this.isEditable ?? this.options?.editable ?? false;
+    if (!editable) return;
+
+    root.addEventListener("click", async (event) => {
+      const target = event.target;
+      if (!target?.closest) return;
+
+      const itemRoll = target.closest(".item-roll");
+      if (itemRoll) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation?.();
+
+        await this.item.roll();
+        return;
+      }
+
+      const humanityRoll = target.closest(".humanity-cost-roll");
+      if (humanityRoll) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation?.();
+
+        await this._cpRollHumanityCost();
+      }
+    }, true);
+  }
+
+  async _cpRollHumanityCost() {
+    if (this.item.type !== "cyberware") return;
+
+    const cyber = this.item;
+    const hc = cyber.system?.humanityCost;
+    let loss = 0;
+    let roll = null;
+
+    if (formulaHasDice(hc)) {
+      roll = await new Roll(hc).evaluate();
+      loss = roll?.total ? roll.total : 0;
+    } else {
+      const num = Number(hc);
+      loss = Number.isFinite(num) ? num : 0;
+    }
+
+    await cyber.update({ "system.humanityLoss": loss });
+
+    const actor = cyber.actor ?? null;
+    const speaker = ChatMessage.getSpeaker(actor ? { actor } : {});
+    const messageMode = getPublicMessageMode();
+
+    if (roll) {
+      await rollToCyberpunkChatMessage(
+        roll,
+        {
+          speaker,
+          flavor: game.i18n.format("CYBERPUNK.Chat.HumanityRollFlavor", {
+            actor: actor?.name ?? game.user.name,
+            item: cyber.name
+          })
+        },
+        { messageMode }
+      );
+
+      return;
+    }
+
+    await createCyberpunkChatMessage({
+      speaker,
+      content: game.i18n.format("CYBERPUNK.Chat.HumanityLossSet", {
+        actor: actor?.name ?? game.user.name,
+        item: cyber.name,
+        loss
+      })
+    }, { messageMode });
+  }
+
+  _cpRemoveCyberwareBasicListeners() {
+    try {
+      if (this._cpCyberwareBasicControlsRoot && this._cpCyberwareBasicAddHandler) {
+        this._cpCyberwareBasicControlsRoot.removeEventListener("change", this._cpCyberwareBasicAddHandler, true);
+      }
+
+      if (this._cpCyberwareBasicControlsRoot && this._cpCyberwareBasicRemoveHandler) {
+        this._cpCyberwareBasicControlsRoot.removeEventListener("click", this._cpCyberwareBasicRemoveHandler, true);
+      }
+    } catch (_) {}
+
+    this._cpCyberwareBasicControlsRoot = null;
+    this._cpCyberwareBasicAddHandler = null;
+    this._cpCyberwareBasicRemoveHandler = null;
+  }
+
+  async _cpUpdateCyberwareDocument(update) {
+    const actor = this.item.actor ?? this.actor ?? null;
+
+    if (actor) {
+      await actor.updateEmbeddedDocuments("Item", [
+        { _id: this.item.id, ...update }
+      ], { render: false });
+    } else {
+      await this.item.update(update, { render: false });
+    }
+
+    await this._cpRenderCyberwareDependentSheets(actor);
+  }
+
+  async _cpRenderCyberwareDependentSheets(actor = null) {
+    const owner = actor ?? this.item.actor ?? this.actor ?? null;
+
+    await this._cpRenderOpenSheet(owner);
+    await this.render({ force: true });
+  }
+
+  async _cpSetCyberwarePath(path, value) {
+    const update = {};
+    foundry.utils.setProperty(update, path, value);
+    await this._cpUpdateCyberwareDocument(update);
+  }
+
+  async _cpDeleteCyberwarePath(path) {
+    await this._cpUpdateCyberwareDocument(deleteFieldUpdate(path));
+  }
+
+  _cpGetCyberwareMountPolicyList() {
+    const mountPolicy = this.item.system?.CyberWorkType?.MountPolicy;
+    if (Array.isArray(mountPolicy)) return [...mountPolicy];
+    if (mountPolicy) return [mountPolicy];
+    return [];
+  }
+
+  _cpActivateCyberwareBasicControls(root) {
+    this._cpRemoveCyberwareBasicListeners();
+
+    if (!root?.addEventListener) return;
+    if (this.item.type !== "cyberware") return;
+
+    const editable = this.isEditable ?? this.options?.editable ?? false;
+    if (!editable) return;
+
+    const addSelectSelector = [
+      "select.cw-add-stat",
+      "select.cw-add-check",
+      "select.cw-add-location",
+      "select.cw-add-penalty",
+      "select.cw-add-mountpolicy"
+    ].join(", ");
+
+    const removeControlSelector = [
+      ".cw-remove-stat",
+      ".cw-remove-check",
+      ".cw-remove-skill",
+      ".cw-remove-location",
+      ".cw-remove-penalty",
+      ".cw-remove-mount"
+    ].join(", ");
+
+    const addHandler = async (event) => {
+      const select = event.target?.closest?.(addSelectSelector);
+      if (!select || !root.contains(select)) return;
+
+      const key = String(select.value ?? "");
+      if (!key) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+
+      try {
+        if (select.matches("select.cw-add-stat")) {
+          await this._cpSetCyberwarePath(`system.CyberWorkType.Stat.${key}`, 0);
+          return;
+        }
+
+        if (select.matches("select.cw-add-check")) {
+          const checks = foundry.utils.duplicate(this.item.system?.CyberWorkType?.Checks || {});
+          if (checks[key] == null) checks[key] = 0;
+          await this._cpSetCyberwarePath("system.CyberWorkType.Checks", checks);
+          return;
+        }
+
+        if (select.matches("select.cw-add-location")) {
+          await this._cpSetCyberwarePath(`system.CyberWorkType.Locations.${key}`, 0);
+          return;
+        }
+
+        if (select.matches("select.cw-add-penalty")) {
+          await this._cpSetCyberwarePath(`system.CyberWorkType.Penalties.${key}`, 0);
+          return;
+        }
+
+        if (select.matches("select.cw-add-mountpolicy")) {
+          const list = this._cpGetCyberwareMountPolicyList();
+          if (!list.includes(key)) list.push(key);
+          await this._cpSetCyberwarePath("system.CyberWorkType.MountPolicy", list);
+        }
+      } finally {
+        select.value = "";
+      }
+    };
+
+    const removeHandler = async (event) => {
+      const control = event.target?.closest?.(removeControlSelector);
+      if (!control || !root.contains(control)) return;
+
+      const key = String(control.dataset.key ?? "");
+      if (!key) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+
+      if (control.matches(".cw-remove-stat")) {
+        await this._cpDeleteCyberwarePath(`system.CyberWorkType.Stat.${key}`);
+        return;
+      }
+
+      if (control.matches(".cw-remove-check")) {
+        await this._cpDeleteCyberwarePath(`system.CyberWorkType.Checks.${key}`);
+        return;
+      }
+
+      if (control.matches(".cw-remove-skill")) {
+        await this._cpDeleteCyberwarePath(`system.CyberWorkType.Skill.${key}`);
+        return;
+      }
+
+      if (control.matches(".cw-remove-location")) {
+        await this._cpDeleteCyberwarePath(`system.CyberWorkType.Locations.${key}`);
+        return;
+      }
+
+      if (control.matches(".cw-remove-penalty")) {
+        await this._cpDeleteCyberwarePath(`system.CyberWorkType.Penalties.${key}`);
+        return;
+      }
+
+      if (control.matches(".cw-remove-mount")) {
+        const list = this._cpGetCyberwareMountPolicyList().filter((value) => value !== key);
+        await this._cpSetCyberwarePath("system.CyberWorkType.MountPolicy", list);
+      }
+    };
+
+    root.addEventListener("change", addHandler, true);
+    root.addEventListener("click", removeHandler, true);
+
+    this._cpCyberwareBasicControlsRoot = root;
+    this._cpCyberwareBasicAddHandler = addHandler;
+    this._cpCyberwareBasicRemoveHandler = removeHandler;
+  }
+
+  _cpRemoveCyberwareMechanicTypeListeners() {
+    try {
+      if (this._cpCyberwareMechanicTypeRoot && this._cpCyberwareMechanicTypeClickHandler) {
+        this._cpCyberwareMechanicTypeRoot.removeEventListener("click", this._cpCyberwareMechanicTypeClickHandler, true);
+      }
+
+      if (this._cpCyberwareMechanicTypeRoot && this._cpCyberwareMechanicTypeChangeHandler) {
+        this._cpCyberwareMechanicTypeRoot.removeEventListener("change", this._cpCyberwareMechanicTypeChangeHandler, true);
+      }
+
+      if (this._cpCyberwareMechanicTypeDocument && this._cpCyberwareMechanicTypeDocumentClickHandler) {
+        this._cpCyberwareMechanicTypeDocument.removeEventListener("click", this._cpCyberwareMechanicTypeDocumentClickHandler, true);
+      }
+    } catch (_) {}
+
+    this._cpCyberwareMechanicTypeRoot = null;
+    this._cpCyberwareMechanicTypeClickHandler = null;
+    this._cpCyberwareMechanicTypeChangeHandler = null;
+    this._cpCyberwareMechanicTypeDocument = null;
+    this._cpCyberwareMechanicTypeDocumentClickHandler = null;
+  }
+
+  _cpActivateCyberwareMechanicTypeControls(root) {
+    this._cpRemoveCyberwareMechanicTypeListeners();
+
+    if (!root?.addEventListener) return;
+    if (this.item.type !== "cyberware") return;
+
+    const editable = this.isEditable ?? this.options?.editable ?? false;
+    if (!editable) return;
+
+    root.querySelectorAll(".cw-ms").forEach((menuRoot) => {
+      menuRoot.closest(".field")?.classList.add("cw-ms-field");
+    });
+
+    const clearMenu = (menuRoot) => {
+      if (!menuRoot) return;
+
+      menuRoot.classList.remove("open");
+      menuRoot.classList.remove("drop-up");
+    };
+
+    const closeOpenMenus = (except = null) => {
+      root.querySelectorAll(".cw-ms.open").forEach((menuRoot) => {
+        if (menuRoot !== except) clearMenu(menuRoot);
+      });
+    };
+
+    const closeAllMenus = () => {
+      root.querySelectorAll(".cw-ms.open").forEach((menuRoot) => clearMenu(menuRoot));
+    };
+
+    const updateMenuPlacement = (trigger, menuRoot, menu) => {
+      menuRoot.classList.remove("drop-up");
+
+      const view = root.ownerDocument?.defaultView ?? window;
+      const viewportHeight = view.innerHeight ?? document.documentElement.clientHeight;
+      const scrollRoot = trigger.closest?.(".window-content");
+      const scrollRect = scrollRoot?.getBoundingClientRect?.();
+      const triggerRect = trigger.getBoundingClientRect();
+
+      const clipTop = Math.max(0, scrollRect?.top ?? 0);
+      const clipBottom = Math.min(viewportHeight, scrollRect?.bottom ?? viewportHeight);
+
+      const spaceAbove = triggerRect.top - clipTop;
+      const spaceBelow = clipBottom - triggerRect.bottom;
+      const menuHeight = Math.min(menu.scrollHeight || 240, 240);
+
+      const dropUp = spaceBelow < menuHeight + 8 && spaceAbove > spaceBelow;
+      menuRoot.classList.toggle("drop-up", dropUp);
+    };
+
+    const clickHandler = (event) => {
+      const target = event.target;
+      if (!target?.closest) return;
+
+      const trigger = target.closest(".cw-ms-trigger");
+      if (trigger && root.contains(trigger)) {
+        const menuRoot = trigger.closest(".cw-ms");
+        const menu = menuRoot?.querySelector(".cw-ms-menu");
+
+        if (!menuRoot || !menu) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation?.();
+
+        const wasOpen = menuRoot.classList.contains("open");
+
+        closeOpenMenus(menuRoot);
+
+        if (wasOpen) {
+          clearMenu(menuRoot);
+          return;
+        }
+
+        menuRoot.classList.add("open");
+        updateMenuPlacement(trigger, menuRoot, menu);
+        return;
+      }
+
+      if (!target.closest(".cw-ms")) {
+        closeAllMenus();
+      }
+    };
+
+    const documentClickHandler = (event) => {
+      const target = event.target;
+      if (!target?.closest) {
+        closeAllMenus();
+        return;
+      }
+
+      const menuRoot = target.closest(".cw-ms");
+      if (menuRoot && root.contains(menuRoot)) return;
+
+      closeAllMenus();
+    };
+
+    const changeHandler = async (event) => {
+      const input = event.target?.closest?.(".cw-ms-menu input[type='checkbox']");
+      if (!input || !root.contains(input)) return;
+
+      const menuRoot = input.closest(".cw-ms");
+      if (!menuRoot) return;
+
+      const path = String(menuRoot.dataset.path ?? "");
+      if (path !== "system.CyberWorkType.Types") return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+
+      const menu = menuRoot.querySelector(".cw-ms-menu");
+      if (!menu) return;
+
+      let next = Array.from(menu.querySelectorAll("input[type='checkbox']:checked"))
+        .map((checkbox) => String(checkbox.value || ""))
+        .filter(Boolean);
+
+      const changed = String(input.value || "");
+      const turnedOn = !!input.checked;
+
+      if (changed === "Descriptive" && turnedOn) {
+        next = ["Descriptive"];
+
+        menu.querySelectorAll("input[type='checkbox']").forEach((checkbox) => {
+          checkbox.checked = checkbox.value === "Descriptive";
+        });
+      } else if (turnedOn) {
+        const descriptive = menu.querySelector('input[value="Descriptive"]');
+        if (descriptive) descriptive.checked = false;
+
+        next = next.filter((value) => value !== "Descriptive");
+      }
+
+      if (!next.length) {
+        next = ["Descriptive"];
+
+        const descriptive = menu.querySelector('input[value="Descriptive"]');
+        if (descriptive) descriptive.checked = true;
+      }
+
+      await this._cpSetCyberwarePath("system.CyberWorkType.Types", next);
+    };
+
+    root.addEventListener("click", clickHandler, true);
+    root.addEventListener("change", changeHandler, true);
+    root.ownerDocument.addEventListener("click", documentClickHandler, true);
+
+    this._cpCyberwareMechanicTypeRoot = root;
+    this._cpCyberwareMechanicTypeClickHandler = clickHandler;
+    this._cpCyberwareMechanicTypeChangeHandler = changeHandler;
+    this._cpCyberwareMechanicTypeDocument = root.ownerDocument;
+    this._cpCyberwareMechanicTypeDocumentClickHandler = documentClickHandler;
+  }
+
+  _cpRemoveCyberwareSkillSearchListeners() {
+    try {
+      if (this._cpCyberwareSkillSearchRoot && this._cpCyberwareSkillSearchInputHandler) {
+        this._cpCyberwareSkillSearchRoot.removeEventListener("input", this._cpCyberwareSkillSearchInputHandler, true);
+      }
+
+      if (this._cpCyberwareSkillSearchRoot && this._cpCyberwareSkillSearchChangeHandler) {
+        this._cpCyberwareSkillSearchRoot.removeEventListener("change", this._cpCyberwareSkillSearchChangeHandler, true);
+      }
+    } catch (_) {}
+
+    this._cpCyberwareSkillSearchRoot = null;
+    this._cpCyberwareSkillSearchInputHandler = null;
+    this._cpCyberwareSkillSearchChangeHandler = null;
+  }
+
+  async _cpAddCyberwareSkillFromInput(input) {
+    if (!input) return false;
+
+    const rawValue = String(input.value ?? "").trim();
+    if (!rawValue) return false;
+
+    const skillKey = this._resolveSkillKey(rawValue);
+    if (!skillKey) return false;
+
+    const current = this.item.system?.CyberWorkType?.Skill || {};
+    if (current[skillKey] != null) {
+      input.value = "";
+      input.blur();
+      return true;
+    }
+
+    await this._cpSetCyberwarePath(`system.CyberWorkType.Skill.${skillKey}`, 0);
+
+    input.value = "";
+    input.blur();
+
+    return true;
+  }
+
+  _cpActivateCyberwareSkillSearchControls(root) {
+    this._cpRemoveCyberwareSkillSearchListeners();
+
+    if (!root?.addEventListener) return;
+    if (this.item.type !== "cyberware") return;
+
+    const editable = this.isEditable ?? this.options?.editable ?? false;
+    if (!editable) return;
+
+    const handleSkillSearch = async (event) => {
+      const input = event.target?.closest?.("input[name='cw-skill-search']");
+      if (!input || !root.contains(input)) return;
+
+      const added = await this._cpAddCyberwareSkillFromInput(input);
+      if (!added) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+    };
+
+    root.addEventListener("input", handleSkillSearch, true);
+    root.addEventListener("change", handleSkillSearch, true);
+
+    this._cpCyberwareSkillSearchRoot = root;
+    this._cpCyberwareSkillSearchInputHandler = handleSkillSearch;
+    this._cpCyberwareSkillSearchChangeHandler = handleSkillSearch;
+  }
+
+  _cpActivateSkillItemControls(root) {
+    if (!root?.addEventListener) return;
+    if (this.item.type !== "skill") return;
+
+    if (this._cpSkillItemControlsRoot && this._cpSkillItemControlsHandler) {
+      try {
+        this._cpSkillItemControlsRoot.removeEventListener("change", this._cpSkillItemControlsHandler, true);
+      } catch (_) {}
+    }
+
+    const handler = async (event) => {
+      const input = event.target;
+      if (!input?.matches?.(
+        'input[name="system.level"], input[name="system.chipLevel"], input[name="system.isChipped"]'
+      )) return;
+
+      if (!root.contains(input)) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+
+      if (input.name === "system.level") {
+        await this._cpHandleSkillLevelChange(input);
+        return;
+      }
+
+      if (input.name === "system.chipLevel") {
+        await this._cpHandleSkillChipLevelChange(input);
+        return;
+      }
+
+      if (input.name === "system.isChipped") {
+        await this._cpHandleSkillIsChippedChange(input);
+      }
+    };
+
+    root.addEventListener("change", handler, true);
+
+    this._cpSkillItemControlsRoot = root;
+    this._cpSkillItemControlsHandler = handler;
+  }
+
+  _cpParseSkillNumber(value) {
+    const n = Number.parseInt(value ?? 0, 10);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  async _cpUpdateThisSkill(patch) {
+    const actor = this.item.actor ?? this.actor ?? null;
+
+    if (actor) {
+      await actor.updateEmbeddedDocuments("Item", [
+        { _id: this.item.id, ...patch }
+      ], { render: false });
+      return;
+    }
+
+    await this.item.update(patch, { render: false });
+  }
+
+  _cpFindChipsForThisSkill() {
+    const actor = this.item.actor ?? this.actor ?? null;
+    if (!actor) return [];
+
+    const skillId = this.item.id;
+    const skillName = this.item.name;
+
+    return actor.items.filter((item) => {
+      if (item.type !== "cyberware") return false;
+      if (!cwHasType(item, "Chip")) return false;
+      if (item.system?.equipped === false) return false;
+
+      const chipSkills = item.system?.CyberWorkType?.ChipSkills;
+      if (!chipSkills) return false;
+
+      return (
+        (skillId && Object.prototype.hasOwnProperty.call(chipSkills, skillId)) ||
+        Object.prototype.hasOwnProperty.call(chipSkills, skillName)
+      );
+    });
+  }
+
+  _cpIsSheetOpen(sheet) {
+    return !!(sheet?.rendered || sheet?.element);
+  }
+
+  async _cpRenderOpenSheet(document) {
+    const sheet = document?.sheet;
+    if (!this._cpIsSheetOpen(sheet)) return;
+
+    try {
+      await sheet.render({ force: true });
+    } catch (_) {
+      try {
+        await sheet.render(true);
+      } catch (_) {}
+    }
+  }
+
+  async _cpRenderSkillRelatedSheets({ actor = null, chips = [] } = {}) {
+    await this._cpRenderOpenSheet(actor);
+
+    for (const chip of chips) {
+      await this._cpRenderOpenSheet(chip);
+    }
+
+    await this.render({ force: true });
+  }
+
+  async _cpHandleSkillLevelChange(input) {
+    const value = this._cpParseSkillNumber(input.value);
+    const prev = Number(this.item.system?.level || 0);
+
+    if (prev !== value) {
+      await this._cpUpdateThisSkill({ "system.level": value });
+    }
+
+    const actor = this.item.actor ?? this.actor ?? null;
+
+    await this._cpRenderSkillRelatedSheets({ actor });
+  }
+
+  async _cpHandleSkillIsChippedChange(input) {
+    const checked = !!input.checked;
+    const prev = !!this.item.system?.isChipped;
+
+    if (prev === checked) {
+      await this.render({ force: true });
+      return;
+    }
+
+    const actor = this.item.actor ?? this.actor ?? null;
+    const chips = this._cpFindChipsForThisSkill();
+
+    if (actor && chips.length) {
+      const chipUpdates = chips.map((chip) => ({
+        _id: chip.id,
+        "system.CyberWorkType.ChipActive": checked
+      }));
+
+      await actor.updateEmbeddedDocuments("Item", chipUpdates, { render: false });
+
+      if (typeof this._cp_syncChipLevelsToSkills === "function") {
+        await this._cp_syncChipLevelsToSkills();
+      }
+
+      if (typeof this._cp_syncActiveFlagsToSkills === "function") {
+        await this._cp_syncActiveFlagsToSkills();
+      }
+    } else {
+      await this._cpUpdateThisSkill({
+        "system.isChipped": checked,
+        ...deleteFieldUpdate("system.chipped")
+      });
+    }
+
+    await this._cpRenderSkillRelatedSheets({ actor, chips });
+  }
+
+  async _cpHandleSkillChipLevelChange(input) {
+    const value = this._cpParseSkillNumber(input.value);
+    const prev = Number(this.item.system?.chipLevel || 0);
+
+    if (prev !== value) {
+      await this._cpUpdateThisSkill({ "system.chipLevel": value });
+    }
+
+    const actor = this.item.actor ?? this.actor ?? null;
+    const chips = this._cpFindChipsForThisSkill();
+
+    if (actor && chips.length) {
+      const skillId = this.item.id;
+      const skillName = this.item.name;
+
+      const chipUpdates = chips.map((chip) => {
+        const chipSkills = chip.system?.CyberWorkType?.ChipSkills || {};
+        const patch = { _id: chip.id };
+
+        if (skillId && Object.prototype.hasOwnProperty.call(chipSkills, skillId)) {
+          patch[`system.CyberWorkType.ChipSkills.${skillId}`] = value;
+        }
+
+        // Legacy fallback: older data may still store chip skill maps by localized name.
+        if (Object.prototype.hasOwnProperty.call(chipSkills, skillName)) {
+          patch[`system.CyberWorkType.ChipSkills.${skillName}`] = value;
+        }
+
+        return patch;
+      }).filter((patch) => Object.keys(patch).length > 1);
+
+      if (chipUpdates.length) {
+        await actor.updateEmbeddedDocuments("Item", chipUpdates, { render: false });
+      }
+
+      if (typeof this._cp_syncChipLevelsToSkills === "function") {
+        await this._cp_syncChipLevelsToSkills();
+      }
+    }
+
+    await this._cpRenderSkillRelatedSheets({ actor, chips });
   }
 
   /** @override */
@@ -1644,6 +2406,36 @@ async _prepareCyberware(sheet) {
 
       this._cpNotesActionsRoot = null;
       this._cpNotesActionsHandler = null;
+    } catch (_) {}
+
+    try {
+      if (this._cpVehicleSpeedRoot && this._cpVehicleSpeedHandler) {
+        this._cpVehicleSpeedRoot.ownerDocument.removeEventListener("click", this._cpVehicleSpeedHandler, true);
+      }
+
+      this._cpVehicleSpeedRoot = null;
+      this._cpVehicleSpeedHandler = null;
+    } catch (_) {}
+
+    try {
+      this._cpRemoveCyberwareBasicListeners();
+    } catch (_) {}
+
+    try {
+      this._cpRemoveCyberwareMechanicTypeListeners();
+    } catch (_) {}
+
+    try {
+      this._cpRemoveCyberwareSkillSearchListeners();
+    } catch (_) {}
+
+    try {
+      if (this._cpSkillItemControlsRoot && this._cpSkillItemControlsHandler) {
+        this._cpSkillItemControlsRoot.removeEventListener("change", this._cpSkillItemControlsHandler, true);
+      }
+
+      this._cpSkillItemControlsRoot = null;
+      this._cpSkillItemControlsHandler = null;
     } catch (_) {}
 
     return super._preClose(options);

@@ -57,8 +57,12 @@
 
     {{!-- Accel/decel buttons --}}
     <div class="flexrow">
-        <div class="field decel"><label class="fillwidth" style="text-align: center; font-size: larger">-</label></div>
-        <div class="field accel"><label class="fillwidth" style="text-align: center; font-size: larger">+</label></div>
+        <button type="button" class="field decel" data-cp-action="vehicle-decel">
+            <label class="fillwidth" style="text-align: center; font-size: larger">-</label>
+        </button>
+        <button type="button" class="field accel" data-cp-action="vehicle-accel">
+            <label class="fillwidth" style="text-align: center; font-size: larger">+</label>
+        </button>
     </div>
    <div class="field">
        {{!-- This should I guess be maneuver? But safe works a lot better meaningwise --}}
