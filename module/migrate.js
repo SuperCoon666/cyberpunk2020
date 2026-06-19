@@ -1,4 +1,5 @@
 import { deleteFieldUpdate, getDefaultSkills, localize, cwHasType } from "./utils.js";
+import { normalizeIconPath } from "./data/schema-helpers.js";
 
 /**
  * Migration entrypoint.
@@ -185,9 +186,13 @@ function migrateLegacyActorSystemShape(actor, actorUpdates) {
     }
   }
 
-  // Very old template default could leave an object instead of a concrete path string.
-  if (sourceSystem.icon && typeof sourceSystem.icon === "object") {
-    actorUpdates["system.icon"] = sourceSystem.icon.default ?? "";
+  // A legacy icon — a template-wrapper object, or a string with no valid image extension —
+  // fails the IMAGE FilePathField validation and makes the actor unloadable. Coerce the pending
+  // icon (from the netrun copy above or an existing top-level value) into a value the field accepts.
+  const pendingIcon = "system.icon" in actorUpdates ? actorUpdates["system.icon"] : sourceSystem.icon;
+  if (pendingIcon) {
+    const normalizedIcon = normalizeIconPath(pendingIcon);
+    if (normalizedIcon !== pendingIcon) actorUpdates["system.icon"] = normalizedIcon;
   }
 
   if (sourceSystem.notes === null) actorUpdates["system.notes"] = "";

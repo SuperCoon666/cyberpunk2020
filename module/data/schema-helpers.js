@@ -48,6 +48,25 @@ export function filePathField(initial = "", categories = ["IMAGE"]) {
   return new FilePathField({ required: true, nullable: false, initial, categories, blank: true });
 }
 
+/**
+ * Coerce a stored icon value into something the IMAGE `filePathField` above will accept.
+ *
+ * Legacy worlds can hold an icon that is a template-wrapper object, or a plain string with no
+ * (or a non-image) file extension. Foundry v13+ validates FilePathField on load, so such a value
+ * throws "icon: does not have a valid file extension" and makes the WHOLE actor fail to load.
+ * We mirror the field's own check (CONST.FILE_CATEGORIES.IMAGE, so this can never drift from what
+ * the field accepts) and fall back to "" (blank is allowed) when the value is unusable; the icon
+ * can simply be re-selected afterwards.
+ */
+export function normalizeIconPath(value, fallback = "") {
+  if (value && typeof value === "object") value = value.default ?? fallback;
+  if (typeof value !== "string" || value === "") return fallback;
+  const image = CONST.FILE_CATEGORIES.IMAGE;
+  const { hasFileExtension, isBase64Data } = foundry.data.validators;
+  const isImage = hasFileExtension(value, Object.keys(image)) || isBase64Data(value, Object.values(image));
+  return isImage ? value : fallback;
+}
+
 export function mergeDefaults(source, defaults) {
   source ??= {};
   const mergeObject = globalThis.foundry?.utils?.mergeObject;
