@@ -851,6 +851,16 @@ export class CyberpunkActor extends Actor {
     const skill = this.items.get(skillId);
     if (!skill) return;
 
+    // Announce the skill roll so add-on modules (e.g. an Improvement-Points tracker) can react to it.
+    // Additive + non-blocking: a listener error must never interrupt the roll.
+    try {
+      Hooks.callAll("cyberpunkSkillRolled", {
+        actorId: this.id, skillId: skill.id, actorName: this.name, skillName: skill.name
+      });
+    } catch (e) {
+      console.warn("cyberpunk2020 | cyberpunkSkillRolled hook listener failed", e);
+    }
+
     // generate the list of modifiers
     const parts = [
       CyberpunkActor.realSkillValue(skill),
