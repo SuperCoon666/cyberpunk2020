@@ -548,6 +548,15 @@ export class CyberpunkItem extends Item {
           let roll = new Multiroll(`${localize("Autofire")}`, `${localize("Range")}: ${localizeParam(attackMods.range, {range: actualRangeBracket})}`);
           await roll.execute(undefined, "systems/cyberpunk2020/templates/chat/multi-hit.hbs", templateData);
           rolls.push(roll);
+
+          // Announce the resolved attack so add-on modules can react to it (e.g. damage automation).
+          Hooks.callAll("cyberpunk2020.weaponFired", {
+              attackerId: this.actor?.id ?? null,
+              weaponName: this.name,
+              areaDamages,
+              targetTokenId: targetTokens?.[i]?.id ?? null,
+              targetActorId: targetTokens?.[i]?.actor?.id ?? attackMods.targetActor?.id ?? null,
+          });
       }
 
       return rolls;
@@ -614,6 +623,14 @@ export class CyberpunkItem extends Item {
       };
       let roll = new Multiroll(localize("ThreeRoundBurst"));
       roll.execute(undefined, "systems/cyberpunk2020/templates/chat/multi-hit.hbs", templateData);
+
+      // Announce the resolved attack so add-on modules can react to it (e.g. damage automation).
+      Hooks.callAll("cyberpunk2020.weaponFired", {
+          attackerId: this.actor?.id ?? null,
+          weaponName: this.name,
+          areaDamages,
+          targetActorId: attackMods.targetActor?.id ?? null,
+      });
       if (rangedFumble?.outcome?.discharge) {
         await this.__setWeaponField("shotsLeft", 0);
       } else {
@@ -721,6 +738,14 @@ export class CyberpunkItem extends Item {
       let roll = new Multiroll(localize("SemiAuto"));
       roll.execute(undefined, "systems/cyberpunk2020/templates/chat/multi-hit.hbs", templateData);
 
+      // Announce the resolved attack so add-on modules can react to it (e.g. damage automation).
+      Hooks.callAll("cyberpunk2020.weaponFired", {
+          attackerId: this.actor?.id ?? null,
+          weaponName: this.name,
+          areaDamages,
+          targetActorId: attackMods.targetActor?.id ?? null,
+      });
+
       if (rangedFumble?.outcome?.discharge) {
         await this.__setWeaponField("shotsLeft", 0);
       } else {
@@ -791,6 +816,14 @@ export class CyberpunkItem extends Item {
           fumble
         }
       );
+
+      // Announce the resolved attack so add-on modules can react to it (e.g. damage automation).
+      Hooks.callAll("cyberpunk2020.weaponFired", {
+          attackerId: this.actor?.id ?? null,
+          weaponName: this.name,
+          areaDamages,
+          targetActorId: attackMods.targetActor?.id ?? null,
+      });
 
       return bigRoll;
   }
