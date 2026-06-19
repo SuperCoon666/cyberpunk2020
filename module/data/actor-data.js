@@ -7,6 +7,7 @@ import {
   filePathField,
   htmlField,
   mergeDefaults,
+  normalizeIconPath,
   numberField,
   objectField,
   stringField
@@ -101,9 +102,6 @@ class CyberpunkBaseActorData extends foundry.abstract.TypeDataModel {
         if (!hasOwn(source, key)) source[key] = value;
       }
     }
-    if (source.icon && typeof source.icon === "object") {
-      source.icon = source.icon.default ?? "";
-    }
 
     if (hasOwn(source, "stats")) source.stats = mergeDefaults(source.stats, DEFAULT_STATS);
     if (hasOwn(source, "hitLocations")) source.hitLocations = mergeDefaults(source.hitLocations, DEFAULT_HIT_LOCATIONS);
@@ -115,7 +113,7 @@ class CyberpunkBaseActorData extends foundry.abstract.TypeDataModel {
     if (hasOwn(source, "transient")) source.transient = mergeDefaults(source.transient, { skillFilter: "" });
     if (hasOwn(source, "_cwChecks")) source._cwChecks = mergeDefaults(source._cwChecks, { saveStun: 0 });
     if (hasOwn(source, "skillsSortedBy")) source.skillsSortedBy ||= "Name";
-    if (hasOwn(source, "icon")) source.icon ??= "";
+    if (hasOwn(source, "icon")) source.icon = normalizeIconPath(source.icon);
     if (hasOwn(source, "notes")) source.notes ??= "";
 
     return super.migrateData(source);
