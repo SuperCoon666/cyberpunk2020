@@ -18,7 +18,20 @@ import { preloadHandlebarsTemplates } from "./templates.js";
 import { registerHandlebarsHelpers } from "./handlebars-helpers.js"
 import * as migrations from "./migrate.js";
 import { registerSystemSettings } from "./settings.js"
-import { getHtmlElement } from "./compat.js";
+import { getHtmlElement, createCyberpunkChatMessage, rollToCyberpunkChatMessage, getPublicMessageMode } from "./compat.js";
+
+// Helpers published on game.cyberpunk.api for add-on modules (see the api object below).
+import { localize, localizeParam, tryLocalize, rollLocation } from "./utils.js";
+import {
+    defaultHitLocations, defaultAreaLookup, strengthDamageBonus, isFnff2Enabled,
+    getFnff2DamageBonusSymbol, getMartialActionBonus, martialActions,
+    MARTIAL_ART_ID_BY_KEY, MARTIAL_ART_KEY_BY_ID, FNFF2_ONLY_MARTIAL_ART_KEYS
+} from "./lookups.js";
+import {
+    stringField, numberField, booleanField, arrayField, objectField, htmlField,
+    normalizeArray, normalizeBoolean, mergeDefaults
+} from "./data/schema-helpers.js";
+import { DEFAULT_HIT_LOCATIONS, STAT_KEYS, cloneSystemDefault } from "./constants.js";
 
 Hooks.once('init', async function () {
 
@@ -29,7 +42,21 @@ Hooks.once('init', async function () {
             CyberpunkItem,
         },
         // A manual migrateworld.
-        migrateWorld: migrations.migrateWorld
+        migrateWorld: migrations.migrateWorld,
+        // Public helper API for add-on modules: stable references to existing core helpers, so a
+        // module can reuse the system's functionality instead of duplicating it. Purely additive —
+        // nothing here is new logic, and nothing in the system reads this object.
+        api: {
+            i18n:      { localize, localizeParam, tryLocalize },
+            schema:    { stringField, numberField, booleanField, arrayField, objectField, htmlField,
+                         normalizeArray, normalizeBoolean, mergeDefaults },
+            lookups:   { defaultHitLocations, defaultAreaLookup, strengthDamageBonus, isFnff2Enabled,
+                         getFnff2DamageBonusSymbol, getMartialActionBonus, martialActions,
+                         MARTIAL_ART_ID_BY_KEY, MARTIAL_ART_KEY_BY_ID, FNFF2_ONLY_MARTIAL_ART_KEYS },
+            chat:      { createCyberpunkChatMessage, rollToCyberpunkChatMessage, getPublicMessageMode },
+            dice:      { rollLocation },
+            constants: { DEFAULT_HIT_LOCATIONS, STAT_KEYS, cloneSystemDefault }
+        }
     };
 
     // Define custom Document classes
