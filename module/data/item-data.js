@@ -30,12 +30,12 @@ const DEFAULT_RANGE_DAMAGES = {
 };
 
 const DEFAULT_COVERAGE = {
-  Head: false,
-  Torso: false,
-  lArm: false,
-  rArm: false,
-  lLeg: false,
-  rLeg: false
+  Head: { stoppingPower: 0, ablation: 0 },
+  Torso: { stoppingPower: 0, ablation: 0 },
+  lArm: { stoppingPower: 0, ablation: 0 },
+  rArm: { stoppingPower: 0, ablation: 0 },
+  lLeg: { stoppingPower: 0, ablation: 0 },
+  rLeg: { stoppingPower: 0, ablation: 0 }
 };
 
 function hasOwn(source, key) {
@@ -322,8 +322,21 @@ export class CyberpunkArmorData extends CyberpunkBaseItemData {
 
   static migrateData(source) {
     source ??= {};
-    if (hasOwn(source, "coverage")) source.coverage = mergeDefaults(source.coverage, DEFAULT_COVERAGE);
+    // Pre-object worlds stored coverage as a covers/doesn't boolean, which carried no SP.
+    // Only zones the diff already names are rewritten, so this stays safe on a partial update.
+    if (hasOwn(source, "coverage") && source.coverage && typeof source.coverage === "object") {
+      for (const [zone, value] of Object.entries(source.coverage)) {
+        if (typeof value === "boolean") source.coverage[zone] = { stoppingPower: 0, ablation: 0 };
+      }
+    }
     return super.migrateData(source);
+  }
+
+  prepareBaseData() {
+    super.prepareBaseData();
+    // Legacy documents can carry a partial branch. migrateData must not repair them: v14 also
+    // calls it on update diffs, where filling a sibling zone writes a default over a real value.
+    this.coverage = mergeDefaults(this.coverage, DEFAULT_COVERAGE);
   }
 }
 

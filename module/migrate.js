@@ -357,6 +357,15 @@ function preserveCyberwareRuntimeState({ oldSystem, newSystem }) {
   const oldMountZone = String(oldSystem?.MountZone ?? "").trim();
   if (oldMountZone) newSystem.MountZone = oldMountZone;
 
+  // The side is what MountZone "Arm"/"Leg" is resolved against, both for SDP and for parent
+  // matching. The compendium template carries its own, so an unpreserved side is not lost but
+  // replaced — a right limb silently becomes a left one.
+  const oldSide = String(oldSystem?.CyberBodyType?.Location ?? "").trim();
+  if (oldSide) {
+    newSystem.CyberBodyType = newSystem.CyberBodyType ?? {};
+    newSystem.CyberBodyType.Location = oldSide;
+  }
+
   if (oldSystem?.CyberWorkType) {
     newSystem.CyberWorkType = newSystem.CyberWorkType ?? {};
 
@@ -371,6 +380,33 @@ function preserveCyberwareRuntimeState({ oldSystem, newSystem }) {
     // Linked item/cyberware state.
     if (oldSystem.CyberWorkType.ItemId) newSystem.CyberWorkType.ItemId = oldSystem.CyberWorkType.ItemId;
   }
+}
+
+function chipSkillKeysToIds(actor, chipSkills) {
+  if (!chipSkills || typeof chipSkills !== "object") return null;
+
+  const out = {};
+  let changed = false;
+
+  for (const [key, value] of Object.entries(chipSkills)) {
+    if (actor.items.get(key)?.type === "skill") {
+      out[key] = value;
+      continue;
+    }
+
+    // Legacy maps are keyed by the skill's displayed name. The map and the skills were authored
+    // in the same world, so matching on the actor's own skills needs no language assumption.
+    const byName = actor.items.find(i => i.type === "skill" && i.name === key);
+    if (byName) {
+      out[byName.id] = value;
+      changed = true;
+    } else {
+      out[key] = value;
+      console.warn(`Cyberpunk2020 | chip skill key "${key}" on ${actor.name} matched no skill; left as-is`);
+    }
+  }
+
+  return changed ? out : null;
 }
 
 function normalizeRangeDamagesForUpdate(value) {
@@ -438,6 +474,11 @@ export async function migrateItem(item) {
 
   // CYBERWARE: replace content from compendium template, then transfer user values.
   if (item.type === "cyberware") {
+    const chipSkills = item.parent
+      ? chipSkillKeysToIds(item.parent, itemData.system?.CyberWorkType?.ChipSkills)
+      : null;
+    if (chipSkills) itemData.system.CyberWorkType.ChipSkills = chipSkills;
+
     const stableIds = getItemStableIdCandidates(itemData, item);
 
     // Primary path: stable id/source id. This is the normal multilingual architecture.
@@ -482,6 +523,7 @@ export async function migrateItem(item) {
 
     // Not found in compendium: keep the item usable and normalize type shape.
     normalizeCyberwareTypesForUpdate(itemData, updateData);
+    if (chipSkills) updateData["system.CyberWorkType.ChipSkills"] = chipSkills;
     return updateData;
   }
 

@@ -3,7 +3,6 @@ import { DEFAULT_HIT_LOCATIONS, DEFAULT_SDP, DEFAULT_STATS } from "../constants.
 import {
   arrayField,
   booleanField,
-  clone,
   filePathField,
   htmlField,
   mergeDefaults,
@@ -105,9 +104,6 @@ class CyberpunkBaseActorData extends foundry.abstract.TypeDataModel {
       source.icon = source.icon.default ?? "";
     }
 
-    if (hasOwn(source, "stats")) source.stats = mergeDefaults(source.stats, DEFAULT_STATS);
-    if (hasOwn(source, "hitLocations")) source.hitLocations = mergeDefaults(source.hitLocations, DEFAULT_HIT_LOCATIONS);
-    if (hasOwn(source, "sdp")) source.sdp = mergeDefaults(source.sdp, DEFAULT_SDP);
     if (hasOwn(source, "skills")) source.skills ??= {};
     if (hasOwn(source, "hitLocLookup")) source.hitLocLookup ??= {};
     if (hasOwn(source, "sortedSkillIDs")) source.sortedSkillIDs = Array.isArray(source.sortedSkillIDs) ? source.sortedSkillIDs : [];
@@ -123,9 +119,11 @@ class CyberpunkBaseActorData extends foundry.abstract.TypeDataModel {
 
   prepareBaseData() {
     super.prepareBaseData();
-    this.stats ??= clone(DEFAULT_STATS);
-    this.hitLocations ??= clone(DEFAULT_HIT_LOCATIONS);
-    this.sdp ??= clone(DEFAULT_SDP);
+    // Legacy documents can carry a partial branch. migrateData must not repair them: v14 also
+    // calls it on update diffs, where filling a sibling writes a default over a real value.
+    this.stats = mergeDefaults(this.stats, DEFAULT_STATS);
+    this.hitLocations = mergeDefaults(this.hitLocations, DEFAULT_HIT_LOCATIONS);
+    this.sdp = mergeDefaults(this.sdp, DEFAULT_SDP);
   }
 }
 

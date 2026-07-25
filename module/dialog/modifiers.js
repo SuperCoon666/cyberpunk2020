@@ -248,7 +248,7 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
       }
 
       if (!Number.isFinite(capacity) || capacity <= 0) {
-        ui.notifications.warn("This weapon cannot be reloaded.");
+        ui.notifications.warn(localize("WeaponCannotBeReloaded"));
         return;
       }
 

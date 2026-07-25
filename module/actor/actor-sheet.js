@@ -419,10 +419,12 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     if (!root?.addEventListener) return;
     if (root.dataset.cpBasicActorActionsBound === "1") return;
 
-    root.dataset.cpBasicActorActionsBound = "1";
-
     const isEditable = this.isEditable ?? this.options?.editable ?? false;
     if (!isEditable) return;
+
+    // The flag must not be set before this point: root survives a re-render, so a first render
+    // without edit rights would latch the sheet inert for the rest of its lifetime.
+    root.dataset.cpBasicActorActionsBound = "1";
 
     root.addEventListener("click", async (event) => {
       const target = event.target;
@@ -686,10 +688,10 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     if (!root?.addEventListener) return;
     if (root.dataset.cpNetrunningControlsBound === "1") return;
 
-    root.dataset.cpNetrunningControlsBound = "1";
-
     const isEditable = this.isEditable ?? this.options?.editable ?? false;
     if (!isEditable) return;
+
+    root.dataset.cpNetrunningControlsBound = "1";
 
     root.addEventListener("click", async (event) => {
       const target = event.target;
@@ -772,10 +774,10 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     if (!root?.addEventListener) return;
     if (root.dataset.cpActorFormControlsBound === "1") return;
 
-    root.dataset.cpActorFormControlsBound = "1";
-
     const isEditable = this.isEditable ?? this.options?.editable ?? false;
     if (!isEditable) return;
+
+    root.dataset.cpActorFormControlsBound = "1";
 
     const skillSearch = root.querySelector("input.skill-search");
     const skillClear = root.querySelector(".skill-search-clear");
@@ -959,10 +961,11 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     this._cpActivateChipTooltips(root);
 
     if (root.dataset.cpCyberwareControlsBound === "1") return;
-    root.dataset.cpCyberwareControlsBound = "1";
 
     const isEditable = this.isEditable ?? this.options?.editable ?? false;
     if (!isEditable) return;
+
+    root.dataset.cpCyberwareControlsBound = "1";
 
     root.addEventListener("mousedown", (event) => {
       const target = event.target;

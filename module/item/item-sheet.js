@@ -2164,6 +2164,11 @@ async _prepareCyberware(sheet) {
 
     const html = this._cpReadNotesHTML(root, { serialize });
     if (html == null) return;
+    // force bypasses the debounce, not the "nothing changed" test — _preClose forces on every
+    // close, and without this an untouched sheet writes and broadcasts on the way out.
+    // Trimmed: the view element carries the template's indentation, which HTMLField strips on
+    // write, so the untrimmed strings never compare equal even when nothing changed.
+    if (html.trim() === String(this.item.system.notes ?? "").trim()) return;
     if (!force && st.lastSaved === html) return;
 
     st.saving = true;
