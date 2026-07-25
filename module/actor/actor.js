@@ -4,6 +4,86 @@ import { SortOrders, sortSkills } from "./skill-sort.js";
 import { btmFromBT, MARTIAL_ART_KEY_BY_ID, MARTIAL_ART_ID_BY_KEY, FNFF2_ONLY_MARTIAL_ART_IDS, isFnff2Enabled, AWARENESS_NOTICE_SKILL_ID } from "../lookups.js";
 import { properCase, localize, getDefaultSkills, cwHasType, cwIsEnabled } from "../utils.js"
 
+export function combineSP(curr, add) {
+  const a = Number(curr) || 0;
+  const b = Number(add) || 0;
+  if (!a) return b;
+  if (!b) return a;
+
+  const diff = Math.abs(a - b);
+  let mod;
+  if (diff >= 27) mod = 0;
+  else if (diff >= 21) mod = 1;
+  else if (diff >= 15) mod = 2;
+  else if (diff >= 9)  mod = 3;
+  else if (diff >= 5)  mod = 4;
+  else                 mod = 5;
+
+  return Math.max(a, b) + mod;
+}
+
+// Maximum possible SP for a set of layers
+// exact O(N * 2^N) up to N=16
+export function maxLayeredSP(layers) {
+  if (!layers || !layers.length) return 0;
+
+  const sp = layers
+    .map(v => Number(v) || 0)
+    .filter(v => v > 0);
+
+  const n = sp.length;
+  if (!n) return 0;
+  if (n === 1) return sp[0];
+
+  // I think this number of layers will be more than enough for common sense
+  const MAX_EXACT_LAYERS = 16;
+
+  if (n <= MAX_EXACT_LAYERS) {
+    const size = 1 << n;
+    const dp = new Array(size);
+    dp[0] = 0;
+
+    for (let mask = 1; mask < size; mask++) {
+      let best = 0;
+
+      for (let i = 0; i < n; i++) {
+        const bit = 1 << i;
+        if (!(mask & bit)) continue;
+
+        const prevMask = mask ^ bit;
+        const val = combineSP(dp[prevMask], sp[i]);
+        if (val > best) best = val;
+      }
+      dp[mask] = best;
+    }
+
+    return dp[size - 1];
+  }
+
+  // Fallback for completely crazy cases (too many layers):
+  // each time, we choose the layer that maximizes the current SP
+  let current = 0;
+  const remaining = sp.slice();
+
+  while (remaining.length) {
+    let bestIdx = 0;
+    let bestVal = combineSP(current, remaining[0]);
+
+    for (let i = 1; i < remaining.length; i++) {
+      const val = combineSP(current, remaining[i]);
+      if (val > bestVal) {
+        bestVal = val;
+        bestIdx = i;
+      }
+    }
+
+    current = bestVal;
+    remaining.splice(bestIdx, 1);
+  }
+
+  return current;
+}
+
 /**
  * Extend the base Actor document by defining a custom roll data structure which is ideal for the Simple system.
  * @extends {Actor}
@@ -224,86 +304,6 @@ export class CyberpunkActor extends Actor {
     // Reflex is affected by encumbrance values too
     stats.ref.armorMod = 0;
     let totalEncumbrance = 0;
-
-    const combineSP = (curr, add) => {
-      const a = Number(curr) || 0;
-      const b = Number(add) || 0;
-      if (!a) return b;
-      if (!b) return a;
-
-      const diff = Math.abs(a - b);
-      let mod;
-      if (diff >= 27) mod = 0;
-      else if (diff >= 21) mod = 1;
-      else if (diff >= 15) mod = 2;
-      else if (diff >= 9)  mod = 3;
-      else if (diff >= 5)  mod = 4;
-      else                 mod = 5;
-
-      return Math.max(a, b) + mod;
-    };
-
-    // Maximum possible SP for a set of layers
-    // exact O(N * 2^N) up to N=16
-    const maxLayeredSP = (layers) => {
-      if (!layers || !layers.length) return 0;
-
-      const sp = layers
-        .map(v => Number(v) || 0)
-        .filter(v => v > 0);
-
-      const n = sp.length;
-      if (!n) return 0;
-      if (n === 1) return sp[0];
-
-      // I think this number of layers will be more than enough for common sense
-      const MAX_EXACT_LAYERS = 16;
-
-      if (n <= MAX_EXACT_LAYERS) {
-        const size = 1 << n;
-        const dp = new Array(size);
-        dp[0] = 0;
-
-        for (let mask = 1; mask < size; mask++) {
-          let best = 0;
-
-          for (let i = 0; i < n; i++) {
-            const bit = 1 << i;
-            if (!(mask & bit)) continue;
-
-            const prevMask = mask ^ bit;
-            const val = combineSP(dp[prevMask], sp[i]);
-            if (val > best) best = val;
-          }
-          dp[mask] = best;
-        }
-
-        return dp[size - 1];
-      }
-
-      // Fallback for completely crazy cases (too many layers):
-      // each time, we choose the layer that maximizes the current SP
-      let current = 0;
-      const remaining = sp.slice();
-
-      while (remaining.length) {
-        let bestIdx = 0;
-        let bestVal = combineSP(current, remaining[0]);
-
-        for (let i = 1; i < remaining.length; i++) {
-          const val = combineSP(current, remaining[i]);
-          if (val > bestVal) {
-            bestVal = val;
-            bestIdx = i;
-          }
-        }
-
-        current = bestVal;
-        remaining.splice(bestIdx, 1);
-      }
-
-      return current;
-    };
 
     // Equipped cyber-armor implants (only enabled)
     const cwArmorItems = (eqCyberEnabled || []).filter(i => cwHasType(i, "Armor"));
