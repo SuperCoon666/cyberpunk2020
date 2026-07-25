@@ -36,18 +36,17 @@ export const migrateWorld = async function (targetVersion = game.system.version)
   }
 
   // Scene tokens (unlinked tokens)
-  // NOTE: token.actor for unlinked tokens is synthetic; we keep original approach
-  // but still migrate actorData and embedded items where possible
+  // Update token.actor, not token: it is the synthetic Actor backed by the token's
+  // ActorDelta, and writes to it reach that delta. TokenDocument#actorData, which
+  // this used before, was removed in v11.
   for (const scene of game.scenes) {
     for (const token of scene.tokens) {
       if (!token.actor) continue;
       if (!token.actor.isOwner) continue;
 
       try {
-        const tokenData = {};
         const actorUpdate = await migrateActor(token.actor);
-        if (!isEmptyObject(actorUpdate)) tokenData.actorData = actorUpdate;
-        if (!isEmptyObject(tokenData)) await defaultDataUse(token, tokenData);
+        await defaultDataUse(token.actor, actorUpdate);
 
         // Best-effort: migrate embedded items on synthetic actor
         for (const item of token.actor.items.contents) {

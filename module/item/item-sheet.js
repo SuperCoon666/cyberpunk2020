@@ -695,6 +695,7 @@ async _prepareCyberware(sheet) {
     this._cpActivateCyberwareSkillSearchControls(root);
     this._cpActivateCyberwareStateControls(root);
     this._cpActivateCyberwareWeaponControls(root);
+    this._cpActivateAmmoControls(root);
     this._cpActivateSkillItemControls(root);
   }
 
@@ -813,10 +814,13 @@ async _prepareCyberware(sheet) {
 
     root.dataset.cpBasicItemActionsBound = "1";
 
-    const editable = this.isEditable ?? this.options?.editable ?? false;
-    if (!editable) return;
-
     root.addEventListener("click", async (event) => {
+      // Checked per event, not once at bind time: ApplicationV2 reuses the frame
+      // element across re-renders, so binding once and testing editability here
+      // is what lets a mid-session permission change take effect in either
+      // direction without reopening the sheet.
+      if (!(this.isEditable ?? this.options?.editable ?? false)) return;
+
       const target = event.target;
       if (!target?.closest) return;
 
@@ -1448,33 +1452,10 @@ async _prepareCyberware(sheet) {
     }
   }
 
-  /**
-   * Read a numeric input without silently destroying what the user typed.
-   *
-   * A `type="number"` input reports `value === ""` for anything it cannot parse,
-   * so a comma-decimal entry such as "2,5" is indistinguishable from a cleared
-   * field by value alone. Coercing that to 0 is silent data loss. The `badInput`
-   * validity flag separates the two cases: the browser sets it when raw text is
-   * present but unparseable, and leaves it false for a genuinely empty field.
-   *
-   * @param {HTMLInputElement} input
-   * @param {object} [options]
-   * @param {boolean} [options.integer=false] Truncate toward zero. Slot counts and
-   *   skill levels are integers by rule, so fractional entry is normalised rather
-   *   than stored.
-   * @returns {number|null} The parsed number, or null when the entry is unparseable
-   *   and the caller must leave the stored value untouched.
-   */
-  _cpReadNumberInput(input, { integer = false } = {}) {
-    if (input?.validity?.badInput) return null;
-
-    const raw = String(input?.value ?? "");
-    if (!raw.trim()) return 0;
-
-    const n = Number(raw.replace(",", "."));
-    if (!Number.isFinite(n)) return null;
-
-    return integer ? Math.trunc(n) : n;
+  _cpParseCyberwareNumber(value) {
+    const normalized = String(value ?? "").replace(",", ".");
+    const n = Number(normalized);
+    return Number.isFinite(n) ? n : 0;
   }
 
   async _cpHandleCyberwareTypeChange(select) {
@@ -1526,9 +1507,7 @@ async _prepareCyberware(sheet) {
   }
 
   async _cpHandleCyberwareModuleSlotsTakenChange(input) {
-    const slotsTaken = this._cpReadNumberInput(input, { integer: true });
-    if (slotsTaken === null) return;
-
+    const slotsTaken = this._cpParseCyberwareNumber(input.value);
     const parentId = String(this.item.system?.Module?.ParentId || "");
 
     await this._cpUpdateCyberwareDocument({
@@ -1558,8 +1537,7 @@ async _prepareCyberware(sheet) {
   }
 
   async _cpHandleCyberwareOptionsAvailableChange(input) {
-    const optionsAvailable = this._cpReadNumberInput(input, { integer: true });
-    if (optionsAvailable === null) return;
+    const optionsAvailable = this._cpParseCyberwareNumber(input.value);
 
     await this._cpUpdateCyberwareDocument({
       "system.CyberWorkType.OptionsAvailable": optionsAvailable
@@ -1633,8 +1611,7 @@ async _prepareCyberware(sheet) {
     const skillKey = String(input.name || "").slice(prefix.length);
     if (!skillKey) return;
 
-    const value = this._cpReadNumberInput(input, { integer: true });
-    if (value === null) return;
+    const value = this._cpParseSkillNumber(input.value);
 
     await this._cpUpdateCyberwareDocument({
       [`system.CyberWorkType.ChipSkills.${skillKey}`]: value
@@ -1773,6 +1750,137 @@ async _prepareCyberware(sheet) {
 
     this._cpCyberwareWeaponRoot = root;
     this._cpCyberwareWeaponChangeHandler = changeHandler;
+  }
+
+  _cpRemoveAmmoListeners() {
+    try {
+      if (this._cpAmmoRoot) {
+        this._cpAmmoRoot.removeEventListener("click", this._cpAmmoClickHandler, true);
+        this._cpAmmoRoot.removeEventListener("change", this._cpAmmoChangeHandler, true);
+      }
+    } catch (_) {}
+
+    this._cpAmmoRoot = null;
+    this._cpAmmoClickHandler = null;
+    this._cpAmmoChangeHandler = null;
+  }
+
+  // Neither the effect-type checkboxes nor the blast-multiplier inputs carry a name
+  // attribute, so submitOnChange cannot persist them -- these handlers are the only
+  // thing that can. Kept separate from _cpActivateCyberwareMechanicTypeControls
+  // because that implementation resolved the Mechanic-type regression and must not be
+  // refactored without exercising the Mechanic workflow.
+  _cpActivateAmmoControls(root) {
+    this._cpRemoveAmmoListeners();
+
+    if (!root?.addEventListener) return;
+    if (this.item.type !== "ammo") return;
+
+    const editable = this.isEditable ?? this.options?.editable ?? false;
+    if (!editable) return;
+
+    const clickHandler = (event) => {
+      const target = event.target;
+      if (!target?.closest) return;
+
+      const trigger = target.closest(".ammo-ms-trigger");
+      if (trigger && root.contains(trigger)) {
+        const menuRoot = trigger.closest(".ammo-ms");
+        if (!menuRoot) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation?.();
+
+        menuRoot.classList.toggle("open");
+        return;
+      }
+
+      if (!target.closest(".ammo-ms")) {
+        root.querySelectorAll(".ammo-ms.open").forEach((menuRoot) => menuRoot.classList.remove("open"));
+      }
+    };
+
+    const changeHandler = async (event) => {
+      const target = event.target;
+      if (!target?.closest) return;
+
+      const checkbox = target.closest(".ammo-ms-menu input[type='checkbox']");
+      if (checkbox && root.contains(checkbox)) {
+        await this._cpHandleAmmoEffectTypeChange(checkbox, event);
+        return;
+      }
+
+      const multiplier = target.closest("input.ammo-blast-mult");
+      if (multiplier && root.contains(multiplier)) {
+        await this._cpHandleAmmoBlastMultiplierChange(multiplier, event);
+      }
+    };
+
+    root.addEventListener("click", clickHandler, true);
+    root.addEventListener("change", changeHandler, true);
+
+    this._cpAmmoRoot = root;
+    this._cpAmmoClickHandler = clickHandler;
+    this._cpAmmoChangeHandler = changeHandler;
+  }
+
+  async _cpHandleAmmoEffectTypeChange(checkbox, event) {
+    const menu = checkbox.closest(".ammo-ms-menu");
+    if (!menu) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+
+    const boxes = Array.from(menu.querySelectorAll("input[type='checkbox']"));
+
+    // "None" excludes every real effect, in both directions.
+    if (checkbox.value === "None" && checkbox.checked) {
+      for (const box of boxes) box.checked = box.value === "None";
+    } else if (checkbox.checked) {
+      const none = boxes.find((box) => box.value === "None");
+      if (none) none.checked = false;
+    }
+
+    let next = boxes.filter((box) => box.checked).map((box) => box.value);
+
+    // The schema default and every template guard expect at least ["None"].
+    if (!next.length) {
+      next = ["None"];
+      const none = boxes.find((box) => box.value === "None");
+      if (none) none.checked = true;
+    }
+
+    // Re-renders on purpose: every substantive section of the template is gated on
+    // effectTypes, so the form changes shape.
+    await this.item.update({ "system.effectTypes": next });
+  }
+
+  async _cpHandleAmmoBlastMultiplierChange(input, event) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+
+    const index = Number(input.dataset.index);
+    if (!Number.isFinite(index)) return;
+
+    const zones = Math.max(1, Math.min(10, Number(this.item.system?.blastZones ?? 4)));
+    const defaultMultiplier = (i) => 1 / (2 ** (i + 1));
+
+    let multipliers = this.item.system?.blastMultipliers;
+    if (!Array.isArray(multipliers)) {
+      multipliers = Array.from({ length: zones }, (_, i) => defaultMultiplier(i));
+    } else {
+      multipliers = multipliers.slice(0, zones);
+      while (multipliers.length < zones) multipliers.push(defaultMultiplier(multipliers.length));
+    }
+
+    multipliers[index] = this._cpParseCyberwareNumber(input.value);
+
+    // No re-render: the value lives in the input being edited, so rebuilding the form
+    // would only drop focus out of it.
+    await this.item.update({ "system.blastMultipliers": multipliers }, { render: false });
   }
 
   _cpActivateSkillItemControls(root) {
@@ -2903,6 +3011,10 @@ async _prepareCyberware(sheet) {
 
     try {
       this._cpRemoveCyberwareWeaponListeners();
+    } catch (_) {}
+
+    try {
+      this._cpRemoveAmmoListeners();
     } catch (_) {}
 
     try {
