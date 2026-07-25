@@ -964,21 +964,4 @@ export class CyberpunkItem extends Item {
 
     return results;
   }
-
-  /**
-   * Accelerate a vehicle
-   * @param {boolean} decelerate: Are we decelerating instead of accelerating?
-   * @returns 
-   */
-  accel(decelerate = false) {
-    if(this.type !== "vehicle")
-      return;
-    
-    let speed = this.system.speed;
-    let accelAdd = speed.acceleration * (decelerate ? -1 : 1);
-    let newSpeed = clamp(speed.value + accelAdd, 0, speed.max);
-    return this.update({
-      "system.speed.value": newSpeed
-    });
-  }
 }
