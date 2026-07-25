@@ -40,10 +40,4 @@ All rights to Cyberpunk 2020 belong to R. Talsorian Games. Under their [homebrew
 
 ## How to build
 
-Run
-
-```bash
-sass --watch scss/cyberpunk2020.scss css/cyberpunk2020.css
-```
-
-in the project folder while you develop — the SCSS will recompile automatically whenever you save changes.
+There is no build step. `css/cyberpunk2020.css` is the stylesheet `system.json` loads and the source of truth for styling — edit it directly. The SCSS sources it was originally compiled from had drifted far behind the committed CSS and have been removed.
