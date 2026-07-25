@@ -815,10 +815,9 @@ async _prepareCyberware(sheet) {
     root.dataset.cpBasicItemActionsBound = "1";
 
     root.addEventListener("click", async (event) => {
-      // Checked per event, not once at bind time: ApplicationV2 reuses the frame
-      // element across re-renders, so binding once and testing editability here
-      // is what lets a mid-session permission change take effect in either
-      // direction without reopening the sheet.
+      // ApplicationV2 reuses the frame element across re-renders, so this must be
+      // checked per event: gating the binding instead latches the first render's
+      // permissions for the life of the window.
       if (!(this.isEditable ?? this.options?.editable ?? false)) return;
 
       const target = event.target;
@@ -1765,11 +1764,8 @@ async _prepareCyberware(sheet) {
     this._cpAmmoChangeHandler = null;
   }
 
-  // Neither the effect-type checkboxes nor the blast-multiplier inputs carry a name
-  // attribute, so submitOnChange cannot persist them -- these handlers are the only
-  // thing that can. Kept separate from _cpActivateCyberwareMechanicTypeControls
-  // because that implementation resolved the Mechanic-type regression and must not be
-  // refactored without exercising the Mechanic workflow.
+  // The effect-type checkboxes and blast-multiplier inputs carry no name attribute,
+  // so submitOnChange cannot persist them and these handlers are the only path.
   _cpActivateAmmoControls(root) {
     this._cpRemoveAmmoListeners();
 

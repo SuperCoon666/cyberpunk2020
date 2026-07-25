@@ -60,12 +60,12 @@ export class CyberpunkItem extends Item {
     const allowed = await super._preCreate(data, options, user);
     if (allowed === false) return false;
 
-    // Returning false is the documented veto. Throwing here, as this used to do,
-    // aborts every sibling document in a batch create rather than just this one.
     if (this.type === "skill") {
       const id = data?._id || this._id;
       if (id && FNFF2_ONLY_MARTIAL_ART_IDS.has(id) && !isFnff2Enabled()) {
         ui?.notifications?.warn(game.i18n.localize("CYBERPUNK.FNFF2SkillDisabledWarn"));
+        // _preCreate must return false to reject only this document.
+        // Throwing here also aborts sibling documents in batch creation.
         return false;
       }
     }

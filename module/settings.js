@@ -56,9 +56,7 @@ export function registerSystemSettings() {
     config: true,
     type: Boolean,
     default: false,
-    // ApplicationV2 sheets register here, not in ui.windows, and expose .document
-    // rather than .object -- so the previous `ui.windows` + `instanceof ItemSheet`
-    // walk never matched anything.
+    // ApplicationV2 sheets register here rather than in ui.windows.
     onChange: () => {
       for (const app of foundry.applications.instances.values()) {
         if (app.document?.type === "cyberware") app.render({ force: true });

@@ -36,9 +36,9 @@ export const migrateWorld = async function (targetVersion = game.system.version)
   }
 
   // Scene tokens (unlinked tokens)
-  // Update token.actor, not token: it is the synthetic Actor backed by the token's
-  // ActorDelta, and writes to it reach that delta. TokenDocument#actorData, which
-  // this used before, was removed in v11.
+  // Write through token.actor, the synthetic Actor over the token's ActorDelta.
+  // TokenDocument#actorData was removed in v11, so updating the token itself with
+  // actor data silently does nothing.
   for (const scene of game.scenes) {
     for (const token of scene.tokens) {
       if (!token.actor) continue;
