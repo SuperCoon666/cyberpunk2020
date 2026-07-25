@@ -693,6 +693,8 @@ async _prepareCyberware(sheet) {
     this._cpActivateCyberwareBasicControls(root);
     this._cpActivateCyberwareMechanicTypeControls(root);
     this._cpActivateCyberwareSkillSearchControls(root);
+    this._cpActivateCyberwareStateControls(root);
+    this._cpActivateCyberwareWeaponControls(root);
     this._cpActivateSkillItemControls(root);
   }
 
@@ -903,7 +905,7 @@ async _prepareCyberware(sheet) {
     this._cpCyberwareBasicRemoveHandler = null;
   }
 
-  async _cpUpdateCyberwareDocument(update) {
+  async _cpUpdateCyberwareDocument(update, { render = true } = {}) {
     const actor = this.item.actor ?? this.actor ?? null;
 
     if (actor) {
@@ -914,7 +916,9 @@ async _prepareCyberware(sheet) {
       await this.item.update(update, { render: false });
     }
 
-    await this._cpRenderCyberwareDependentSheets(actor);
+    if (render) {
+      await this._cpRenderCyberwareDependentSheets(actor);
+    }
   }
 
   async _cpRenderCyberwareDependentSheets(actor = null) {
@@ -1395,6 +1399,380 @@ async _prepareCyberware(sheet) {
     this._cpCyberwareSkillSearchChangeHandler = handleSkillSearch;
     this._cpCyberwareSkillSearchMouseDownHandler = handleSkillSearchMouseDown;
     this._cpCyberwareSkillSearchClickHandler = handleSkillRemove;
+  }
+
+  _cpRemoveCyberwareStateListeners() {
+    try {
+      if (this._cpCyberwareStateRoot && this._cpCyberwareStateChangeHandler) {
+        this._cpCyberwareStateRoot.removeEventListener("change", this._cpCyberwareStateChangeHandler, true);
+      }
+    } catch (_) {}
+
+    this._cpCyberwareStateRoot = null;
+    this._cpCyberwareStateChangeHandler = null;
+  }
+
+  async _cpRenderCyberwareItemSheetsById(ids = []) {
+    const actor = this.item.actor ?? this.actor ?? null;
+    if (!actor) return;
+
+    const uniqueIds = [...new Set(ids.filter(Boolean))];
+
+    for (const id of uniqueIds) {
+      const item = actor.items.get(id);
+      if (item) await this._cpRenderOpenSheet(item);
+    }
+  }
+
+  async _cpRenderCyberwareChildModuleSheets(parentId) {
+    const actor = this.item.actor ?? this.actor ?? null;
+    if (!actor || !parentId) return;
+
+    const modules = actor.items.filter((item) => {
+      if (item.type !== "cyberware") return false;
+      if (!item.system?.Module?.IsModule) return false;
+      return item.system?.Module?.ParentId === parentId;
+    });
+
+    for (const moduleItem of modules) {
+      await this._cpRenderOpenSheet(moduleItem);
+    }
+  }
+
+  async _cpRenderCyberwareChipSkillSheets() {
+    const chipSkills = this.item.system?.CyberWorkType?.ChipSkills || {};
+    const keys = Object.keys(chipSkills);
+
+    for (const skillKey of keys) {
+      await this._cpRenderCyberwareSkillKeySheets(skillKey);
+    }
+  }
+
+  /**
+   * Read a numeric input without silently destroying what the user typed.
+   *
+   * A `type="number"` input reports `value === ""` for anything it cannot parse,
+   * so a comma-decimal entry such as "2,5" is indistinguishable from a cleared
+   * field by value alone. Coercing that to 0 is silent data loss. The `badInput`
+   * validity flag separates the two cases: the browser sets it when raw text is
+   * present but unparseable, and leaves it false for a genuinely empty field.
+   *
+   * @param {HTMLInputElement} input
+   * @param {object} [options]
+   * @param {boolean} [options.integer=false] Truncate toward zero. Slot counts and
+   *   skill levels are integers by rule, so fractional entry is normalised rather
+   *   than stored.
+   * @returns {number|null} The parsed number, or null when the entry is unparseable
+   *   and the caller must leave the stored value untouched.
+   */
+  _cpReadNumberInput(input, { integer = false } = {}) {
+    if (input?.validity?.badInput) return null;
+
+    const raw = String(input?.value ?? "");
+    if (!raw.trim()) return 0;
+
+    const n = Number(raw.replace(",", "."));
+    if (!Number.isFinite(n)) return null;
+
+    return integer ? Math.trunc(n) : n;
+  }
+
+  async _cpHandleCyberwareTypeChange(select) {
+    const cyberwareType = String(select.value || "");
+
+    let bodyType = "";
+    if (cyberwareType === "CyberArm") bodyType = "Arm";
+    else if (cyberwareType === "CyberLeg") bodyType = "Leg";
+    else if (cyberwareType === "CyberTorso") bodyType = "Torso";
+    else if (cyberwareType === "CyberAudio" || cyberwareType === "CyberOptic") bodyType = "Head";
+
+    const update = {
+      "system.cyberwareType": cyberwareType,
+      "system.CyberBodyType.Type": bodyType
+    };
+
+    // `system.MountZone` is the primary mount-zone field; `CyberBodyType.Type` is
+    // only its legacy fallback, and every read site resolves
+    // `MountZone || CyberBodyType.Type`. Writing the derived zone to the legacy
+    // field alone therefore has no effect on any item that has MountZone set --
+    // which is every item configured through the current UI. Keep both in step,
+    // but only when the type actually implies a zone: an unmapped type must not
+    // wipe a zone the user picked by hand.
+    if (bodyType) {
+      update["system.MountZone"] = bodyType;
+    }
+
+    const effectiveZone = bodyType || String(this.item.system?.MountZone || "");
+    if (effectiveZone !== "Arm" && effectiveZone !== "Leg") {
+      update["system.CyberBodyType.Location"] = "";
+    }
+
+    await this._cpUpdateCyberwareDocument(update, { render: false });
+
+    await this._cpRenderCyberwareChildModuleSheets(this.item.id);
+    await this._cpRenderCyberwareDependentSheets(this.item.actor ?? this.actor ?? null);
+  }
+
+  async _cpHandleCyberwareModuleParentChange(select) {
+    const prevId = String(this.item.system?.Module?.ParentId || "");
+    const newId = String(select.value || "");
+
+    await this._cpUpdateCyberwareDocument({
+      "system.Module.ParentId": newId
+    }, { render: false });
+
+    await this._cpRenderCyberwareItemSheetsById([prevId, newId]);
+    await this._cpRenderCyberwareDependentSheets(this.item.actor ?? this.actor ?? null);
+  }
+
+  async _cpHandleCyberwareModuleSlotsTakenChange(input) {
+    const slotsTaken = this._cpReadNumberInput(input, { integer: true });
+    if (slotsTaken === null) return;
+
+    const parentId = String(this.item.system?.Module?.ParentId || "");
+
+    await this._cpUpdateCyberwareDocument({
+      "system.Module.SlotsTaken": slotsTaken
+    }, { render: false });
+
+    await this._cpRenderCyberwareItemSheetsById([parentId]);
+    await this._cpRenderCyberwareDependentSheets(this.item.actor ?? this.actor ?? null);
+  }
+
+  async _cpHandleCyberwareModuleIsModuleChange(input) {
+    const enabled = !!input.checked;
+    const prevId = String(this.item.system?.Module?.ParentId || "");
+
+    const update = {
+      "system.Module.IsModule": enabled
+    };
+
+    if (!enabled && prevId) {
+      update["system.Module.ParentId"] = "";
+    }
+
+    await this._cpUpdateCyberwareDocument(update, { render: false });
+
+    await this._cpRenderCyberwareItemSheetsById([prevId]);
+    await this._cpRenderCyberwareDependentSheets(this.item.actor ?? this.actor ?? null);
+  }
+
+  async _cpHandleCyberwareOptionsAvailableChange(input) {
+    const optionsAvailable = this._cpReadNumberInput(input, { integer: true });
+    if (optionsAvailable === null) return;
+
+    await this._cpUpdateCyberwareDocument({
+      "system.CyberWorkType.OptionsAvailable": optionsAvailable
+    }, { render: false });
+
+    await this._cpRenderCyberwareChildModuleSheets(this.item.id);
+    await this._cpRenderCyberwareDependentSheets(this.item.actor ?? this.actor ?? null);
+  }
+
+  async _cpHandleCyberwareEquippedChange(input) {
+    const checked = !!input.checked;
+    const parentId = String(this.item.system?.Module?.ParentId || "");
+    const isChip = this.item.type === "cyberware" && cwHasType(this.item, "Chip");
+
+    const update = {
+      "system.equipped": checked
+    };
+
+    if (!checked && isChip) {
+      update["system.CyberWorkType.ChipActive"] = false;
+    }
+
+    // This handler stops propagation, so the change never reaches the form submit
+    // and _processFormData does not run. Reproduce its equip-time side autofill
+    // here, or a limb implant would stay side-less and be rejected by the
+    // module/parent-implant matcher, which compares sides for Arm and Leg.
+    if (checked) {
+      const zone = String(
+        this.item.system?.MountZone ||
+        this.item.system?.CyberBodyType?.Type ||
+        ""
+      );
+      const side = String(this.item.system?.CyberBodyType?.Location || "");
+      if ((zone === "Arm" || zone === "Leg") && !side) {
+        update["system.CyberBodyType.Location"] = "Left";
+      }
+    }
+
+    await this._cpUpdateCyberwareDocument(update, { render: false });
+
+    if (!checked && isChip) {
+      await this._cpSyncCyberwareChipSkills();
+      await this._cpRenderCyberwareChipSkillSheets();
+    }
+
+    await this._cpRenderCyberwareItemSheetsById([parentId]);
+    await this._cpRenderCyberwareChildModuleSheets(this.item.id);
+    await this._cpRenderCyberwareDependentSheets(this.item.actor ?? this.actor ?? null);
+  }
+
+  async _cpHandleCyberwareChipActiveChange(input) {
+    const checked = !!input.checked;
+    const prev = !!this.item.system?.CyberWorkType?.ChipActive;
+
+    if (prev === checked) {
+      await this.render({ force: true });
+      return;
+    }
+
+    await this._cpUpdateCyberwareDocument({
+      "system.CyberWorkType.ChipActive": checked
+    }, { render: false });
+
+    await this._cpSyncCyberwareChipSkills();
+    await this._cpRenderCyberwareChipSkillSheets();
+    await this._cpRenderCyberwareDependentSheets(this.item.actor ?? this.actor ?? null);
+  }
+
+  async _cpHandleCyberwareChipSkillLevelChange(input) {
+    const prefix = "system.CyberWorkType.ChipSkills.";
+    const skillKey = String(input.name || "").slice(prefix.length);
+    if (!skillKey) return;
+
+    const value = this._cpReadNumberInput(input, { integer: true });
+    if (value === null) return;
+
+    await this._cpUpdateCyberwareDocument({
+      [`system.CyberWorkType.ChipSkills.${skillKey}`]: value
+    }, { render: false });
+
+    await this._cpSyncCyberwareChipSkills();
+    await this._cpRenderCyberwareSkillKeySheets(skillKey);
+    await this._cpRenderCyberwareDependentSheets(this.item.actor ?? this.actor ?? null);
+  }
+
+  _cpActivateCyberwareStateControls(root) {
+    this._cpRemoveCyberwareStateListeners();
+
+    if (!root?.addEventListener) return;
+    if (this.item.type !== "cyberware") return;
+
+    const editable = this.isEditable ?? this.options?.editable ?? false;
+    if (!editable) return;
+
+    // `select[name='system.CyberBodyType.Type']` is deliberately absent: no
+    // template emits it. The live mount-zone control is
+    // `select[name='system.MountZone']`, and it is intentionally left to the form
+    // submit -- intercepting it here would stopPropagation() and suppress the only
+    // path that persists it. Its side reconciliation lives in _processFormData.
+    const stateControlSelector = [
+      "select[name='system.cyberwareType']",
+      "select[name='system.Module.ParentId']",
+      "input[name='system.Module.SlotsTaken']",
+      "input[name='system.Module.IsModule']",
+      "input[name='system.CyberWorkType.OptionsAvailable']",
+      "input[name='system.equipped']",
+      "input[name='system.CyberWorkType.ChipActive']",
+      "input[name^='system.CyberWorkType.ChipSkills.']"
+    ].join(", ");
+
+    const changeHandler = async (event) => {
+      const control = event.target?.closest?.(stateControlSelector);
+      if (!control || !root.contains(control)) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+
+      if (control.name === "system.cyberwareType") {
+        await this._cpHandleCyberwareTypeChange(control);
+        return;
+      }
+
+      if (control.name === "system.Module.ParentId") {
+        await this._cpHandleCyberwareModuleParentChange(control);
+        return;
+      }
+
+      if (control.name === "system.Module.SlotsTaken") {
+        await this._cpHandleCyberwareModuleSlotsTakenChange(control);
+        return;
+      }
+
+      if (control.name === "system.Module.IsModule") {
+        await this._cpHandleCyberwareModuleIsModuleChange(control);
+        return;
+      }
+
+      if (control.name === "system.CyberWorkType.OptionsAvailable") {
+        await this._cpHandleCyberwareOptionsAvailableChange(control);
+        return;
+      }
+
+      if (control.name === "system.equipped") {
+        await this._cpHandleCyberwareEquippedChange(control);
+        return;
+      }
+
+      if (control.name === "system.CyberWorkType.ChipActive") {
+        await this._cpHandleCyberwareChipActiveChange(control);
+        return;
+      }
+
+      if (String(control.name || "").startsWith("system.CyberWorkType.ChipSkills.")) {
+        await this._cpHandleCyberwareChipSkillLevelChange(control);
+      }
+    };
+
+    root.addEventListener("change", changeHandler, true);
+
+    this._cpCyberwareStateRoot = root;
+    this._cpCyberwareStateChangeHandler = changeHandler;
+  }
+
+  _cpRemoveCyberwareWeaponListeners() {
+    try {
+      if (this._cpCyberwareWeaponRoot && this._cpCyberwareWeaponChangeHandler) {
+        this._cpCyberwareWeaponRoot.removeEventListener("change", this._cpCyberwareWeaponChangeHandler, true);
+      }
+    } catch (_) {}
+
+    this._cpCyberwareWeaponRoot = null;
+    this._cpCyberwareWeaponChangeHandler = null;
+  }
+
+  _cpActivateCyberwareWeaponControls(root) {
+    this._cpRemoveCyberwareWeaponListeners();
+
+    if (!root?.addEventListener) return;
+    if (this.item.type !== "cyberware") return;
+
+    const editable = this.isEditable ?? this.options?.editable ?? false;
+    if (!editable) return;
+
+    // `select.cw-select-weapon` is deliberately absent: no template has emitted it
+    // for some time, so both the selector and its handler were unreachable. The
+    // cyberware weapon is edited inline instead, and system.CyberWorkType.ItemId
+    // has no UI. Do not re-add the branch without also adding the control.
+    const weaponControlSelector = "select[name='system.CyberWorkType.Weapon.ammoItemId']";
+
+    const changeHandler = async (event) => {
+      const control = event.target?.closest?.(weaponControlSelector);
+      if (!control || !root.contains(control)) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+
+      const ammoItemId = String(control.value ?? "");
+
+      // No re-render: the select already shows the chosen value, and nothing else
+      // on this sheet or the actor sheet derives from it. Re-rendering here would
+      // rebuild the form and drop focus out of the control the user just used --
+      // ApplicationV2 keeps the frame element but replaces its contents.
+      await this._cpUpdateCyberwareDocument({
+        "system.CyberWorkType.Weapon.ammoItemId": ammoItemId
+      }, { render: false });
+    };
+
+    root.addEventListener("change", changeHandler, true);
+
+    this._cpCyberwareWeaponRoot = root;
+    this._cpCyberwareWeaponChangeHandler = changeHandler;
   }
 
   _cpActivateSkillItemControls(root) {
@@ -2520,6 +2898,14 @@ async _prepareCyberware(sheet) {
     } catch (_) {}
 
     try {
+      this._cpRemoveCyberwareStateListeners();
+    } catch (_) {}
+
+    try {
+      this._cpRemoveCyberwareWeaponListeners();
+    } catch (_) {}
+
+    try {
       if (this._cpSkillItemControlsRoot && this._cpSkillItemControlsHandler) {
         this._cpSkillItemControlsRoot.removeEventListener("change", this._cpSkillItemControlsHandler, true);
       }
@@ -2581,6 +2967,20 @@ async _prepareCyberware(sheet) {
     }
 
     if (this.item.type === "cyberware") {
+      // Changing the mount zone must reconcile the left/right side. Only Arm and
+      // Leg have sides, so any other zone has to clear it -- otherwise a limb
+      // implant moved to the head keeps a stale "Left"/"Right", which is still
+      // consumed by CyberpunkActor#_prepareCharacterData and, worse, makes the
+      // module/parent-implant matcher reject the item because that matcher
+      // compares sides for Arm and Leg.
+      const submittedZone = foundry.utils.getProperty(data, "system.MountZone");
+      if (submittedZone !== undefined) {
+        const newZone = String(submittedZone || "");
+        if (newZone !== "Arm" && newZone !== "Leg") {
+          foundry.utils.setProperty(data, "system.CyberBodyType.Location", "");
+        }
+      }
+
       const equip = foundry.utils.getProperty(data, "system.equipped");
       if (equip === true) {
         const zone = String(
