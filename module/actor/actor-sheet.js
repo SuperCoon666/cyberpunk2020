@@ -617,8 +617,8 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     if (!skill) return;
 
     if (skill.system?.askMods) {
-      const dlg = new ModifiersDialog(this.actor, {
-        title: localize("ModifiersSkillTitle"),
+      const dlg = new ModifiersDialog({
+        window: { title: "CYBERPUNK.ModifiersSkillTitle" },
         showAdvDis: true,
         modifierGroups: [[
           { localKey: "ExtraModifiers", dataPath: "extraMod", defaultValue: 0 }
@@ -664,7 +664,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       modifierGroups = meleeBonkOptions(savedAttackOptions);
     }
 
-    const dialog = new ModifiersDialog(this.actor, {
+    const dialog = new ModifiersDialog({
       weapon: item,
       targetTokens,
       modifierGroups,

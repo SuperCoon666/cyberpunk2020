@@ -1,52 +1,54 @@
 import { deepSet, localize, localizeParam } from "../utils.js"
 import { fireModes } from "../lookups.js"
-import { createCyberpunkChatMessage, getGMUserIds } from "../compat.js";
+import { createCyberpunkChatMessage, getGMUserIds, getHtmlElement } from "../compat.js";
+
+const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
 /**
  * Dialog used to select attack, range, fire-mode and miscellaneous modifiers.
- * @implements {FormApplication}
+ * @extends {foundry.applications.api.ApplicationV2}
  */
- export class ModifiersDialog extends FormApplication {
+ export class ModifiersDialog extends HandlebarsApplicationMixin(ApplicationV2) {
 
     /** @override */
-      static get defaultOptions() {
-        return foundry.utils.mergeObject(super.defaultOptions, {
-        id: "weapon-modifier",
-        classes: ["cyberpunk2020"],
-        title: localize("AttackModifiers"),
-        template: "systems/cyberpunk2020/templates/dialog/modifiers.hbs",
+    static DEFAULT_OPTIONS = {
+      id: "weapon-modifier",
+      classes: ["cyberpunk2020"],
+      tag: "form",
+      position: {
         width: 500,
-        height: "auto",
-        weapon: null,
-        // Use like [[mod1, mod2], [mod3, mod4, mod5]] etc to add groupings,
-        modifierGroups: [],
-        targetTokens: [], // id and name for each target token
-        // Extra mod field for miscellaneous mod
-        extraMod: true,
-        showAdvDis: false,
-        advantage: false,
-        disadvantage: false,
-        hiddenAdvantage: false,
-        closeOnSubmit: false,
+        height: "auto"
+      },
+      window: {
+        title: "CYBERPUNK.AttackModifiers"
+      },
+      form: {
+        handler: ModifiersDialog.#onSubmit,
+        // The dialog closes itself only once onConfirm has accepted the roll.
+        closeOnSubmit: false
+      },
+      weapon: null,
+      // Use like [[mod1, mod2], [mod3, mod4, mod5]] etc to add groupings,
+      modifierGroups: [],
+      targetTokens: [], // id and name for each target token
+      // Extra mod field for miscellaneous mod
+      extraMod: true,
+      showAdvDis: false,
 
-        onConfirm: () => {}
-      });
-    }
-  
-    /* -------------------------------------------- */
-  
-    /**
-     * Return a reference to the target attribute
-     * @type {String}
-     */
-    get attribute() {
-        return this.options.name;
-    }
-  
-    /* -------------------------------------------- */
-  
+      onConfirm: () => {}
+    };
+
     /** @override */
-    getData() {
+    static PARTS = {
+      form: {
+        template: "systems/cyberpunk2020/templates/dialog/modifiers.hbs"
+      }
+    };
+
+    /* -------------------------------------------- */
+
+    /** @override */
+    async _prepareContext(options) {
       // Woo! This should be much more flexible than the previous implementation
       // My gods did it require thinking about the shape of things, because loosely-typed can be a headache
 
@@ -120,18 +122,24 @@ import { createCyberpunkChatMessage, getGMUserIds } from "../compat.js";
         isRanged: this.options.weapon?.isRanged?.() ?? false,
         shotsLeft: (this.options.weapon?._getWeaponSystem?.().shotsLeft) ?? (this.options.weapon?.system.shotsLeft) ?? 0,
         showAdvDis: this.options.showAdvDis,
-        advantage: this.options.advantage,
-        disadvantage: this.options.disadvantage,
         isGM: game.user.isGM
       };
     }
 
     /** @override */
-    activateListeners(html) {
-      super.activateListeners(html);
+    async _onRender(context, options) {
+      await super._onRender(context, options);
 
-    // RELOAD
-    html.find(".reload").on("click", async (ev) => {
+      const root = getHtmlElement(this.element);
+      if (!root) return;
+
+      this._cpActivateReload(root);
+      this._cpActivateAdvantageToggles(root);
+      this._cpActivateFireModeFields(root);
+    }
+
+    _cpActivateReload(root) {
+    root.querySelector(".reload")?.addEventListener("click", async (ev) => {
       ev.preventDefault();
 
       const weapon = this.options.weapon;
@@ -188,20 +196,20 @@ import { createCyberpunkChatMessage, getGMUserIds } from "../compat.js";
           this.options.weapon.system.CyberWorkType.Weapon.shotsLeft = shotsLeftAfter;
         }
 
-        html.find('input.number[readonly]').val(shotsLeftAfter);
+        root.querySelectorAll('input.number[readonly]').forEach(i => { i.value = shotsLeftAfter; });
 
         const sysAfter = weapon._getWeaponSystem?.() ?? weapon.system ?? {};
         const rof = Math.max(0, Math.floor(Number(sysAfter?.rof) || 0));
         const maxRounds = Math.min(rof, Math.max(0, Math.floor(Number(shotsLeftAfter) || 0)));
 
-        const fullAutoInput = html.find('input[name="fullAutoRoundsFired"]').get(0);
+        const fullAutoInput = root.querySelector('input[name="fullAutoRoundsFired"]');
         if (fullAutoInput) {
           fullAutoInput.dataset.max = String(maxRounds);
           fullAutoInput.value = String(maxRounds);
           fullAutoInput.setCustomValidity("");
         }
 
-        const suppressiveRoundsInput = html.find('input[name="roundsFired"]').get(0);
+        const suppressiveRoundsInput = root.querySelector('input[name="roundsFired"]');
         if (suppressiveRoundsInput) {
           suppressiveRoundsInput.dataset.max = String(maxRounds);
           suppressiveRoundsInput.value = String(maxRounds);
@@ -274,22 +282,37 @@ import { createCyberpunkChatMessage, getGMUserIds } from "../compat.js";
       await gmReloadAudit(shotsLeftAfter);
       applyLocalState(shotsLeftAfter);
     });
+    }
 
-      // Advantage/Disadvantage
-      html.find('input.adv, input.dis').on("change", ev => {
-        const $el = $(ev.currentTarget);
-        if ($el.hasClass("adv") && $el.prop("checked")) html.find("input.dis").prop("checked", false);
-        if ($el.hasClass("dis") && $el.prop("checked")) html.find("input.adv").prop("checked", false);
-      });
+    _cpActivateAdvantageToggles(root) {
+      const uncheckAll = (selector) => root.querySelectorAll(selector).forEach(i => { i.checked = false; });
+      root.querySelectorAll('input.adv, input.dis').forEach(el => el.addEventListener("change", ev => {
+        const target = ev.currentTarget;
+        if (target.classList.contains("adv") && target.checked) uncheckAll("input.dis");
+        if (target.classList.contains("dis") && target.checked) uncheckAll("input.adv");
+      }));
+    }
 
+    _cpActivateFireModeFields(root) {
       // Suppressive Fire fields
       // fire mode select
-      const $fireMode = html.find(
+      const fireModeEl = root.querySelector(
         'select[name="fields.fireMode"], select[name="fireMode"], .field[data-path="fireMode"] select'
       );
 
+      // What gets shown or hidden is the whole row, not the control, and several
+      // selectors can resolve to the same row — hence closest() plus a Set.
+      const rowsFor = (selectors) => {
+        const rows = new Set();
+        for (const el of root.querySelectorAll(selectors.join(','))) {
+          const row = el.closest('.field, .form-group');
+          if (row) rows.add(row);
+        }
+        return Array.from(rows);
+      };
+
       // collect strings used exclusively for suppression
-      const $supRows = $([
+      const supRows = rowsFor([
         '.field.suppressive-field',
         '.field[data-path="zoneWidth"]',
         '.field[data-path="roundsFired"]',
@@ -297,26 +320,19 @@ import { createCyberpunkChatMessage, getGMUserIds } from "../compat.js";
         'input[name="fields.zoneWidth"], input[name="zoneWidth"]',
         'input[name="fields.roundsFired"], input[name="roundsFired"]',
         'input[name="fields.targetsCount"], input[name="targetsCount"]'
-      ].join(','), html)
-        .map((i, el) => $(el).closest('.field, .form-group')[0])
-        .get()
-        .reduce((jq, el) => jq.add(el), $());
+      ]);
 
-      const $fullAutoRows = $([
+      const fullAutoRows = rowsFor([
         '.field.full-auto-rounds',
         '.field[data-path="fullAutoRoundsFired"]',
         'input[name="fields.fullAutoRoundsFired"]',
         'input[name="fullAutoRoundsFired"]'
-      ].join(','), html)
-        .map((i, el) => $(el).closest('.field, .form-group')[0])
-        .get()
-        .reduce((jq, el) => jq.add(el), $());
+      ]);
 
-      const getFullAutoRoundsInput = () => html.find('input[name="fullAutoRoundsFired"]').get(0);
+      const getFullAutoRoundsInput = () => root.querySelector('input[name="fullAutoRoundsFired"]');
 
-            const getNumberInput = (name) => {
-        return html.find(`input[name="${name}"], input[name="fields.${name}"]`).get(0);
-      };
+      const getNumberInput = (name) =>
+        root.querySelector(`input[name="${name}"], input[name="fields.${name}"]`);
 
       const showFieldValidation = (input, message, { report = false } = {}) => {
         if (!input) return false;
@@ -410,7 +426,7 @@ import { createCyberpunkChatMessage, getGMUserIds } from "../compat.js";
 
         clearFieldValidation(roundsInput, zoneWidthInput, targetsInput);
 
-        if ($fireMode.val() !== fireModes.suppressive) return true;
+        if (fireModeEl?.value !== fireModes.suppressive) return true;
 
         const maxRounds = Math.max(0, Math.floor(Number(roundsInput?.dataset?.max) || 0));
 
@@ -453,7 +469,7 @@ import { createCyberpunkChatMessage, getGMUserIds } from "../compat.js";
 
         input.setCustomValidity("");
 
-        if ($fireMode.val() !== fireModes.fullAuto) return true;
+        if (fireModeEl?.value !== fireModes.fullAuto) return true;
 
         const rawValue = String(input.value ?? "").trim();
         const value = Number(rawValue);
@@ -482,12 +498,12 @@ import { createCyberpunkChatMessage, getGMUserIds } from "../compat.js";
       };
 
       const updateVisibility = () => {
-        const fireMode = $fireMode.val();
+        const fireMode = fireModeEl?.value;
         const isSup = fireMode === fireModes.suppressive;
         const isFullAuto = fireMode === fireModes.fullAuto;
 
-        $supRows.toggle(isSup);
-        $fullAutoRows.toggle(isFullAuto);
+        for (const row of supRows) row.style.display = isSup ? "" : "none";
+        for (const row of fullAutoRows) row.style.display = isFullAuto ? "" : "none";
 
         const fullAutoInput = getFullAutoRoundsInput();
         if (fullAutoInput && !isFullAuto) fullAutoInput.setCustomValidity("");
@@ -502,23 +518,35 @@ import { createCyberpunkChatMessage, getGMUserIds } from "../compat.js";
       };
 
       updateVisibility();
-      $fireMode.on('change', () => {
+      fireModeEl?.addEventListener('change', () => {
         updateVisibility();
         validateFullAutoRoundsInput();
         validateSuppressiveInputs();
       });
 
-      html.find('input[name="fullAutoRoundsFired"]').on('input change', () => {
-        validateFullAutoRoundsInput();
-      });
+      const onInputAndChange = (selector, handler) => {
+        for (const el of root.querySelectorAll(selector)) {
+          for (const type of ["input", "change"]) el.addEventListener(type, handler);
+        }
+      };
 
-      html.find('input[name="roundsFired"], input[name="zoneWidth"], input[name="targetsCount"]').on('input change', () => {
-        validateSuppressiveInputs();
-      });
+      onInputAndChange('input[name="fullAutoRoundsFired"]', () => validateFullAutoRoundsInput());
+      onInputAndChange(
+        'input[name="roundsFired"], input[name="zoneWidth"], input[name="targetsCount"]',
+        () => validateSuppressiveInputs()
+      );
     }
   
-    /** @override */
-    async _updateObject(event, formData) {
+    /**
+     * Validate the chosen modifiers and hand them to the caller-supplied onConfirm.
+     * @this {ModifiersDialog}
+     * @param {SubmitEvent} event
+     * @param {HTMLFormElement} form
+     * @param {FormDataExtended} formDataExtended
+     */
+    static async #onSubmit(event, form, formDataExtended) {
+      const formData = foundry.utils.expandObject(formDataExtended.object);
+
       if (this.options.weapon && formData.fireMode === fireModes.fullAuto) {
         const sys = this.options.weapon._getWeaponSystem
           ? this.options.weapon._getWeaponSystem()
@@ -528,7 +556,7 @@ import { createCyberpunkChatMessage, getGMUserIds } from "../compat.js";
         const shotsLeft = Math.max(0, Math.floor(Number(sys?.shotsLeft) || 0));
         const maxRounds = Math.min(rof, shotsLeft);
 
-        const input = this.element.find('input[name="fullAutoRoundsFired"]').get(0);
+        const input = form.querySelector('input[name="fullAutoRoundsFired"]');
         const rawValue = String(input?.value ?? formData.fullAutoRoundsFired ?? "").trim();
         const requestedRounds = Number(rawValue);
 
@@ -569,9 +597,9 @@ import { createCyberpunkChatMessage, getGMUserIds } from "../compat.js";
         const shotsLeft = Math.max(0, Math.floor(Number(sys?.shotsLeft) || 0));
         const maxRounds = Math.min(rof, shotsLeft);
 
-        const roundsInput = this.element.find('input[name="roundsFired"], input[name="fields.roundsFired"]').get(0);
-        const zoneWidthInput = this.element.find('input[name="zoneWidth"], input[name="fields.zoneWidth"]').get(0);
-        const targetsInput = this.element.find('input[name="targetsCount"], input[name="fields.targetsCount"]').get(0);
+        const roundsInput = form.querySelector('input[name="roundsFired"], input[name="fields.roundsFired"]');
+        const zoneWidthInput = form.querySelector('input[name="zoneWidth"], input[name="fields.zoneWidth"]');
+        const targetsInput = form.querySelector('input[name="targetsCount"], input[name="fields.targetsCount"]');
 
         const invalidate = (input, message) => {
           if (!input) return false;
@@ -643,9 +671,7 @@ import { createCyberpunkChatMessage, getGMUserIds } from "../compat.js";
         formData.targetsCount = targetsCount;
       }
 
-      this.object = formData;
-
-      const fired = await this.options.onConfirm(this.object);
+      const fired = await this.options.onConfirm(formData);
       if (fired !== false) this.close();
     }
  }

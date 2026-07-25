@@ -1,6 +1,7 @@
 {{!-- Dialog content for when a ranged weapon is fired --}}
 {{!-- By this point, fire mode and range should be selected, and possibly target --}}
-<form class="cyberpunk weapon-modifiers">
+{{!-- Not a <form>: the ApplicationV2 root element is the form, and nesting one here empties the submitted data. --}}
+<div class="cyberpunk weapon-modifiers">
     {{#each modifierGroups as |group|}}
         <div class="field-list">
             {{#each group}}
@@ -41,18 +42,18 @@
     <div class="field-list">
         <div class="field full-width">
             <label>{{CPLocal "Advantage"}}</label>
-            <input type="checkbox" name="advantage" class="adv-dis adv" {{#if advantage}}checked{{/if}}>
+            <input type="checkbox" name="advantage" class="adv-dis adv">
         </div>
 
         <div class="field full-width">
             <label>{{CPLocal "Disadvantage"}}</label>
-            <input type="checkbox" name="disadvantage" class="adv-dis dis" {{#if disadvantage}}checked{{/if}}>
+            <input type="checkbox" name="disadvantage" class="adv-dis dis">
         </div>
 
         {{#if isGM}}
         <div class="field full-width">
             <label>{{CPLocal "HiddenAdvantage"}}</label>
-            <input type="checkbox" name="hiddenAdvantage" class="adv-hidden" {{#if hiddenAdvantage}}checked{{/if}}>
+            <input type="checkbox" name="hiddenAdvantage" class="adv-hidden">
         </div>
         {{/if}}
     </div>
@@ -62,8 +63,9 @@
     {{#if isRanged}}
         <button type="button" class="reload">{{CPLocal "Reload"}}</button>
     {{/if}}
-    <button type="submit" name="submit" class="fire" value="1" autofocus>
+    {{!-- No name attribute: form.submit would shadow HTMLFormElement.prototype.submit. --}}
+    <button type="submit" class="fire" autofocus>
         {{CPLocal "OK"}}
     </button>
     </div>
-</form>
+</div>
