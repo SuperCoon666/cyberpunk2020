@@ -1415,33 +1415,6 @@ async _prepareCyberware(sheet) {
     this._cpCyberwareStateChangeHandler = null;
   }
 
-  async _cpRenderCyberwareItemSheetsById(ids = []) {
-    const actor = this.item.actor ?? this.actor ?? null;
-    if (!actor) return;
-
-    const uniqueIds = [...new Set(ids.filter(Boolean))];
-
-    for (const id of uniqueIds) {
-      const item = actor.items.get(id);
-      if (item) await this._cpRenderOpenSheet(item);
-    }
-  }
-
-  async _cpRenderCyberwareChildModuleSheets(parentId) {
-    const actor = this.item.actor ?? this.actor ?? null;
-    if (!actor || !parentId) return;
-
-    const modules = actor.items.filter((item) => {
-      if (item.type !== "cyberware") return false;
-      if (!item.system?.Module?.IsModule) return false;
-      return item.system?.Module?.ParentId === parentId;
-    });
-
-    for (const moduleItem of modules) {
-      await this._cpRenderOpenSheet(moduleItem);
-    }
-  }
-
   async _cpRenderCyberwareChipSkillSheets() {
     const chipSkills = this.item.system?.CyberWorkType?.ChipSkills || {};
     const keys = Object.keys(chipSkills);
@@ -1489,49 +1462,40 @@ async _prepareCyberware(sheet) {
 
     await this._cpUpdateCyberwareDocument(update, { render: false });
 
-    await this._cpRenderCyberwareChildModuleSheets(this.item.id);
     await this._cpRenderCyberwareDependentSheets(this.item.actor ?? this.actor ?? null);
   }
 
   async _cpHandleCyberwareModuleParentChange(select) {
-    const prevId = String(this.item.system?.Module?.ParentId || "");
-    const newId = String(select.value || "");
-
     await this._cpUpdateCyberwareDocument({
-      "system.Module.ParentId": newId
+      "system.Module.ParentId": String(select.value || "")
     }, { render: false });
 
-    await this._cpRenderCyberwareItemSheetsById([prevId, newId]);
     await this._cpRenderCyberwareDependentSheets(this.item.actor ?? this.actor ?? null);
   }
 
   async _cpHandleCyberwareModuleSlotsTakenChange(input) {
     const slotsTaken = this._cpParseCyberwareNumber(input.value);
-    const parentId = String(this.item.system?.Module?.ParentId || "");
 
     await this._cpUpdateCyberwareDocument({
       "system.Module.SlotsTaken": slotsTaken
     }, { render: false });
 
-    await this._cpRenderCyberwareItemSheetsById([parentId]);
     await this._cpRenderCyberwareDependentSheets(this.item.actor ?? this.actor ?? null);
   }
 
   async _cpHandleCyberwareModuleIsModuleChange(input) {
     const enabled = !!input.checked;
-    const prevId = String(this.item.system?.Module?.ParentId || "");
 
     const update = {
       "system.Module.IsModule": enabled
     };
 
-    if (!enabled && prevId) {
+    if (!enabled && this.item.system?.Module?.ParentId) {
       update["system.Module.ParentId"] = "";
     }
 
     await this._cpUpdateCyberwareDocument(update, { render: false });
 
-    await this._cpRenderCyberwareItemSheetsById([prevId]);
     await this._cpRenderCyberwareDependentSheets(this.item.actor ?? this.actor ?? null);
   }
 
@@ -1542,13 +1506,11 @@ async _prepareCyberware(sheet) {
       "system.CyberWorkType.OptionsAvailable": optionsAvailable
     }, { render: false });
 
-    await this._cpRenderCyberwareChildModuleSheets(this.item.id);
     await this._cpRenderCyberwareDependentSheets(this.item.actor ?? this.actor ?? null);
   }
 
   async _cpHandleCyberwareEquippedChange(input) {
     const checked = !!input.checked;
-    const parentId = String(this.item.system?.Module?.ParentId || "");
     const isChip = this.item.type === "cyberware" && cwHasType(this.item, "Chip");
 
     const update = {
@@ -1582,8 +1544,6 @@ async _prepareCyberware(sheet) {
       await this._cpRenderCyberwareChipSkillSheets();
     }
 
-    await this._cpRenderCyberwareItemSheetsById([parentId]);
-    await this._cpRenderCyberwareChildModuleSheets(this.item.id);
     await this._cpRenderCyberwareDependentSheets(this.item.actor ?? this.actor ?? null);
   }
 

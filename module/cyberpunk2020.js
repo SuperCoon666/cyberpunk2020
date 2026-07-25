@@ -69,6 +69,29 @@ Hooks.once('init', async function () {
     // Register and preload templates with Foundry. See templates.js for usage
     preloadHandlebarsTemplates();
 
+    // A cyberware sheet shows slot counts and parent lists derived from its sibling
+    // items, so it goes stale when one of them changes. The sheets can only refresh
+    // themselves and each other on the client that made the edit, which leaves out
+    // changes coming from the actor sheet, a macro, or another client.
+    //
+    // The changed item's own sheet is skipped on purpose: Foundry re-renders it, and
+    // handlers that pass render:false are suppressing that deliberately.
+    Hooks.on("updateItem", (item, changes) => {
+      if (item.type !== "cyberware" || !item.actor) return;
+
+      const system = changes.system;
+      if (!system) return;
+
+      const affectsSlots = ["equipped", "MountZone", "cyberwareType", "CyberBodyType", "Module"]
+        .some(key => key in system) || ("OptionsAvailable" in (system.CyberWorkType ?? {}));
+      if (!affectsSlots) return;
+
+      for (const sibling of item.actor.items) {
+        if (sibling.type !== "cyberware" || sibling.id === item.id) continue;
+        if (sibling.sheet?.rendered) sibling.sheet.render({ force: true });
+      }
+    });
+
     // Fumble inline results
     Hooks.on("renderChatMessageHTML", (message, html) => {
       const root = getHtmlElement(html);
