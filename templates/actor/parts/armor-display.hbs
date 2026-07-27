@@ -19,25 +19,27 @@
         value="{{hitLoc.stoppingPower}}"
         {{#unless ../edit}}readonly{{/unless}}>
 
-        {{!-- SDP: show ONLY on actors (system.sdp.sum exists) and ONLY if zone sum != 0 --}}
+        {{!-- SDP: actors only (system.sdp.sum exists). A hand-entered `current` outlives the
+              implant that gave the zone its sum, so hiding on sum alone left that stored value
+              with no control at all — it could be neither seen nor corrected. --}}
         {{#if ../system.sdp.sum}}
-          {{#unless (equals (lookup ../system.sdp.sum name) 0)}}
-            {{#unless (equals (lookup ../system.sdp.sum name) "0")}}
-              <div class="segment-sdp-row">
-                <input
-                  type="number"
-                  class="smallnumber not-editable"
-                  title="{{CPLocal "SDPSumTooltip"}}"
-                  value="{{lookup ../system.sdp.sum name}}"
-                  readonly>
-                <input
-                  type="number"
-                  class="smallnumber"
-                  title="{{CPLocal "SDPCurrentTooltip"}}"
-                  name="system.sdp.current.{{name}}"
-                  value="{{lookup ../system.sdp.current name}}">
-              </div>
-            {{/unless}}
+          {{#unless (and
+                      (or (equals (lookup ../system.sdp.sum name) 0) (equals (lookup ../system.sdp.sum name) "0"))
+                      (or (equals (lookup ../system.sdp.current name) 0) (equals (lookup ../system.sdp.current name) "0")))}}
+            <div class="segment-sdp-row">
+              <input
+                type="number"
+                class="smallnumber not-editable"
+                title="{{CPLocal "SDPSumTooltip"}}"
+                value="{{lookup ../system.sdp.sum name}}"
+                readonly>
+              <input
+                type="number"
+                class="smallnumber"
+                title="{{CPLocal "SDPCurrentTooltip"}}"
+                name="system.sdp.current.{{name}}"
+                value="{{lookup ../system.sdp.current name}}">
+            </div>
           {{/unless}}
         {{/if}}
 

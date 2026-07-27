@@ -871,17 +871,6 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       const target = event.target;
       if (!target?.matches) return;
 
-      if (target.matches('input[name^="system.sdp.current."]')) {
-        const path = target.getAttribute("name");
-        const zone = path?.split(".").pop();
-        if (!zone) return;
-
-        await this.actor.update({
-          [`system.sdp.current.${zone}`]: Number(target.value || 0)
-        });
-        return;
-      }
-
       if (target.matches(".skill-level")) {
         await this._cpSaveSkillLevelFromInput(target);
         return;

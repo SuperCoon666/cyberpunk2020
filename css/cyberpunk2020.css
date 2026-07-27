@@ -1,22 +1,10 @@
 /* Scoped to the system's own windows: a system stylesheet lives in layer(system), which
    outranks every core layer regardless of specificity, so an unscoped selector here would
-   restyle core dialogs and other modules' applications too. */
+   restyle core dialogs and other modules' applications too.
+   No ::-webkit-scrollbar rules belong here: Chrome ignores them on any element carrying
+   scrollbar-width or scrollbar-color, and both this rule and core's own `*` rule set one. */
 .cyberpunk * {
   scrollbar-width: thin;
-}
-
-.cyberpunk *::-webkit-scrollbar {
-  width: 4px;
-}
-
-.cyberpunk *::-webkit-scrollbar-track {
-  background-color: rgb(90, 90, 90);
-  border-radius: 0px;
-}
-
-.cyberpunk *::-webkit-scrollbar-thumb {
-  border-width: 0px;
-  background-color: black;
 }
 
 .cyberpunk section.window-content {
