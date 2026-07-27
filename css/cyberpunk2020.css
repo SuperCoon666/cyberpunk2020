@@ -1,17 +1,20 @@
-* {
+/* Scoped to the system's own windows: a system stylesheet lives in layer(system), which
+   outranks every core layer regardless of specificity, so an unscoped selector here would
+   restyle core dialogs and other modules' applications too. */
+.cyberpunk * {
   scrollbar-width: thin;
 }
 
-*::-webkit-scrollbar {
+.cyberpunk *::-webkit-scrollbar {
   width: 4px;
 }
 
-*::-webkit-scrollbar-track {
+.cyberpunk *::-webkit-scrollbar-track {
   background-color: rgb(90, 90, 90);
   border-radius: 0px;
 }
 
-*::-webkit-scrollbar-thumb {
+.cyberpunk *::-webkit-scrollbar-thumb {
   border-width: 0px;
   background-color: black;
 }
@@ -124,7 +127,7 @@
   flex-grow: 0 !important;
 }
 
-.profile-img {
+.cyberpunk .profile-img {
   max-height: 170px;
   max-width: 20%;
   flex-shrink: 2;
@@ -132,20 +135,20 @@
   margin-right: 4px;
 }
 
-.sheet-body .tab {
+.cyberpunk .sheet-body .tab {
   height: 100%;
 }
 
-.editor {
+.cyberpunk .editor {
   height: 100%;
 }
 
-.flex-pad {
+.cyberpunk .flex-pad {
   flex-grow: 1;
   flex-shrink: 1;
 }
 
-.field-list {
+.cyberpunk .field-list {
   width: 100%;
   display: grid;
   grid-template-columns: 1fr 1fr;;
@@ -1130,7 +1133,7 @@ div.statderive .value.rightborder {
   font-variant: small-caps;
 }
 
-.window-content {
+.cyberpunk .window-content {
   container-type: inline-size;
 }
 
@@ -1367,7 +1370,7 @@ div.statderive .value.rightborder {
 /* -----------------------------------------------------------------
  *  Weapon‑modifier dialog
  * ----------------------------------------------------------------- */
-#weapon-modifier {
+.weapon-modifier {
   min-width: 460px;
   max-width: min(820px, calc(100vw - 60px));
 }
@@ -1599,28 +1602,28 @@ div.statderive .value.rightborder {
   margin: 0;
 }
 
-#weapon-modifier .window-content {
+.weapon-modifier .window-content {
   height: auto !important;
   max-height: calc(100vh - 160px) !important;
   overflow-y: auto !important;
   padding-right: 8px !important;
 }
 
-#weapon-modifier .field { min-width: 0; }
-#weapon-modifier .field > * { min-width: 0; }
+.weapon-modifier .field { min-width: 0; }
+.weapon-modifier .field > * { min-width: 0; }
 
-#weapon-modifier .field select {
+.weapon-modifier .field select {
   min-width: 0;
   max-width: 100%;
 }
 
-#weapon-modifier .field input[type="text"],
-#weapon-modifier .field input[type="number"] {
+.weapon-modifier .field input[type="text"],
+.weapon-modifier .field input[type="number"] {
   min-width: 0;
 }
 
 @media (max-width: 560px) {
-  #weapon-modifier .field-list { grid-template-columns: 1fr; }
+  .weapon-modifier .field-list { grid-template-columns: 1fr; }
 }
 
 /* Fumble inline roll results: hover shows dice tooltip, click is disabled by system hook */

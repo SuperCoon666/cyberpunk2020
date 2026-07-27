@@ -21,9 +21,6 @@ import { registerSystemSettings } from "./settings.js"
 import { getHtmlElement } from "./compat.js";
 
 const { Actors, Items } = foundry.documents.collections;
-// foundry.appv1 is an optional compatibility layer; an unguarded destructure would
-// throw during ESM evaluation and abort init before any hook fires.
-const { ActorSheet, ItemSheet } = foundry.appv1?.sheets ?? {};
 
 Hooks.once('init', async function () {
 
@@ -55,10 +52,8 @@ Hooks.once('init', async function () {
     CONFIG.Item.dataModels.vehicle = CyberpunkVehicleData;
     CONFIG.Item.dataModels.misc = CyberpunkMiscData;
 
-    // Register sheets, unregister original core sheets
-    if (ActorSheet) Actors.unregisterSheet("core", ActorSheet);
+    // v14 registers no core sheet for Actor or Item, so there is nothing to unregister.
     Actors.registerSheet("cyberpunk2020", CyberpunkActorSheet, { makeDefault: true });
-    if (ItemSheet) Items.unregisterSheet("core", ItemSheet);
     Items.registerSheet("cyberpunk2020", CyberpunkItemSheet, { makeDefault: true });
 
     // Register System Settings

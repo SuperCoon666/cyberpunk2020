@@ -4,9 +4,9 @@
   "description": "R. Talsorian Games' Cyberpunk 2020 System",
   "version": "1.1.1",
   "compatibility": {
-    "minimum": 13,
+    "minimum": 14,
     "verified": 14,
-    "maximum": 14
+    "maximum": 15
   },
   "authors": [
     {
@@ -25,63 +25,63 @@
   "packs": [
     {
       "name": "roll-tables",
-      "label": "Roll Tables",
+      "label": "CYBERPUNK.Packs.RollTables",
       "system": "cyberpunk2020",
       "path": "./packs/roll-tables.db",
       "type": "RollTable"
     },
     {
       "name": "default-skills-en",
-      "label": "Default Skills EN",
+      "label": "CYBERPUNK.Packs.DefaultSkillsEn",
       "system": "cyberpunk2020",
       "path": "./packs/default-skills-en.db",
       "type": "Item"
     },
     {
       "name": "default-skills-ru",
-      "label": "Default Skills RU",
+      "label": "CYBERPUNK.Packs.DefaultSkillsRu",
       "system": "cyberpunk2020",
       "path": "./packs/default-skills-ru.db",
       "type": "Item"
     },
     {
       "name": "role-skills-en",
-      "label": "Role Skills EN",
+      "label": "CYBERPUNK.Packs.RoleSkillsEn",
       "system": "cyberpunk2020",
       "path": "./packs/role-skills-en.db",
       "type": "Item"
     },
     {
       "name": "role-skills-ru",
-      "label": "Role Skills RU",
+      "label": "CYBERPUNK.Packs.RoleSkillsRu",
       "system": "cyberpunk2020",
       "path": "./packs/role-skills-ru.db",
       "type": "Item"
     },
     {
       "name": "pistols-add",
-      "label": "Pistols-Add",
+      "label": "CYBERPUNK.Packs.PistolsAdd",
       "path": "./packs/pistols-add.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "smgs-add",
-      "label": "SMGs-Add",
+      "label": "CYBERPUNK.Packs.SmgsAdd",
       "path": "./packs/smgs-add.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "rifles-add",
-      "label": "Rifles-Add",
+      "label": "CYBERPUNK.Packs.RiflesAdd",
       "path": "./packs/rifles-add.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "armor-add",
-      "label": "Armor-Add",
+      "label": "CYBERPUNK.Packs.ArmorAdd",
       "path": "./packs/armor-add.db",
       "system": "cyberpunk2020",
       "type": "Item"
@@ -89,223 +89,223 @@
 
     {
       "name": "melee",
-      "label": "Melee",
+      "label": "CYBERPUNK.Packs.Melee",
       "path": "./packs/melee.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "heavy",
-      "label": "Heavy",
+      "label": "CYBERPUNK.Packs.Heavy",
       "path": "./packs/heavy.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "exotics",
-      "label": "Exotics",
+      "label": "CYBERPUNK.Packs.Exotics",
       "path": "./packs/exotics.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "pistols",
-      "label": "Pistols",
+      "label": "CYBERPUNK.Packs.Pistols",
       "path": "./packs/pistols.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },    {
       "name": "rifles",
-      "label": "Rifles",
+      "label": "CYBERPUNK.Packs.Rifles",
       "path": "./packs/rifles.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "shotguns",
-      "label": "Shotguns",
+      "label": "CYBERPUNK.Packs.Shotguns",
       "path": "./packs/shotguns.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },    
     {
       "name": "submachineguns",
-      "label": "Submachineguns",
+      "label": "CYBERPUNK.Packs.Submachineguns",
       "path": "./packs/submachineguns.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "cyberware-old",
-      "label": "Cyberware-Old",
+      "label": "CYBERPUNK.Packs.CyberwareOld",
       "path": "./packs/cyberware-old.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "fashonware",
-      "label": "Fashonware",
+      "label": "CYBERPUNK.Packs.Fashonware",
       "path": "./packs/fashonware.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "bioware",
-      "label": "Bioware",
+      "label": "CYBERPUNK.Packs.Bioware",
       "path": "./packs/bioware.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "cyberweapons",
-      "label": "CyberWeapons",
+      "label": "CYBERPUNK.Packs.Cyberweapons",
       "path": "./packs/cyberweapons.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "implants",
-      "label": "Implants",
+      "label": "CYBERPUNK.Packs.Implants",
       "path": "./packs/implants.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "neuralware",
-      "label": "Neuralware",
+      "label": "CYBERPUNK.Packs.Neuralware",
       "path": "./packs/neuralware.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "cyberaudio",
-      "label": "CyberAudio",
+      "label": "CYBERPUNK.Packs.Cyberaudio",
       "path": "./packs/cyberaudio.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "cyberlimbs",
-      "label": "CyberLimbs",
+      "label": "CYBERPUNK.Packs.Cyberlimbs",
       "path": "./packs/cyberlimbs.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
         {
       "name": "cyberoptic",
-      "label": "CyberOptic",
+      "label": "CYBERPUNK.Packs.Cyberoptic",
       "path": "./packs/cyberoptic.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "other-cyberware",
-      "label": "Other-Cyberware",
+      "label": "CYBERPUNK.Packs.OtherCyberware",
       "path": "./packs/other-cyberware.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "communication",
-      "label": "Communication",
+      "label": "CYBERPUNK.Packs.Communication",
       "path": "./packs/communication.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "electronics",
-      "label": "Electronics",
+      "label": "CYBERPUNK.Packs.Electronics",
       "path": "./packs/electronics.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "entertainment",
-      "label": "Entertainment",
+      "label": "CYBERPUNK.Packs.Entertainment",
       "path": "./packs/entertainment.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "fashion",
-      "label": "Fashion",
+      "label": "CYBERPUNK.Packs.Fashion",
       "path": "./packs/fashion.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "furnishing",
-      "label": "Furnishing",
+      "label": "CYBERPUNK.Packs.Furnishing",
       "path": "./packs/furnishing.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "medical",
-      "label": "Medical",
+      "label": "CYBERPUNK.Packs.Medical",
       "path": "./packs/medical.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {  
       "name": "netrunningEquipment",
-      "label": "Netrunning Equipment",
+      "label": "CYBERPUNK.Packs.NetrunningEquipment",
       "path": "./packs/netrunningEquipment.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "security",
-      "label": "Security",
+      "label": "CYBERPUNK.Packs.Security",
       "path": "./packs/security.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "surveillance",
-      "label": "Surveillance",
+      "label": "CYBERPUNK.Packs.Surveillance",
       "path": "./packs/surveillance.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "tools",
-      "label": "Tools",
+      "label": "CYBERPUNK.Packs.Tools",
       "path": "./packs/tools.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "rentalandservices",
-      "label": "Rental&Services",
+      "label": "CYBERPUNK.Packs.Rentalandservices",
       "path": "./packs/rentalandservices.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "sellthedead",
-      "label": "Sell the Dead",
+      "label": "CYBERPUNK.Packs.Sellthedead",
       "path": "./packs/sellTheDead.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "armor",
-      "label": "Armor",
+      "label": "CYBERPUNK.Packs.Armor",
       "path": "./packs/armor.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "vehicles",
-      "label": "Vehicles",
+      "label": "CYBERPUNK.Packs.Vehicles",
       "path": "./packs/vehicles.db",
       "system": "cyberpunk2020",
       "type": "Item"
     },
     {
       "name": "programs",
-      "label": "Programs",
+      "label": "CYBERPUNK.Packs.Programs",
       "system": "cyberpunk2020",
       "path": "./packs/programs.db",
       "type": "Item"

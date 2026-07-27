@@ -1,60 +1,21 @@
 /**
- * Compatibility helpers for Foundry VTT v13/v14.
- * Keep version and API branching here instead of spreading it across sheets,
- * dialogs and roll/chat code.
+ * Shared helpers for editor, drop-data and chat-message handling.
+ * Keep API shims here instead of spreading them across sheets, dialogs and
+ * roll/chat code.
  */
 
-export function getFoundryMajorVersion() {
-  const generation = Number(globalThis.game?.release?.generation);
-  if (Number.isFinite(generation) && generation > 0) return generation;
-
-  const version = globalThis.game?.release?.version ?? globalThis.game?.version ?? "";
-  const match = String(version).match(/^(\d+)/);
-  return match ? Number(match[1]) : 0;
-}
-
-export function isFoundryV13() {
-  return getFoundryMajorVersion() === 13;
-}
-
-export function isFoundryV14Plus() {
-  return getFoundryMajorVersion() >= 14;
-}
-
 export async function renderCyberpunkTemplate(path, data = {}, options = {}) {
-  const renderer =
-    foundry.applications?.handlebars?.renderTemplate
-    ?? globalThis.renderTemplate;
-
-  if (typeof renderer !== "function") {
-    throw new Error("Cyberpunk2020 | No Handlebars template renderer is available.");
-  }
-
-  return renderer(path, data, options);
+  return foundry.applications.handlebars.renderTemplate(path, data, options);
 }
 
 export function getHtmlElement(html) {
   if (!html) return null;
+  if (html instanceof HTMLElement) return html;
 
-  const HTMLElementCtor = globalThis.HTMLElement;
-  const isHTMLElement = (value) => !!(HTMLElementCtor && value instanceof HTMLElementCtor);
-
-  if (isHTMLElement(html)) return html;
-
-  if (isHTMLElement(html.element)) return html.element;
-
-  // jQuery, legacy wrappers, arrays, NodeLists, and HTMLCollections.
-  const first = html[0] ?? (typeof html.item === "function" ? html.item(0) : null);
-  if (isHTMLElement(first)) return first;
-
-  if (typeof html.toArray === "function") {
-    const found = html.toArray().find(isHTMLElement);
-    if (found) return found;
-  }
-
-  if (Array.isArray(html)) return html.find(isHTMLElement) ?? null;
-
-  return html?.querySelector ? html : null;
+  // Two live producers of a non-element here, both outside this system's control:
+  // item.apps can hold another module's V1 sheet, whose .element is jQuery; and
+  // foundry.utils.parseHTML returns an HTMLCollection when the markup has several roots.
+  return html[0] instanceof HTMLElement ? html[0] : null;
 }
 
 function readHTMLFromEditorInstance(editor) {
@@ -204,25 +165,7 @@ export function saveRichEditorHTML(app, root, target = "system.notes", selectors
 }
 
 export async function itemFromDropData(data) {
-  const implFactory = globalThis.Item?.implementation?.fromDropData;
-  if (typeof implFactory === "function") return implFactory.call(globalThis.Item.implementation, data);
-
-  const itemFactory = globalThis.Item?.fromDropData;
-  if (typeof itemFactory === "function") return itemFactory.call(globalThis.Item, data);
-
-  return data?.data ?? data;
-}
-
-function readCoreSetting(...keys) {
-  for (const key of keys) {
-    try {
-      const value = globalThis.game?.settings?.get?.("core", key);
-      if (value != null && value !== "") return value;
-    } catch (_) {
-      // Setting does not exist in this Foundry generation.
-    }
-  }
-  return undefined;
+  return Item.implementation.fromDropData(data);
 }
 
 function normalizeModeName(mode) {
@@ -231,32 +174,11 @@ function normalizeModeName(mode) {
 }
 
 /**
- * Normalize a legacy v13 roll mode value.
+ * Normalize a chat message visibility mode.
  *
- * v13 Roll#toMessage expects options.rollMode values like publicroll/gmroll.
- * v14 keeps backwards-compatible roll-mode support, but its native API uses
- * message visibility modes instead.
- */
-export function getRollMode(rollMode) {
-  const normalized = normalizeModeName(rollMode);
-  if (!normalized) return undefined;
-
-  const modes = globalThis.CONST?.DICE_ROLL_MODES ?? {};
-
-  if (["public", "publicroll", "roll"].includes(normalized)) return modes.PUBLIC ?? "publicroll";
-  if (["private", "gm", "gmroll"].includes(normalized)) return modes.PRIVATE ?? "gmroll";
-  if (["blind", "blindroll"].includes(normalized)) return modes.BLIND ?? "blindroll";
-  if (["self", "selfroll"].includes(normalized)) return modes.SELF ?? "selfroll";
-
-  return rollMode;
-}
-
-/**
- * Normalize a v14 chat message visibility mode.
- *
- * v14 ChatMessage.applyMode and Roll#toMessage expect values like
- * public/gm/blind/self. The function accepts both old roll modes and new
- * message modes so call sites can stay stable across v13/v14.
+ * ChatMessage.applyMode and Roll#toMessage expect public/gm/blind/self/ic.
+ * Legacy roll-mode spellings are still accepted so stored fire options and
+ * flags written by older versions keep working.
  */
 export function getMessageMode(messageMode) {
   const normalized = normalizeModeName(messageMode);
@@ -271,93 +193,33 @@ export function getMessageMode(messageMode) {
   return messageMode;
 }
 
-export function getDefaultRollMode() {
-  return getRollMode(readCoreSetting("rollMode", "messageMode") ?? "publicroll");
-}
-
 export function getDefaultMessageMode() {
-  return getMessageMode(readCoreSetting("messageMode", "rollMode") ?? "public");
-}
-
-export function getPublicRollMode() {
-  return getRollMode("public");
-}
-
-export function getPrivateRollMode() {
-  return getRollMode("private");
-}
-
-export function getBlindRollMode() {
-  return getRollMode("blind");
-}
-
-export function getSelfRollMode() {
-  return getRollMode("self");
+  return getMessageMode(game.settings.get("core", "messageMode") || "public");
 }
 
 export function getPublicMessageMode() {
   return getMessageMode("public");
 }
 
-export function getPrivateMessageMode() {
-  return getMessageMode("gm");
-}
-
-export function getBlindMessageMode() {
-  return getMessageMode("blind");
-}
-
-export function getSelfMessageMode() {
-  return getMessageMode("self");
-}
-
 export function getGMUserIds() {
-  const recipients = globalThis.ChatMessage?.getWhisperRecipients?.("GM") ?? [];
-  return recipients.map((u) => u.id).filter(Boolean);
+  return ChatMessage.getWhisperRecipients("GM").map((u) => u.id).filter(Boolean);
 }
 
 function applyMessageModeToChatData(chatData, mode) {
   const messageMode = getMessageMode(mode);
   if (!messageMode) return chatData;
 
-  if (typeof globalThis.ChatMessage?.applyMode === "function") {
-    const applied = ChatMessage.applyMode(chatData, messageMode);
-    return applied ?? chatData;
-  }
+  // ChatMessage.applyMode dereferences chatData.speaker for the "ic" mode, and
+  // createCyberpunkRollCard deletes the key when no speaker was supplied.
+  if (chatData.speaker == null) chatData.speaker = {};
 
-  if (typeof globalThis.ChatMessage?.applyRollMode === "function") {
-    const rollMode = getRollMode(messageMode);
-    const applied = ChatMessage.applyRollMode(chatData, rollMode);
-    return applied ?? chatData;
-  }
-
-  const gmIds = getGMUserIds();
-  switch (messageMode) {
-    case "gm":
-      chatData.whisper = chatData.whisper?.length ? chatData.whisper : gmIds;
-      chatData.blind = false;
-      break;
-    case "blind":
-      chatData.whisper = chatData.whisper?.length ? chatData.whisper : gmIds;
-      chatData.blind = true;
-      break;
-    case "self":
-      chatData.whisper = [globalThis.game?.user?.id].filter(Boolean);
-      chatData.blind = false;
-      break;
-    case "public":
-      chatData.whisper = [];
-      chatData.blind = false;
-      break;
-  }
-
-  return chatData;
+  return ChatMessage.applyMode(chatData, messageMode) ?? chatData;
 }
 
 function resolveVisibilityMode({ rollMode, messageMode, useDefault = false } = {}) {
   if (messageMode != null && messageMode !== "") return getMessageMode(messageMode);
-  if (rollMode != null && rollMode !== "") return isFoundryV14Plus() ? getMessageMode(rollMode) : getRollMode(rollMode);
-  if (useDefault) return isFoundryV14Plus() ? getDefaultMessageMode() : getDefaultRollMode();
+  if (rollMode != null && rollMode !== "") return getMessageMode(rollMode);
+  if (useDefault) return getDefaultMessageMode();
   return undefined;
 }
 
@@ -379,12 +241,12 @@ export async function evaluateCyberpunkRoll(roll, options = {}) {
 }
 
 /**
- * Create a ChatMessage with v13/v14-compatible visibility handling.
+ * Create a ChatMessage with explicit visibility handling.
  *
  * Options accepted by this wrapper:
- * - rollMode: legacy v13-style roll mode (publicroll/gmroll/blindroll/selfroll)
- * - messageMode: v14-style visibility mode (public/gm/blind/self)
- * - useDefaultRollMode: apply the user's current chat roll/message mode explicitly
+ * - messageMode: visibility mode (public/gm/blind/self/ic)
+ * - rollMode: legacy spelling of the same thing, still accepted
+ * - useDefaultRollMode: apply the user's current chat message mode explicitly
  */
 export async function createCyberpunkChatMessage(data = {}, options = {}) {
   const { rollMode, messageMode, useDefaultRollMode = false, ...createOptions } = options ?? {};
@@ -401,7 +263,7 @@ export async function createCyberpunkChatMessage(data = {}, options = {}) {
 }
 
 /**
- * Send a single Roll to chat, using the correct v13/v14 visibility option.
+ * Send a single Roll to chat with an explicit visibility mode.
  */
 export async function rollToCyberpunkChatMessage(roll, messageData = {}, options = {}) {
   const { rollMode, messageMode, useDefaultRollMode = true, ...rollOptions } = options ?? {};
@@ -410,10 +272,7 @@ export async function rollToCyberpunkChatMessage(roll, messageData = {}, options
   const mode = resolveVisibilityMode({ rollMode, messageMode, useDefault: useDefaultRollMode });
   const finalOptions = { ...rollOptions };
 
-  if (mode != null) {
-    if (isFoundryV14Plus()) finalOptions.messageMode = getMessageMode(mode);
-    else finalOptions.rollMode = getRollMode(mode);
-  }
+  if (mode != null) finalOptions.messageMode = getMessageMode(mode);
 
   return roll.toMessage(messageData, finalOptions);
 }
@@ -442,7 +301,6 @@ export async function createCyberpunkRollCard({
   }
 
   const chatData = {
-    user: globalThis.game?.user?.id,
     speaker,
     sound,
     content,

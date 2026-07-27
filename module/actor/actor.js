@@ -158,8 +158,7 @@ export class CyberpunkActor extends Actor {
    */
   _getInitialItemsSource(data) {
     const sourceItems = this._source?.items ?? data?.items ?? [];
-    const deepClone = foundry.utils.deepClone ?? ((value) => JSON.parse(JSON.stringify(value)));
-    return Array.isArray(sourceItems) ? deepClone(sourceItems) : [];
+    return Array.isArray(sourceItems) ? foundry.utils.deepClone(sourceItems) : [];
   }
 
   /**
@@ -683,6 +682,10 @@ export class CyberpunkActor extends Actor {
     add(itemData?._id);
     add(itemData?._source?._id);
 
+    // v14 relocated flags.core.sourceId to _stats.compendiumSource; both are read
+    // because migrate.js writes the legacy path back onto already-migrated worlds.
+    addSourceId(itemData?._stats?.compendiumSource);
+    addSourceId(itemData?._source?._stats?.compendiumSource);
     addSourceId(itemData?.flags?.core?.sourceId);
     addSourceId(itemData?._source?.flags?.core?.sourceId);
 

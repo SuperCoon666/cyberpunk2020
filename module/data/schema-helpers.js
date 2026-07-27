@@ -50,17 +50,13 @@ export function filePathField(initial = "", categories = ["IMAGE"]) {
 
 export function mergeDefaults(source, defaults) {
   source ??= {};
-  const mergeObject = globalThis.foundry?.utils?.mergeObject;
-  if (mergeObject) {
-    return mergeObject(clone(defaults), source, {
-      inplace: false,
-      insertKeys: true,
-      insertValues: true,
-      overwrite: true,
-      recursive: true
-    });
-  }
-  return { ...clone(defaults), ...source };
+  return foundry.utils.mergeObject(clone(defaults), source, {
+    inplace: false,
+    insertKeys: true,
+    insertValues: true,
+    overwrite: true,
+    recursive: true
+  });
 }
 
 export function normalizeNumber(value, fallback = 0) {

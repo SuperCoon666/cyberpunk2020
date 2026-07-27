@@ -458,9 +458,15 @@ export async function migrateItem(item) {
   const itemData = item.toObject();
   const updateData = {};
 
-  // Always store sourceId on world items.
+  // Always store sourceId on world items. These updates run with recursive:false so that
+  // system data is replaced wholesale, which also replaces flags — carry the existing ones
+  // across explicitly instead of writing a dotted key that would drop every other module's.
   if (itemData._stats?.compendiumSource) {
-    updateData["flags.core.sourceId"] = itemData._stats.compendiumSource;
+    updateData.flags = foundry.utils.mergeObject(
+      itemData.flags ?? {},
+      { core: { sourceId: itemData._stats.compendiumSource } },
+      { inplace: false }
+    );
   }
 
   // Convert legacy rangeDamage to object-shaped rangeDamages for weapons.
@@ -502,8 +508,8 @@ export async function migrateItem(item) {
       updateData.type = tpl.type;
       updateData.system = newSystem;
 
-      // Flags: keep existing ones, add template flags.
-      const oldFlags = itemData.flags ?? {};
+      // Flags: keep existing ones (including the sourceId set above), add template flags.
+      const oldFlags = updateData.flags ?? itemData.flags ?? {};
       const tplFlags = tpl.flags ?? {};
       updateData.flags = foundry.utils.mergeObject(oldFlags, tplFlags, {
         inplace: false,
@@ -536,7 +542,11 @@ export async function migrateItem(item) {
 
 export async function migrateCompendium(compendium) {
   if (compendium.locked) {
-    console.warn(`Not migrating compendium ${compendium.collection} as it is locked`);
+    // Packs shipped by a system or module are locked by default and are already current;
+    // only an unexpectedly locked pack is worth a warning.
+    const shipped = compendium.metadata.packageType !== "world";
+    const log = shipped ? console.debug : console.warn;
+    log(`Not migrating compendium ${compendium.collection} as it is locked`);
     return;
   }
 
@@ -561,7 +571,12 @@ export async function migrateCompendium(compendium) {
   }
 
   if (updates.length > 0) {
-    await compendium.updateDocuments(updates, { diff: false, recursive: false });
+    // CompendiumCollection has no updateDocuments; the write goes through the document class.
+    await compendium.documentClass.updateDocuments(updates, {
+      pack: compendium.collection,
+      diff: false,
+      recursive: false
+    });
   }
 }
 

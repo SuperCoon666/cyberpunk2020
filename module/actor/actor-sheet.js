@@ -334,16 +334,12 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
   }
 
   _cpCreateFilePicker(options) {
-    const FilePickerImplementation =
-      foundry.applications?.apps?.FilePicker?.implementation
-      ?? globalThis.FilePicker;
+    return new foundry.applications.apps.FilePicker.implementation(options);
+  }
 
-    if (typeof FilePickerImplementation !== "function") {
-      ui.notifications.error(localize("FilePickerUnavailable"));
-      return null;
-    }
-
-    return new FilePickerImplementation(options);
+  // position.top/left are undefined until the sheet has been positioned once.
+  _cpFilePickerPosition() {
+    return { top: (this.position.top ?? 0) + 40, left: (this.position.left ?? 0) + 10 };
   }
 
   _cpActivateActorFilePickers(root) {
@@ -365,18 +361,12 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
         event.stopPropagation();
         event.stopImmediatePropagation?.();
 
-        const fp = this._cpCreateFilePicker({
+        this._cpCreateFilePicker({
           type: "image",
-          activeSource: "data",
           current: this.actor.img || "",
           callback: (path) => this.actor.update({ img: path }),
-          top: (this.position?.top ?? 0) + 40,
-          left: (this.position?.left ?? 0) + 10
-        });
-
-        if (!fp) return;
-
-        fp.render(true);
+          position: this._cpFilePickerPosition()
+        }).render(true);
         return;
       }
 
@@ -388,7 +378,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
         const currentPath = this.actor.system.icon || "";
 
-        const fp = this._cpCreateFilePicker({
+        this._cpCreateFilePicker({
           type: "image",
           current: currentPath,
           callback: async (path) => {
@@ -400,13 +390,8 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
             const input = root.querySelector('input[name="system.icon"]');
             if (input) input.value = path;
           },
-          top: (this.position?.top ?? 0) + 40,
-          left: (this.position?.left ?? 0) + 10
-        });
-
-        if (!fp) return;
-
-        fp.render(true);
+          position: this._cpFilePickerPosition()
+        }).render(true);
       }
     };
 

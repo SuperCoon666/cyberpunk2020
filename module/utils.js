@@ -34,19 +34,7 @@ export function shortLocalize(str) {
 }
 
 export function deleteFieldUpdate(path) {
-  const ForcedDeletion = globalThis.foundry?.data?.operators?.ForcedDeletion;
-  if (typeof ForcedDeletion === "function") {
-    return { [path]: new ForcedDeletion() };
-  }
-
-  const DeleteField = globalThis.foundry?.data?.operations?.DeleteField;
-  if (typeof DeleteField === "function") {
-    return { [path]: new DeleteField() };
-  }
-
-  const parts = String(path).split(".");
-  const key = parts.pop();
-  return { [`${parts.join(".")}.-=${key}`]: null };
+  return { [path]: new foundry.data.operators.ForcedDeletion() };
 }
 /**
  * 

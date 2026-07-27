@@ -12,8 +12,10 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
     /** @override */
     static DEFAULT_OPTIONS = {
-      id: "weapon-modifier",
-      classes: ["cyberpunk2020"],
+      // {id} is what ApplicationV2 substitutes per instance; a literal id makes every
+      // dialog share one DOM node, so a second render replaces the first.
+      id: "weapon-modifier-{id}",
+      classes: ["cyberpunk2020", "weapon-modifier"],
       tag: "form",
       position: {
         width: 500,

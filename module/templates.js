@@ -1,6 +1,4 @@
-const loadCyberpunkTemplates =
-  foundry.applications?.handlebars?.loadTemplates
-  ?? globalThis.loadTemplates;
+const loadCyberpunkTemplates = foundry.applications.handlebars.loadTemplates;
 
 /**
  * Define a set of template paths to pre-load

@@ -24,9 +24,6 @@ export function registerHandlebarsHelpers() {
     Handlebars.registerHelper('localizeStat', function(str) {
         return "CYBERPUNK." + properCase(str);
     });
-    Handlebars.registerHelper('and', function(x,y) {
-        return x && y;
-    });
     Handlebars.registerHelper('equals', function(x, y) {
         return x === y;
     });
@@ -92,14 +89,6 @@ export function registerHandlebarsHelpers() {
         var result = "";
         for (var i = 1; i <= amount; i++) {
             result = result + options.fn({i: i});
-        }
-        return result;
-    });
-    Handlebars.registerHelper("concat", function() {
-        let result = "";
-        //Skip the last argument.
-        for(var i = 0; i < arguments.length - 1; ++i) {
-            result += arguments[i];
         }
         return result;
     });
