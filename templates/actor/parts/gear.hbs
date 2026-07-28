@@ -1,6 +1,6 @@
 {{#*inline "itemListing"}}
   <div class="field gear item-edit rc-item-delete" data-item-id="{{id}}">
-            <div class="field-image roll fire-weapon action" style="background-image: url({{img}})" data-item-id="{{id}}"></div>
+            <div class="field-image roll {{#if (equals type "weapon")}}fire-weapon {{/if}}action" style="background-image: url({{img}})" data-item-id="{{id}}"></div>
             <label>{{name}}</label>
             <span class="flex-pad"></span>
             <span>

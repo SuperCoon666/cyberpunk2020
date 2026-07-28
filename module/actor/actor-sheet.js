@@ -757,17 +757,16 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
   _cpActivateActorFormControls(root) {
     if (!root?.addEventListener) return;
-    if (root.dataset.cpActorFormControlsBound === "1") return;
 
     const isEditable = this.isEditable ?? this.options?.editable ?? false;
     if (!isEditable) return;
 
-    root.dataset.cpActorFormControlsBound = "1";
-
-    const skillSearch = root.querySelector("input.skill-search");
-    const skillClear = root.querySelector(".skill-search-clear");
-
+    // A render replaces the part's contents while root survives, so the pair must be re-queried on
+    // every call: the listeners below bind once and their closure would keep writing to the button
+    // this render detached.
     const toggleSkillClear = () => {
+      const skillSearch = root.querySelector("input.skill-search");
+      const skillClear = root.querySelector(".skill-search-clear");
       if (!skillClear || !skillSearch) return;
 
       const visible = !!skillSearch.value;
@@ -777,6 +776,16 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       skillClear.setAttribute("aria-hidden", visible ? "false" : "true");
       skillClear.style.display = visible ? "inline-block" : "none";
     };
+
+    // The × is styled by this method alone, so it has to be re-applied on every render. The block
+    // below the guard must not be: nothing that re-renders the sheet originates in the search box,
+    // so restoring focus there would take it from the control the user is actually editing.
+    toggleSkillClear();
+
+    if (root.dataset.cpActorFormControlsBound === "1") return;
+    root.dataset.cpActorFormControlsBound = "1";
+
+    const skillSearch = root.querySelector("input.skill-search");
 
     if (skillSearch && this._cpSkillFilter != null) {
       skillSearch.value = this._cpSkillFilter;
@@ -791,7 +800,6 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       this._restoreSkillCaret = null;
     }
 
-    toggleSkillClear();
     this._cpApplySkillFilterToDOM(root, this._cpSkillFilter ?? "");
 
     root.addEventListener("click", async (event) => {
@@ -932,8 +940,6 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     _cpActivateCyberwareControls(root) {
     if (!root?.addEventListener) return;
 
-    this._cpActivateChipTooltips(root);
-
     if (root.dataset.cpCyberwareControlsBound === "1") return;
 
     const isEditable = this.isEditable ?? this.options?.editable ?? false;
@@ -1021,10 +1027,6 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       // Legacy fallback for old chip data that was stored by localized skill name.
       return Object.prototype.hasOwnProperty.call(map, legacySkillName);
     });
-  }
-
-  _cpActivateChipTooltips(root) {
-      // Chipware tooltips are handled by _cpActivateCyberwareControls
   }
 
   async _cpSaveSkillLevelFromInput(input) {
@@ -1912,11 +1914,6 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
       await this._cpFlushNotesAutosave(root, { force: true, serialize: false });
       this._cpNotesEditing = false;
-    } catch (_) {}
-
-    try {
-      this._cpChipTooltipCleanup?.();
-      this._cpChipTooltipCleanup = null;
     } catch (_) {}
 
     try {
