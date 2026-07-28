@@ -18,7 +18,7 @@ export const migrateWorld = async function (targetVersion = game.system.version)
       // Migrate embedded items (critical for cyberware replacement)
       for (const item of actor.items.contents) {
         const itemUpdate = await migrateItem(item);
-        await defaultDataUse(item, itemUpdate, { diff: false, recursive: false });
+        await defaultDataUse(item, itemUpdate, itemUpdateOptions(itemUpdate));
       }
     } catch (err) {
       console.error(err);
@@ -29,7 +29,7 @@ export const migrateWorld = async function (targetVersion = game.system.version)
   for (const item of game.items.contents) {
     try {
       const itemUpdate = await migrateItem(item);
-      await defaultDataUse(item, itemUpdate, { diff: false, recursive: false });
+      await defaultDataUse(item, itemUpdate, itemUpdateOptions(itemUpdate));
     } catch (err) {
       console.error(err);
     }
@@ -51,7 +51,7 @@ export const migrateWorld = async function (targetVersion = game.system.version)
         // Best-effort: migrate embedded items on synthetic actor
         for (const item of token.actor.items.contents) {
           const itemUpdate = await migrateItem(item);
-          await defaultDataUse(item, itemUpdate, { diff: false, recursive: false });
+          await defaultDataUse(item, itemUpdate, itemUpdateOptions(itemUpdate));
         }
       } catch (err) {
         console.error(err);
@@ -570,12 +570,13 @@ export async function migrateCompendium(compendium) {
     }
   }
 
-  if (updates.length > 0) {
+  // A batch carries one set of options, so the two update shapes go in two batches.
+  for (const batch of [updates.filter(u => "system" in u), updates.filter(u => !("system" in u))]) {
+    if (!batch.length) continue;
     // CompendiumCollection has no updateDocuments; the write goes through the document class.
-    await compendium.documentClass.updateDocuments(updates, {
+    await compendium.documentClass.updateDocuments(batch, {
       pack: compendium.collection,
-      diff: false,
-      recursive: false
+      ...itemUpdateOptions(batch[0])
     });
   }
 }
@@ -615,6 +616,24 @@ export function convertOldSkill(skillName, oldSkillData = {}) {
 
 function isEmptyObject(obj) {
   return !obj || (typeof obj === "object" && Object.keys(obj).length === 0);
+}
+
+/**
+ * The two migrateItem branches return different update *shapes* and need different merge
+ * behaviour, so the options are chosen from the shape rather than fixed at the call site.
+ *
+ * The compendium-template path returns a whole `system` object, where `recursive: false` is
+ * load-bearing: it is what makes the template's empty maps replace the old ones, so a rebuilt
+ * implant drops stat bonuses and checks its template does not grant.
+ *
+ * The no-template path returns dotted keys. Those expand into nested objects, and under
+ * `recursive: false` the expansion replaces `system` wholesale — every field the update does not
+ * name reverts to its schema default. Measured: a user-authored implant lost MountZone,
+ * humanityLoss, cost, weight, the installed side, ChipActive, ChipSkills, SDP and
+ * OptionsAvailable in one migration.
+ */
+function itemUpdateOptions(updateData) {
+  return "system" in updateData ? { diff: false, recursive: false } : { diff: false };
 }
 
 async function defaultDataUse(document, updateData, options = {}) {
