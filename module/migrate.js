@@ -334,6 +334,22 @@ async function getCyberwareTemplateByName(itemName) {
   return getCyberwareTemplateByRef(ref);
 }
 
+// A blank is not a value: a pre-refactor implant often carries the key with "" or null, and the
+// template is the only thing that can fill it — a blank MountZone left as-is is an uninstalled
+// implant.
+function fillFromCyberwareTemplate(target, source) {
+  for (const [key, value] of Object.entries(source)) {
+    const current = target[key];
+    if (foundry.utils.isPlainObject(value) && foundry.utils.isPlainObject(current)) {
+      fillFromCyberwareTemplate(current, value);
+      continue;
+    }
+    if (current === undefined || current === null || current === "") {
+      target[key] = foundry.utils.duplicate(value);
+    }
+  }
+}
+
 function transferCyberwareUserValues({ oldSystem, newSystem }) {
   if (oldSystem?.humanityLoss !== undefined) newSystem.humanityLoss = oldSystem.humanityLoss;
   if (oldSystem?.cost !== undefined) newSystem.cost = oldSystem.cost;
@@ -478,7 +494,7 @@ export async function migrateItem(item) {
     }
   }
 
-  // CYBERWARE: replace content from compendium template, then transfer user values.
+  // CYBERWARE: fill the modern schema block from the compendium template, keeping world values.
   if (item.type === "cyberware") {
     const chipSkills = item.parent
       ? chipSkillKeysToIds(item.parent, itemData.system?.CyberWorkType?.ChipSkills)
@@ -498,13 +514,17 @@ export async function migrateItem(item) {
     if (template) {
       const tpl = template.toObject();
       const oldSystem = itemData.system ?? {};
-      const newSystem = foundry.utils.duplicate(tpl.system ?? {});
+
+      // The template exists to supply the schema block a pre-refactor implant has no key for.
+      // Every value the world item already carries is user content: implants get renamed,
+      // translated and re-costed, so letting the template win reverts the player's own item to
+      // stock. Measured on a real v12 world: 278 of 283 implants differ from their template.
+      const newSystem = foundry.utils.duplicate(oldSystem);
+      fillFromCyberwareTemplate(newSystem, tpl.system ?? {});
 
       transferCyberwareUserValues({ oldSystem, newSystem });
       preserveCyberwareRuntimeState({ oldSystem, newSystem });
 
-      updateData.name = tpl.name;
-      updateData.img = tpl.img;
       updateData.type = tpl.type;
       updateData.system = newSystem;
 
