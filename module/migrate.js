@@ -133,10 +133,10 @@ export async function migrateActor(actor) {
     //
     // Replacement, not deletion, and neither is interchangeable here. `system.skills` is a
     // required ObjectField: DataField#validate unwraps a ForcedDeletion to `undefined`
-    // (common/data/fields.mjs:402), `_validateSpecial` rejects that on a required field (:469)
-    // and `_updateDiff` then silently prevents the assignment (:567) — measured, the block
+    // (common/data/fields.mjs:410, 14.365), `_validateSpecial` rejects that on a required field
+    // (:477) and `_updateDiff` then silently prevents the assignment (:578) — measured, the block
     // survived intact. A plain `{}` is no better, because ObjectField merges the requested value
-    // over the stored one (:1935) and an empty diff is dropped.
+    // over the stored one (:1952) and an empty diff is dropped.
     actorUpdates["system.skills"] = new foundry.data.operators.ForcedReplacement({});
   }
 
