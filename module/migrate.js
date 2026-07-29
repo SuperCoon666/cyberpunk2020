@@ -1,4 +1,4 @@
-import { deleteFieldUpdate, getDefaultSkills, localize, cwHasType } from "./utils.js";
+import { deleteFieldUpdate, getDefaultSkills, localize, tryLocalize, cwHasType } from "./utils.js";
 
 /**
  * Migration entrypoint.
@@ -83,51 +83,61 @@ export async function migrateActor(actor) {
 
   migrateLegacyActorSystemShape(actor, actorUpdates);
 
-  // Legacy skills migration (from old actor.system.data.skills into skill items)
-  const legacySkills = foundry.utils.getProperty(actor, "system.data.skills");
+  // Legacy skills migration (from the old actor.system.skills block into skill items).
+  // `system.skills` is a declared ObjectField nothing else reads, which is what lets the block
+  // survive construction and reach this function at all.
+  const legacySkills = actor.system?.skills;
   const hasSkillItems = actor.items.find((i) => i.type === "skill") !== undefined;
 
-  if (legacySkills && !hasSkillItems) {
-    const defaultSkills = await getDefaultSkills();
-    const trainedSkills = Object.entries(legacySkills).reduce((obj, [key, value]) => {
-      if (value?.trained) obj[key] = value;
-      return obj;
-    }, {});
+  if (!isEmptyObject(legacySkills)) {
+    if (!hasSkillItems) {
+      const defaultSkills = await getDefaultSkills();
+      const trainedSkills = collectLegacySkills(legacySkills);
 
-    const skillsToAdd = [];
+      const skillsToAdd = [];
 
-    for (const skill of defaultSkills) {
-      const skillData = skill.toObject();
-      const trained = trainedSkills[skill.name];
+      for (const skill of defaultSkills) {
+        const skillData = skill.toObject();
+        const trained = trainedSkills[skill.name];
 
-      if (trained) {
-        // Transfer only trained-level info into the new skill item instance.
-        foundry.utils.setProperty(skillData, "system.level", trained.value ?? 0);
-        foundry.utils.setProperty(skillData, "system.ip", trained.IP ?? trained.ip ?? 0);
-        foundry.utils.setProperty(skillData, "system.IP", trained.IP ?? trained.ip ?? 0);
-        foundry.utils.setProperty(skillData, "system.trained", true);
+        if (trained) {
+          // Transfer only trained-level info into the new skill item instance.
+          foundry.utils.setProperty(skillData, "system.level", trained.value ?? 0);
+          foundry.utils.setProperty(skillData, "system.ip", trained.IP ?? trained.ip ?? 0);
+          foundry.utils.setProperty(skillData, "system.IP", trained.IP ?? trained.ip ?? 0);
+          foundry.utils.setProperty(skillData, "system.trained", true);
 
-        // Remove from trainedSkills pool to detect non-standard skills after.
-        delete trainedSkills[skill.name];
+          // Remove from trainedSkills pool to detect non-standard skills after.
+          delete trainedSkills[skill.name];
+        }
+
+        skillsToAdd.push(skillData);
       }
 
-      skillsToAdd.push(skillData);
+      // Convert any remaining legacy skills (custom skills not in default compendium).
+      for (const [skillName, legacy] of Object.entries(trainedSkills)) {
+        skillsToAdd.push(convertOldSkill(skillName, legacy));
+      }
+
+      // IMPORTANT: do NOT rewrite actor.items array (it can duplicate/reshape embedded docs).
+      // Create skill items safely.
+      if (skillsToAdd.length > 0) {
+        await actor.createEmbeddedDocuments("Item", skillsToAdd);
+      }
+
+      actorUpdates["system.skillsSortedBy"] = "Name";
     }
 
-    // Convert any remaining legacy skills (custom skills not in default compendium).
-    for (const [skillName, legacy] of Object.entries(trainedSkills)) {
-      skillsToAdd.push(convertOldSkill(skillName, legacy));
-    }
-
-    // IMPORTANT: do NOT rewrite actor.items array (it can duplicate/reshape embedded docs).
-    // Create skill items safely.
-    if (skillsToAdd.length > 0) {
-      await actor.createEmbeddedDocuments("Item", skillsToAdd);
-    }
-
-    // Clear legacy container and set default sorting key (system field, not flags).
-    actorUpdates["system.skillsSortedBy"] = "Name";
-    Object.assign(actorUpdates, deleteFieldUpdate("system.data.skills"));
+    // Outside the conversion on purpose: an actor converted by an earlier release still carries
+    // the block, because the delete of the day wrote `= undefined`, which an update ignores.
+    //
+    // Replacement, not deletion, and neither is interchangeable here. `system.skills` is a
+    // required ObjectField: DataField#validate unwraps a ForcedDeletion to `undefined`
+    // (common/data/fields.mjs:402), `_validateSpecial` rejects that on a required field (:469)
+    // and `_updateDiff` then silently prevents the assignment (:567) — measured, the block
+    // survived intact. A plain `{}` is no better, because ObjectField merges the requested value
+    // over the stored one (:1935) and an empty diff is dropped.
+    actorUpdates["system.skills"] = new foundry.data.operators.ForcedReplacement({});
   }
 
   // Ensure sorted-by setting exists (new worlds / actors without it).
@@ -136,6 +146,36 @@ export async function migrateActor(actor) {
   }
 
   return actorUpdates;
+}
+
+/**
+ * Flatten the legacy skills block into a {displayName: legacyEntry} map keyed the way the
+ * language-matched default pack is keyed.
+ *
+ * Two properties of the stored shape make this more than a rename. Its keys are localization-key
+ * suffixes ("AVTech"), not display names, so matching them against the pack directly finds 43 of
+ * 100 skills under `en` and 0 of 100 under `ru` — measured on a real v12 world. And a group entry
+ * holds its sub-skills as sibling keys beside `group: true`; groups have no equivalent today, so
+ * each sub-skill becomes a skill of its own.
+ */
+function collectLegacySkills(legacySkills) {
+  // This era's entry is {value, ip, chipped, stat} and has no `trained` key at all, so a filter
+  // on one keeps nothing and re-seeds the character's whole skill list at level 0.
+  const hasPoints = (s) => Number(s?.value ?? 0) > 0 || Number(s?.IP ?? s?.ip ?? 0) > 0;
+  const displayName = (key) =>
+    tryLocalize(`martials.Martial Arts: ${key}`, tryLocalize(`Skill${key}`, key));
+
+  const out = {};
+  for (const [key, entry] of Object.entries(legacySkills)) {
+    if (entry?.group) {
+      for (const [subKey, sub] of Object.entries(entry)) {
+        if (subKey !== "group" && hasPoints(sub)) out[displayName(subKey)] = sub;
+      }
+    } else if (hasPoints(entry)) {
+      out[displayName(key)] = entry;
+    }
+  }
+  return out;
 }
 
 function migrateLegacyActorSystemShape(actor, actorUpdates) {
