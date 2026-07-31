@@ -48,11 +48,7 @@ function isDeletionOperator(value) {
   const ForcedDeletion = globalThis.foundry?.data?.operators?.ForcedDeletion;
   if (typeof ForcedDeletion === "function" && value instanceof ForcedDeletion) return true;
 
-  const DeleteField = globalThis.foundry?.data?.operations?.DeleteField;
-  if (typeof DeleteField === "function" && value instanceof DeleteField) return true;
-
-  const ctorName = value.constructor?.name;
-  return ctorName === "ForcedDeletion" || ctorName === "DeleteField";
+  return value.constructor?.name === "ForcedDeletion";
 }
 
 function normalizeNumberIfPresent(source, key, fallback = 0) {
