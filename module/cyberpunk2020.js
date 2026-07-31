@@ -53,8 +53,18 @@ Hooks.once('init', async function () {
     CONFIG.Item.dataModels.misc = CyberpunkMiscData;
 
     // v14 registers no core sheet for Actor or Item, so there is nothing to unregister.
-    Actors.registerSheet("cyberpunk2020", CyberpunkActorSheet, { makeDefault: true });
-    Items.registerSheet("cyberpunk2020", CyberpunkItemSheet, { makeDefault: true });
+    // themes: null — the sheets are a fixed dark palette; core substitutes {dark, light}
+    // and enables the picker when the option is omitted.
+    Actors.registerSheet("cyberpunk2020", CyberpunkActorSheet, {
+      label: "CYBERPUNK.SheetLabels.Actor",
+      themes: null,
+      makeDefault: true
+    });
+    Items.registerSheet("cyberpunk2020", CyberpunkItemSheet, {
+      label: "CYBERPUNK.SheetLabels.Item",
+      themes: null,
+      makeDefault: true
+    });
 
     // Register System Settings
     registerSystemSettings();

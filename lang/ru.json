@@ -782,5 +782,7 @@
     "CYBERPUNK.Packs.Sellthedead": "Sell the Dead",
     "CYBERPUNK.Packs.Armor": "Броня",
     "CYBERPUNK.Packs.Vehicles": "Транспорт",
-    "CYBERPUNK.Packs.Programs": "Программы"
+    "CYBERPUNK.Packs.Programs": "Программы",
+    "CYBERPUNK.SheetLabels.Actor": "Лист персонажа Cyberpunk 2020",
+    "CYBERPUNK.SheetLabels.Item": "Лист предмета Cyberpunk 2020"
 }

@@ -783,5 +783,7 @@
     "CYBERPUNK.Packs.Sellthedead": "Sell the Dead",
     "CYBERPUNK.Packs.Armor": "Armor",
     "CYBERPUNK.Packs.Vehicles": "Vehicles",
-    "CYBERPUNK.Packs.Programs": "Programs"
+    "CYBERPUNK.Packs.Programs": "Programs",
+    "CYBERPUNK.SheetLabels.Actor": "Cyberpunk 2020 Actor Sheet",
+    "CYBERPUNK.SheetLabels.Item": "Cyberpunk 2020 Item Sheet"
 }
