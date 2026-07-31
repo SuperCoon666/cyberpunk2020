@@ -517,7 +517,8 @@ export async function migrateItem(item) {
   // Always store sourceId on world items. The compendium-template arm runs with recursive:false
   // so that system data is replaced wholesale, which also replaces flags — carry the existing
   // ones across explicitly instead of writing a dotted key that would drop every other module's.
-  if (itemData._stats?.compendiumSource) {
+  if (itemData._stats?.compendiumSource
+    && itemData.flags?.core?.sourceId !== itemData._stats.compendiumSource) {
     updateData.flags = foundry.utils.mergeObject(
       itemData.flags ?? {},
       { core: { sourceId: itemData._stats.compendiumSource } },
