@@ -919,7 +919,7 @@ export class CyberpunkActor extends Actor {
       fumble = await buildSkillFumbleData({ skill, roll: r });
     }
 
-    new Multiroll(skill.name)
+    return new Multiroll(skill.name)
       .addRoll(r)
       .defaultExecute({ fumble });
   }
@@ -989,7 +989,7 @@ export class CyberpunkActor extends Actor {
       [`@stats.${statName}.total`],
       this.system
     ));
-    roll.defaultExecute();
+    return roll.defaultExecute();
   }
 
   /*
@@ -1044,7 +1044,7 @@ export class CyberpunkActor extends Actor {
     rolls.addRoll(new Roll(`${this.deathThreshold()}`), {
       name: "Death Threshold"
     });
-    rolls.defaultExecute();
+    return rolls.defaultExecute();
   }
 
   async _preUpdate(changes, options, user) {

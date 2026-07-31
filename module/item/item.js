@@ -611,12 +611,14 @@ export class CyberpunkItem extends Item {
           fumble: rangedFumble?.fumble ?? null,
       };
       let roll = new Multiroll(localize("ThreeRoundBurst"));
-      roll.execute(undefined, "systems/cyberpunk2020/templates/chat/multi-hit.hbs", templateData);
+      // The ammo write goes first: rounds are spent whether or not the card renders. Awaiting the
+      // card at all is what stops a chat failure being swallowed as an unhandled rejection.
       if (rangedFumble?.outcome?.discharge) {
         await this.__setWeaponField("shotsLeft", 0);
       } else {
         await this.__setWeaponField("shotsLeft", system.shotsLeft - roundsFired);
       }
+      await roll.execute(undefined, "systems/cyberpunk2020/templates/chat/multi-hit.hbs", templateData);
       return roll;
   }
 
@@ -717,14 +719,16 @@ export class CyberpunkItem extends Item {
       };
 
       let roll = new Multiroll(localize("SemiAuto"));
-      roll.execute(undefined, "systems/cyberpunk2020/templates/chat/multi-hit.hbs", templateData);
 
+      // The ammo write goes first: rounds are spent whether or not the card renders. Awaiting the
+      // card at all is what stops a chat failure being swallowed as an unhandled rejection.
       if (rangedFumble?.outcome?.discharge) {
         await this.__setWeaponField("shotsLeft", 0);
       } else {
         await this.__setWeaponField("shotsLeft", system.shotsLeft - roundsFired);
       }
-      
+
+      await roll.execute(undefined, "systems/cyberpunk2020/templates/chat/multi-hit.hbs", templateData);
       return roll;
   }
 
