@@ -21,7 +21,7 @@
   ],
   "scripts": [],
   "esmodules": ["module/cyberpunk2020.js"],
-  "styles": ["css/cyberpunk2020.css"],
+  "styles": [{ "src": "css/cyberpunk2020.css" }],
   "packs": [
     {
       "name": "roll-tables",
@@ -467,7 +467,7 @@
     },
     {
       "lang": "ru",
-      "name": "Russian",
+      "name": "Русский",
       "path": "lang/ru.json"
     }
   ],
@@ -519,9 +519,10 @@
     "distance": 5,
     "units": "m"
   },
-  "primaryTokenAttribute": null,
-  "secondaryTokenAttribute": null,
   "url": "https://github.com/SuperCoon666/cyberpunk2020",
+  "readme": "README.md",
+  "bugs": "https://github.com/SuperCoon666/cyberpunk2020/issues",
+  "changelog": "https://github.com/SuperCoon666/cyberpunk2020/releases",
   "manifest": "https://raw.githubusercontent.com/SuperCoon666/cyberpunk2020/main/system.json",
   "download": "https://github.com/SuperCoon666/cyberpunk2020/releases/download/v1.1.1/cyberpunk2020.zip"
 }
