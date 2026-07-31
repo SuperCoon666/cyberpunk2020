@@ -12,9 +12,9 @@ export function getHtmlElement(html) {
   if (!html) return null;
   if (html instanceof HTMLElement) return html;
 
-  // Two live producers of a non-element here, both outside this system's control:
-  // item.apps can hold another module's V1 sheet, whose .element is jQuery; and
-  // foundry.utils.parseHTML returns an HTMLCollection when the markup has several roots.
+  // One live producer of a non-element, outside this system's control: item.apps can
+  // hold another module's V1 sheet, whose .element is jQuery. It goes away with the V1
+  // application layer.
   return html[0] instanceof HTMLElement ? html[0] : null;
 }
 
