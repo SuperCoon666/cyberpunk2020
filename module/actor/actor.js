@@ -682,8 +682,8 @@ export class CyberpunkActor extends Actor {
     add(itemData?._id);
     add(itemData?._source?._id);
 
-    // v14 relocated flags.core.sourceId to _stats.compendiumSource; both are read
-    // because migrate.js writes the legacy path back onto already-migrated worlds.
+    // v14 relocated flags.core.sourceId to _stats.compendiumSource; the legacy path is still
+    // read because worlds migrated before that carry it and are never cleaned up.
     addSourceId(itemData?._stats?.compendiumSource);
     addSourceId(itemData?._source?._stats?.compendiumSource);
     addSourceId(itemData?.flags?.core?.sourceId);

@@ -514,18 +514,6 @@ export async function migrateItem(item) {
   const itemData = item.toObject();
   const updateData = {};
 
-  // Always store sourceId on world items. The compendium-template arm runs with recursive:false
-  // so that system data is replaced wholesale, which also replaces flags — carry the existing
-  // ones across explicitly instead of writing a dotted key that would drop every other module's.
-  if (itemData._stats?.compendiumSource
-    && itemData.flags?.core?.sourceId !== itemData._stats.compendiumSource) {
-    updateData.flags = foundry.utils.mergeObject(
-      itemData.flags ?? {},
-      { core: { sourceId: itemData._stats.compendiumSource } },
-      { inplace: false }
-    );
-  }
-
   // Convert legacy rangeDamage to object-shaped rangeDamages for weapons.
   if (itemData.type === "weapon") {
     const rangeDamage = foundry.utils.getProperty(itemData, "system.rangeDamage");
@@ -569,8 +557,9 @@ export async function migrateItem(item) {
       updateData.type = tpl.type;
       updateData.system = newSystem;
 
-      // Flags: keep existing ones (including the sourceId set above), add template flags.
-      const oldFlags = updateData.flags ?? itemData.flags ?? {};
+      // This arm updates with recursive:false, which replaces flags wholesale — so the item's
+      // existing flags are carried across explicitly, template flags merged over them.
+      const oldFlags = itemData.flags ?? {};
       const tplFlags = tpl.flags ?? {};
       updateData.flags = foundry.utils.mergeObject(oldFlags, tplFlags, {
         inplace: false,
