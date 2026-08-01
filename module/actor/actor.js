@@ -176,9 +176,13 @@ export class CyberpunkActor extends Actor {
 
   /**
    * Augment the basic actor data with additional dynamic data - the stuff that's calculated from other data
+   *
+   * Derived, not `prepareData`: core applies the ActiveEffect `"final"` phase after
+   * `super.prepareData()` returns (`client/documents/actor.mjs:423-424`, 14.365.0), so an engine
+   * that ran there recomputed every derived value an effect had just set, silently (`T-28`).
    */
-  prepareData() {
-    super.prepareData();
+  prepareDerivedData() {
+    super.prepareDerivedData();
     // Make separate methods for each Actor type (character, npc, etc.) to keep
     // things organized.
     switch ( this.type ) {
