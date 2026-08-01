@@ -230,6 +230,22 @@ export async function getSkillIndex(lang = game.i18n.lang) {
   return list;
 }
 
+/**
+ * Source data for a document the system copies out of a compendium, carrying its origin.
+ *
+ * `_stats.compendiumSource` is not in `DocumentStatsField.managedFields`
+ * (`common/data/fields.mjs:4063`, 14.365.0), so the server keeps what creation data supplies.
+ * A pack document's own value is null — it *is* the original — hence the uuid rather than a copy.
+ *
+ * @param {Document} doc
+ * @returns {object}
+ */
+export function withCompendiumSource(doc) {
+  const data = doc.toObject();
+  if (doc.pack) data._stats = { ...data._stats, compendiumSource: doc.uuid };
+  return data;
+}
+
 // Checking implant mechanics
 // Accepts: the Item document itself, its system, or directly the CyberWorkType object
 export function cwHasType(obj, type) {

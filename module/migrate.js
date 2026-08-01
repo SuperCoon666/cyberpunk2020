@@ -1,4 +1,4 @@
-import { deleteFieldUpdate, getDefaultSkills, localize, tryLocalize, cwHasType } from "./utils.js";
+import { deleteFieldUpdate, getDefaultSkills, localize, tryLocalize, cwHasType, withCompendiumSource } from "./utils.js";
 
 /**
  * Migration entrypoint.
@@ -97,7 +97,7 @@ export async function migrateActor(actor) {
       const skillsToAdd = [];
 
       for (const skill of defaultSkills) {
-        const skillData = skill.toObject();
+        const skillData = withCompendiumSource(skill);
         const trained = trainedSkills[skill.name];
 
         if (trained) {

@@ -1,5 +1,5 @@
 import { martialOptions, meleeAttackTypes, meleeBonkOptions, rangedModifiers, weaponTypes, FNFF2_ONLY_MARTIAL_ART_IDS, isFnff2Enabled, COMBAT_SENSE_SKILL_IDS, INTERFACE_SKILL_IDS } from "../lookups.js";
-import { deleteFieldUpdate, localize, localizeParam, cwHasType, cwIsEnabled } from "../utils.js"
+import { deleteFieldUpdate, localize, localizeParam, cwHasType, cwIsEnabled, withCompendiumSource } from "../utils.js"
 import { ModifiersDialog } from "../dialog/modifiers.js"
 import { SortOrders, sortSkills } from "./skill-sort.js";
 import { getHtmlElement, getRichEditorHTML, itemFromDropData, saveRichEditorHTML } from "../compat.js";
@@ -1295,7 +1295,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
    * @private
    */
   _cpToItemSource(itemOrData) {
-    if (typeof itemOrData?.toObject === "function") return itemOrData.toObject();
+    if (typeof itemOrData?.toObject === "function") return withCompendiumSource(itemOrData);
     return foundry.utils.deepClone(itemOrData ?? {});
   }
 

@@ -2,7 +2,7 @@ import { makeD10Roll, Multiroll } from "../dice.js";
 import { isFumbleRoll, buildSkillFumbleData } from "../utils.js";
 import { SortOrders, sortSkills } from "./skill-sort.js";
 import { btmFromBT, MARTIAL_ART_KEY_BY_ID, MARTIAL_ART_ID_BY_KEY, FNFF2_ONLY_MARTIAL_ART_IDS, isFnff2Enabled, AWARENESS_NOTICE_SKILL_ID } from "../lookups.js";
-import { properCase, localize, getDefaultSkills, cwHasType, cwIsEnabled } from "../utils.js"
+import { properCase, localize, getDefaultSkills, cwHasType, cwIsEnabled, withCompendiumSource } from "../utils.js"
 
 export function combineSP(curr, add) {
   const a = Number(curr) || 0;
@@ -114,7 +114,7 @@ export class CyberpunkActor extends Actor {
     if (!firstSkill) {
       // Using toObject is important - Foundry does not like creating new documents from documents themselves.
       const skillsData = sortSkills(await getDefaultSkills(), SortOrders.Name)
-        .map((item) => item.toObject());
+        .map((item) => withCompendiumSource(item));
       items.push(...skillsData);
       updates["system.skillsSortedBy"] = "Name";
     }
@@ -135,7 +135,7 @@ export class CyberpunkActor extends Actor {
           const doc = await meleePack.getDocument(wid);
           if (!doc) continue;
 
-          const obj = doc.toObject();
+          const obj = withCompendiumSource(doc);
           obj.system = obj.system ?? {};
           obj.system.equipped = true;
 
