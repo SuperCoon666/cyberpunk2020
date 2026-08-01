@@ -47,6 +47,10 @@ export class CyberpunkItem extends Item {
 
     try {
       const data = (typeof roll.toJSON === "function") ? roll.toJSON() : roll;
+      // The tooltip is rebuilt from this copy with Roll.fromJSON, so its total has to be the
+      // displayed one or the card and its own tooltip disagree (T-22). The dice terms are left
+      // alone — the tooltip still shows what the dice did, CP2020 just rounds the sum down.
+      data.total = v;
       const json = encodeURIComponent(JSON.stringify(data));
       const cls = String(extraClasses || "").trim();
       return `<a class="inline-roll inline-result cp-inline-roll roll-result roll ${cls}" data-roll="${json}">${v}</a>`;
