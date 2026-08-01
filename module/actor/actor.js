@@ -179,7 +179,10 @@ export class CyberpunkActor extends Actor {
    * @private
    */
   static _hasItemWithBaseId(items, baseId) {
-    return items.some((item) => CyberpunkActor._getItemBaseId(item) === baseId);
+    // Among the candidates, not equal to the first: during creation an item's own `_id` is
+    // freshly assigned and sorts first, so a copy that carries the compendium original only in
+    // its source id was never recognised and got a duplicate injected (T-18).
+    return items.some((item) => CyberpunkActor._getItemIdCandidates(item).includes(baseId));
   }
 
   /**
