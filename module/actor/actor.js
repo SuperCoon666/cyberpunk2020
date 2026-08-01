@@ -460,7 +460,10 @@ export class CyberpunkActor extends Actor {
     emp.humanity.loss = hl;
 
     emp.humanity.total = Math.max(0, emp.humanity.base - emp.humanity.loss);
-    emp.total = preLossEmp - Math.floor(hl / 10);
+    // The cyber-armor penalty is re-applied here rather than left to the stage that adds it to
+    // every other stat's total: this assignment replaces that total, so applying it earlier is
+    // the same as discarding it (T-14).
+    emp.total = preLossEmp - Math.floor(hl / 10) + Number(emp.armorImplantMod || 0);
 
     const cwCheckMods = this._getCharacteristicChecksMods();
     system.initiativeImplantMod = Number(cwCheckMods.initiative || 0);
