@@ -547,7 +547,8 @@ export class CyberpunkItem extends Item {
               fumble: rangedFumble?.fumble ?? null,
           };
 
-          let roll = new Multiroll(`${localize("Autofire")}`, `${localize("Range")}: ${localizeParam(attackMods.range, {range: actualRangeBracket})}`);
+          let roll = new Multiroll(`${localize("Autofire")}`, `${localize("Range")}: ${localizeParam(attackMods.range, {range: actualRangeBracket})}`)
+            .addRoll(attackRoll, { name: localize("Attack") });
           await roll.execute(undefined, "systems/cyberpunk2020/templates/chat/multi-hit.hbs", templateData);
           rolls.push(roll);
       }
@@ -614,7 +615,8 @@ export class CyberpunkItem extends Item {
           locals: {range: { range: actualRangeBracket }},
           fumble: rangedFumble?.fumble ?? null,
       };
-      let roll = new Multiroll(localize("ThreeRoundBurst"));
+      let roll = new Multiroll(localize("ThreeRoundBurst"))
+        .addRoll(attackRoll, { name: localize("Attack") });
       // The ammo write goes first: rounds are spent whether or not the card renders. Awaiting the
       // card at all is what stops a chat failure being swallowed as an unhandled rejection.
       if (rangedFumble?.outcome?.discharge) {
@@ -722,7 +724,8 @@ export class CyberpunkItem extends Item {
         }
       };
 
-      let roll = new Multiroll(localize("SemiAuto"));
+      let roll = new Multiroll(localize("SemiAuto"))
+        .addRoll(attackRoll, { name: localize("Attack") });
 
       // The ammo write goes first: rounds are spent whether or not the card renders. Awaiting the
       // card at all is what stops a chat failure being swallowed as an unhandled rejection.
