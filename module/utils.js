@@ -405,9 +405,7 @@ const _TABLE_CONTROL_LOSS = [
     max: 4,
     keyGround: "Fumble.ControlLoss.3_4.Ground",
     keyAircraft: "Fumble.ControlLoss.3_4.Aircraft",
-    slideMultiplierFeet: 10,
     slideMultiplierMeters: 3,
-    altitudeMultiplierFeet: 50,
     altitudeMultiplierMeters: 15
   },
 
@@ -417,9 +415,7 @@ const _TABLE_CONTROL_LOSS = [
     max: 6,
     keyGround: "Fumble.ControlLoss.5_6.Ground",
     keyAircraft: "Fumble.ControlLoss.5_6.Aircraft",
-    slideMultiplierFeet: 10,
     slideMultiplierMeters: 3,
-    altitudeMultiplierFeet: 100,
     altitudeMultiplierMeters: 30,
     needsVehicleDamage: true
   }
@@ -496,7 +492,6 @@ export function reliabilityLabel(reliabilityKey) {
 }
 
 async function _buildControlLossSkillFumbleData({ skill, roll }) {
-  const isRu = game.i18n?.lang === "ru";
   const isAircraft = _isAircraftControlSkillById(skill);
 
   // 1d6 table roll
@@ -518,12 +513,12 @@ async function _buildControlLossSkillFumbleData({ skill, roll }) {
 
   html += `<p>${localize(rowKey)}</p>`;
 
-  // Extra rolls for distance / altitude
-  // Ground: slide 1d10 * (10ft or 3m)
-  if (!isAircraft && row.slideMultiplierFeet) {
+  // Extra rolls for distance / altitude. The unit is a property of the table, not of the reader's
+  // language: metres, matching system.json's `grid: {units: "m"}` (T-6).
+  // Ground: slide 1d10 * 3m
+  if (!isAircraft && row.slideMultiplierMeters) {
     const r = await new Roll("1d10").evaluate();
-    const mult = isRu ? row.slideMultiplierMeters : row.slideMultiplierFeet;
-    const dist = r.total * mult;
+    const dist = r.total * row.slideMultiplierMeters;
 
     html += `<p>${localizeParam("Fumble.ControlLoss.SlideLine", {
       die: _dieSpan(10, r.total, r),
@@ -531,11 +526,10 @@ async function _buildControlLossSkillFumbleData({ skill, roll }) {
     })}</p>`;
   }
 
-  // Aircraft: altitude loss 1d10 * (50/100ft or 15/30m)
-  if (isAircraft && row.altitudeMultiplierFeet) {
+  // Aircraft: altitude loss 1d10 * 15/30m
+  if (isAircraft && row.altitudeMultiplierMeters) {
     const r = await new Roll("1d10").evaluate();
-    const mult = isRu ? row.altitudeMultiplierMeters : row.altitudeMultiplierFeet;
-    const dist = r.total * mult;
+    const dist = r.total * row.altitudeMultiplierMeters;
 
     html += `<p>${localizeParam("Fumble.ControlLoss.AltitudeLine", {
       die: _dieSpan(10, r.total, r),

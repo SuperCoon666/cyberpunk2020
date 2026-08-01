@@ -594,8 +594,6 @@ export function btmFromBT(body) {
         return 0;
       }
       switch(body) {
-        // Very weak
-        case 2: return 0
         // Weak
         case 3: 
         case 4: return 1

@@ -591,8 +591,8 @@
     "CYBERPUNK.Fumble.ControlLoss.3_4.Aircraft": "3–4. Aircraft stalls, losing 1D10x50 feet of altitude.",
     "CYBERPUNK.Fumble.ControlLoss.5_6.Ground": "5–6. Roll ground vehicle after sliding 1D10x10 feet sideways in direction of travel; take 5D6 damage.",
     "CYBERPUNK.Fumble.ControlLoss.5_6.Aircraft": "5–6. Aircraft goes into spin, lose 1D10x100 feet of altitude.",
-    "CYBERPUNK.Fumble.ControlLoss.SlideLine": "Slide: {die} → <b>{dist}</b> ft sideways.",
-    "CYBERPUNK.Fumble.ControlLoss.AltitudeLine": "Altitude loss: {die} → <b>{dist}</b> ft.",
+    "CYBERPUNK.Fumble.ControlLoss.SlideLine": "Slide: {die} → <b>{dist}</b> m sideways.",
+    "CYBERPUNK.Fumble.ControlLoss.AltitudeLine": "Altitude loss: {die} → <b>{dist}</b> m.",
     "CYBERPUNK.Fumble.ControlLoss.VehicleDamageLine": "Vehicle damage: {die}.",
 
     "CYBERPUNK.Fumble.Tech.Title": "Tech (Repair or create)",
@@ -728,6 +728,7 @@
     "CYBERPUNK.Program": "Program",
     "CYBERPUNK.Skill": "Skill",
     "CYBERPUNK.UnitMU": "MU",
+    "CYBERPUNK.UnitMetres": "m",
     "CYBERPUNK.DifficultyClassShort": "DC:",
     "CYBERPUNK.WeaponCannotBeReloaded": "This weapon cannot be reloaded.",
     "CYBERPUNK.CP.Migration.Begin": "Cyberpunk 2020: migrating world data to version {version}. Please do not close the game.",

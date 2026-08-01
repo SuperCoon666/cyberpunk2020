@@ -17,7 +17,6 @@
         </div>
         <input type="text"
                name="system.icon"
-               data-dtype="String"
                value="{{actor.system.icon}}"
                style="display: none;" />
       </div>
@@ -26,7 +25,6 @@
         <label class="netrun-label">{{CPLocal "NetCyberdeckName"}}</label>
         <input type="text"
                name="system.deckModel"
-               data-dtype="String"
                placeholder="{{CPLocal 'NetDeckPlaceholder'}}"
                value="{{actor.system.deckModel}}" />
       </div>
@@ -49,7 +47,6 @@
         <label class="netrun-label">{{CPLocal "NetCPU"}}</label>
         <input type="number"
                name="system.cpu"
-               data-dtype="Number"
                class="short-input"
                placeholder="0"
                value="{{actor.system.cpu}}" />
@@ -58,7 +55,6 @@
         <label class="netrun-label">{{CPLocal "NetSpeed"}}</label>
         <input type="number"
                name="system.speed"
-               data-dtype="Number"
                class="short-input"
                placeholder="0"
                value="{{actor.system.speed}}" />
@@ -67,7 +63,6 @@
         <label class="netrun-label">{{CPLocal "NetDataWall"}}</label>
         <input type="number"
                name="system.dataWall"
-               data-dtype="Number"
                class="short-input"
                placeholder="0"
                value="{{actor.system.dataWall}}" />
@@ -76,7 +71,6 @@
         <label class="netrun-label">{{CPLocal "NetStrength"}}</label>
         <input type="number"
                name="system.strength"
-               data-dtype="Number"
                class="short-input"
                placeholder="0"
                value="{{actor.system.strength}}" />
@@ -88,7 +82,6 @@
           <div>{{CPLocal "NetRAMMax"}}:
             <input type="number"
                    name="system.ramMax"
-                   data-dtype="Number"
                    class="netrun-ram-short"
                    placeholder="0"
                    value="{{actor.system.ramMax}}" />
@@ -101,7 +94,7 @@
     <div class="netrun-options-row">
       <div class="netrun-cell">
         <label class="netrun-label">{{CPLocal "NetDeckType"}}</label>
-        <select class="deck-type-select" name="system.deckType" data-dtype="String">
+        <select class="deck-type-select" name="system.deckType">
           <option value="cellular" {{#if (eq actor.system.deckType "cellular")}}selected{{/if}}>{{CPLocal "NetDeckTypeCellular"}}</option>
           <option value="portable" {{#if (eq actor.system.deckType "portable")}}selected{{/if}}>{{CPLocal "NetDeckTypePortable"}}</option>
           <option value="combat"   {{#if (eq actor.system.deckType "combat")}}selected{{/if}}>{{CPLocal "NetDeckTypeCombat"}}</option>
@@ -119,56 +112,48 @@
           <label class="deck-option">
             <input type="checkbox"
                    name="system.hasElectrodes"
-                   data-dtype="Boolean"
                    {{#if actor.system.hasElectrodes}}checked{{/if}} />
             {{CPLocal "NetOptionElectrodes"}}
           </label>
           <label class="deck-option">
             <input type="checkbox"
                    name="system.hasKeyboard"
-                   data-dtype="Boolean"
                    {{#if actor.system.hasKeyboard}}checked{{/if}} />
             {{CPLocal "NetOptionKeyboard"}}
           </label>
           <label class="deck-option">
             <input type="checkbox"
                    name="system.hasScreen"
-                   data-dtype="Boolean"
                    {{#if actor.system.hasScreen}}checked{{/if}} />
             {{CPLocal "NetOptionScreen"}}
           </label>
           <label class="deck-option">
             <input type="checkbox"
                    name="system.hasPrinter"
-                   data-dtype="Boolean"
                    {{#if actor.system.hasPrinter}}checked{{/if}} />
             {{CPLocal "NetOptionPrinter"}}
           </label>
           <label class="deck-option">
             <input type="checkbox"
                    name="system.hasChipReader"
-                   data-dtype="Boolean"
                    {{#if actor.system.hasChipReader}}checked{{/if}} />
             {{CPLocal "NetOptionChipReader"}}
           </label>
           <label class="deck-option">
             <input type="checkbox"
                    name="system.hasVoxBox"
-                   data-dtype="Boolean"
                    {{#if actor.system.hasVoxBox}}checked{{/if}} />
             {{CPLocal "NetOptionVoxBox"}}
           </label>
           <label class="deck-option">
             <input type="checkbox"
                    name="system.hasScanner"
-                   data-dtype="Boolean"
                    {{#if actor.system.hasScanner}}checked{{/if}} />
             {{CPLocal "NetOptionScanner"}}
           </label>
           <label class="deck-option">
             <input type="checkbox"
                    name="system.hasExtraChip"
-                   data-dtype="Boolean"
                    {{#if actor.system.hasExtraChip}}checked{{/if}} />
             {{CPLocal "NetOptionExtraChip"}}
           </label>

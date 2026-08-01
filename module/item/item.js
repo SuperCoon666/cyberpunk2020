@@ -73,6 +73,16 @@ export class CyberpunkItem extends Item {
         return false;
       }
     }
+
+    if (this.type === "armor" && this.actor) {
+      const system = foundry.utils.deepClone(this._source.system);
+      this._morphArmorToOwner(system, this.actor);
+      // The morph deletes coverage areas, and a recursive updateSource only ever merges — the
+      // additions would land and the deletions would not. `recursive: false` makes each root key
+      // a ForcedReplacement (common/abstract/data.mjs:679, 14.365.0), which is what replaces the
+      // whole map; the object handed over is a complete clone of the source, so nothing is lost.
+      this.updateSource({ system }, { recursive: false });
+    }
   }
 
   prepareData() {
@@ -81,9 +91,6 @@ export class CyberpunkItem extends Item {
     switch(this.type) {
       case "weapon":
         this._prepareWeaponData(this.system);
-        break;
-      case "armor":
-        this._prepareArmorData(this.system);
         break;
     }
   }
@@ -141,12 +148,18 @@ export class CyberpunkItem extends Item {
     
   }
 
-  _prepareArmorData(system) {
-    // Armor from compendiums/world items has no owning actor.
-    // Armor morphing must run only for owned actor items.
-    const actor = this.actor;
-    if (!actor) return;
-
+  /**
+   * Reshape an armor's coverage to its owner's hit locations.
+   *
+   * Runs from `_preCreate` and nowhere else: an embedded item joins an actor only by being
+   * created on it, so that is the ownership change. It used to run from `prepareData`, where the
+   * `lastOwnerId` stamp reached memory only — every re-preparation restored `""` from `_source`
+   * and morphed again, warning line by line on each pass (T-20).
+   *
+   * @param {object} system  The item's source `system`, mutated in place
+   * @param {Actor} actor
+   */
+  _morphArmorToOwner(system, actor) {
     const ownerLocs = actor.system?.hitLocations;
     if (!ownerLocs) return;
 

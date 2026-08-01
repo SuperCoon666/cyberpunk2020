@@ -727,6 +727,7 @@
     "CYBERPUNK.Program": "Программа",
     "CYBERPUNK.Skill": "Навык",
     "CYBERPUNK.UnitMU": "ЕП",
+    "CYBERPUNK.UnitMetres": "м",
     "CYBERPUNK.DifficultyClassShort": "СЛ:",
     "CYBERPUNK.WeaponCannotBeReloaded": "Это оружие нельзя перезарядить.",
     "CYBERPUNK.CP.Migration.Begin": "Cyberpunk 2020: миграция данных мира до версии {version}. Не закрывайте игру.",

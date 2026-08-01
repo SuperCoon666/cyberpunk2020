@@ -11,11 +11,14 @@
       {{!-- Ablate and repair buttons aren't functional yet, but ARE styled --}}
       {{!-- <span class="segment-ablate action inactive" title={{CPLocal "Ablate"}} data-hit-loc="{{name}}">-</span> --}}
 
+      {{!-- The name is emitted only on the editable path: this partial is shared with the armor
+            item sheet, where this input is the real control, while on the actor sheet the same
+            field is derived and submitOnChange would persist it over prepareData's own value. --}}
       <input
         type="number"
         class="segment-sp {{#unless ../edit}}not-editable{{/unless}}"
         title="{{CPLocal "SPFull"}}"
-        name="system.{{../hitLocsName}}.{{name}}.stoppingPower"
+        {{#if ../edit}}name="system.{{../hitLocsName}}.{{name}}.stoppingPower"{{/if}}
         value="{{hitLoc.stoppingPower}}"
         {{#unless ../edit}}readonly{{/unless}}>
 

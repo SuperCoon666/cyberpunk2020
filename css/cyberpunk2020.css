@@ -1,3 +1,13 @@
+/* The family is requested at two rules below and the file ships in fonts/, but nothing declared
+   it — so both rules fell through to sans-serif on any machine without the font installed. */
+@font-face {
+  font-family: "Open Sans ExtraBold";
+  src: url("../fonts/OpenSans-ExtraBold.ttf") format("truetype");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* Scoped to the system's own windows: a system stylesheet lives in layer(system), which
    outranks every core layer regardless of specificity, so an unscoped selector here would
    restyle core dialogs and other modules' applications too.

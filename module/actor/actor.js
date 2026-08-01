@@ -162,17 +162,6 @@ export class CyberpunkActor extends Actor {
   }
 
   /**
-   * Extract the original compendium/base id used to avoid adding duplicate defaults.
-   *
-   * @param {object} itemData
-   * @returns {string|null}
-   * @private
-   */
-  static _getItemBaseId(itemData) {
-    return CyberpunkActor._getItemIdCandidates(itemData).find(id => id) ?? null;
-  }
-
-  /**
    * @param {object[]} items
    * @param {string} baseId
    * @returns {boolean}

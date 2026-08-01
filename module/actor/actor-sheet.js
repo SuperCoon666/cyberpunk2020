@@ -52,7 +52,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     sheetData.itemTypes = actor.itemTypes;
     sheetData.system = system;
     sheetData.owner = this.actor.isOwner;
-    sheetData.editable = this.isEditable ?? this.options?.editable ?? false;
+    sheetData.editable = this.isEditable;
     sheetData.cssClass = ["cyberpunk", "sheet", "actor"].join(" ");
     sheetData.notesEditing = !!this._cpNotesEditing;
 
@@ -328,7 +328,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     });
 
     tabs.bind(root);
-    tabs.activate(activeTab, false);
+    tabs.activate(activeTab);
 
     this._cpTabs = tabs;
   }
@@ -404,7 +404,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     if (!root?.addEventListener) return;
     if (root.dataset.cpBasicActorActionsBound === "1") return;
 
-    const isEditable = this.isEditable ?? this.options?.editable ?? false;
+    const isEditable = this.isEditable;
     if (!isEditable) return;
 
     // The flag must not be set before this point: root survives a re-render, so a first render
@@ -449,7 +449,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
       const itemEdit = target.closest(".item-edit");
       if (itemEdit) {
-        if (target.closest(".fire-weapon, .item-roll, .item-delete, .item-unequip")) return;
+        if (target.closest(".fire-weapon, .item-delete, .item-unequip")) return;
 
         event.preventDefault();
         event.stopPropagation();
@@ -498,16 +498,6 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
         if (Number.isFinite(damage)) {
           await this.actor.update({ "system.damage": damage });
         }
-        return;
-      }
-
-      const itemRoll = target.closest(".item-roll");
-      if (itemRoll) {
-        event.preventDefault();
-        event.stopPropagation();
-
-        const item = this._cpGetItemFromTarget(itemRoll);
-        if (item) await item.roll();
         return;
       }
 
@@ -566,17 +556,13 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
   _cpRenderOpenItemApplications(items) {
     const list = Array.isArray(items) ? items : [items];
-    const ApplicationV2 = foundry.applications?.api?.ApplicationV2;
 
     for (const item of list) {
+      // `item.apps` is the mixed V1/V2 registry — another module's V1 sheet can be in here, and
+      // V1's `render(force)` takes a truthy object exactly as V2's does.
       for (const app of this._cpGetOpenItemApplications(item)) {
         if (!app?.rendered || typeof app.render !== "function") continue;
-
-        if (ApplicationV2 && app instanceof ApplicationV2) {
-          app.render({ force: true });
-        } else {
-          app.render(true);
-        }
+        app.render({ force: true });
       }
     }
   }
@@ -673,7 +659,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     if (!root?.addEventListener) return;
     if (root.dataset.cpNetrunningControlsBound === "1") return;
 
-    const isEditable = this.isEditable ?? this.options?.editable ?? false;
+    const isEditable = this.isEditable;
     if (!isEditable) return;
 
     root.dataset.cpNetrunningControlsBound = "1";
@@ -758,7 +744,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
   _cpActivateActorFormControls(root) {
     if (!root?.addEventListener) return;
 
-    const isEditable = this.isEditable ?? this.options?.editable ?? false;
+    const isEditable = this.isEditable;
     if (!isEditable) return;
 
     // A render replaces the part's contents while root survives, so the pair must be re-queried on
@@ -942,7 +928,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
     if (root.dataset.cpCyberwareControlsBound === "1") return;
 
-    const isEditable = this.isEditable ?? this.options?.editable ?? false;
+    const isEditable = this.isEditable;
     if (!isEditable) return;
 
     root.dataset.cpCyberwareControlsBound = "1";
@@ -1706,7 +1692,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
   _cpSetupNotesAutosave(root) {
     if (!root?.addEventListener) return;
 
-    const editable = this.isEditable ?? this.options?.editable ?? false;
+    const editable = this.isEditable;
     if (!editable) return;
 
     if (!this._cpNotesAutosaveState) {

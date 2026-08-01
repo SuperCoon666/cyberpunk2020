@@ -47,7 +47,7 @@ export class CyberpunkItemSheet extends HandlebarsApplicationMixin(ItemSheetV2) 
     data.item = this.item;
     data.system = this.item.system;
     data.owner = this.item.isOwner;
-    data.editable = this.isEditable ?? this.options?.editable ?? false;
+    data.editable = this.isEditable;
     data.cssClass = ["cyberpunk", "sheet", "item"].join(" ");
     data.notesEditing = this._cpNotesEditing ?? false;
     data.isGM = game.user.isGM;
@@ -758,7 +758,7 @@ async _prepareCyberware(sheet) {
     });
 
     tabs.bind(root);
-    tabs.activate(activeTab, false);
+    tabs.activate(activeTab);
 
     this._cpTabs = tabs;
   }
@@ -787,20 +787,10 @@ async _prepareCyberware(sheet) {
       // ApplicationV2 reuses the frame element across re-renders, so this must be
       // checked per event: gating the binding instead latches the first render's
       // permissions for the life of the window.
-      if (!(this.isEditable ?? this.options?.editable ?? false)) return;
+      if (!(this.isEditable)) return;
 
       const target = event.target;
       if (!target?.closest) return;
-
-      const itemRoll = target.closest(".item-roll");
-      if (itemRoll) {
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation?.();
-
-        await this.item.roll();
-        return;
-      }
 
       const humanityRoll = target.closest(".humanity-cost-roll");
       if (humanityRoll) {
@@ -910,28 +900,20 @@ async _prepareCyberware(sheet) {
     await this._cpUpdateCyberwareDocument(deleteFieldUpdate(path));
   }
 
-  _cpGetCyberwareMountPolicyList() {
-    const mountPolicy = this.item.system?.CyberWorkType?.MountPolicy;
-    if (Array.isArray(mountPolicy)) return [...mountPolicy];
-    if (mountPolicy) return [mountPolicy];
-    return [];
-  }
-
   _cpActivateCyberwareBasicControls(root) {
     this._cpRemoveCyberwareBasicListeners();
 
     if (!root?.addEventListener) return;
     if (this.item.type !== "cyberware") return;
 
-    const editable = this.isEditable ?? this.options?.editable ?? false;
+    const editable = this.isEditable;
     if (!editable) return;
 
     const addSelectSelector = [
       "select.cw-add-stat",
       "select.cw-add-check",
       "select.cw-add-location",
-      "select.cw-add-penalty",
-      "select.cw-add-mountpolicy"
+      "select.cw-add-penalty"
     ].join(", ");
 
     const removeControlSelector = [
@@ -939,8 +921,7 @@ async _prepareCyberware(sheet) {
       ".cw-remove-check",
       ".cw-remove-skill",
       ".cw-remove-location",
-      ".cw-remove-penalty",
-      ".cw-remove-mount"
+      ".cw-remove-penalty"
     ].join(", ");
 
     const addHandler = async (event) => {
@@ -974,13 +955,6 @@ async _prepareCyberware(sheet) {
 
         if (select.matches("select.cw-add-penalty")) {
           await this._cpSetCyberwarePath(`system.CyberWorkType.Penalties.${key}`, 0);
-          return;
-        }
-
-        if (select.matches("select.cw-add-mountpolicy")) {
-          const list = this._cpGetCyberwareMountPolicyList();
-          if (!list.includes(key)) list.push(key);
-          await this._cpSetCyberwarePath("system.CyberWorkType.MountPolicy", list);
         }
       } finally {
         select.value = "";
@@ -1020,12 +994,6 @@ async _prepareCyberware(sheet) {
 
       if (control.matches(".cw-remove-penalty")) {
         await this._cpDeleteCyberwarePath(`system.CyberWorkType.Penalties.${key}`);
-        return;
-      }
-
-      if (control.matches(".cw-remove-mount")) {
-        const list = this._cpGetCyberwareMountPolicyList().filter((value) => value !== key);
-        await this._cpSetCyberwarePath("system.CyberWorkType.MountPolicy", list);
       }
     };
 
@@ -1065,7 +1033,7 @@ async _prepareCyberware(sheet) {
     if (!root?.addEventListener) return;
     if (this.item.type !== "cyberware") return;
 
-    const editable = this.isEditable ?? this.options?.editable ?? false;
+    const editable = this.isEditable;
     if (!editable) return;
 
     root.querySelectorAll(".cw-ms").forEach((menuRoot) => {
@@ -1302,7 +1270,7 @@ async _prepareCyberware(sheet) {
     if (!root?.addEventListener) return;
     if (this.item.type !== "cyberware") return;
 
-    const editable = this.isEditable ?? this.options?.editable ?? false;
+    const editable = this.isEditable;
     if (!editable) return;
 
     const handleSkillSearch = async (event) => {
@@ -1556,7 +1524,7 @@ async _prepareCyberware(sheet) {
     if (!root?.addEventListener) return;
     if (this.item.type !== "cyberware") return;
 
-    const editable = this.isEditable ?? this.options?.editable ?? false;
+    const editable = this.isEditable;
     if (!editable) return;
 
     // `select[name='system.CyberBodyType.Type']` is deliberately absent: no
@@ -1646,7 +1614,7 @@ async _prepareCyberware(sheet) {
     if (!root?.addEventListener) return;
     if (this.item.type !== "cyberware") return;
 
-    const editable = this.isEditable ?? this.options?.editable ?? false;
+    const editable = this.isEditable;
     if (!editable) return;
 
     // `select.cw-select-weapon` is deliberately absent: no template has emitted it
@@ -1701,7 +1669,7 @@ async _prepareCyberware(sheet) {
     if (!root?.addEventListener) return;
     if (this.item.type !== "ammo") return;
 
-    const editable = this.isEditable ?? this.options?.editable ?? false;
+    const editable = this.isEditable;
     if (!editable) return;
 
     const clickHandler = (event) => {
@@ -1899,13 +1867,7 @@ async _prepareCyberware(sheet) {
     const sheet = document?.sheet;
     if (!this._cpIsSheetOpen(sheet)) return;
 
-    try {
-      await sheet.render({ force: true });
-    } catch (_) {
-      try {
-        await sheet.render(true);
-      } catch (_) {}
-    }
+    await sheet.render({ force: true });
   }
 
   async _cpRenderSkillRelatedSheets({ actor = null, chips = [] } = {}) {
@@ -2060,7 +2022,7 @@ async _prepareCyberware(sheet) {
   _cpSetupNotesAutosave(root) {
     if (!root?.addEventListener) return;
 
-    const editable = this.isEditable ?? this.options?.editable ?? false;
+    const editable = this.isEditable;
     if (!editable) return;
 
     if (!this._cpNotesAutosaveState) {

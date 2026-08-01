@@ -26,7 +26,6 @@ export const preloadHandlebarsTemplates = async function() {
 
         // Roll templates
         "systems/cyberpunk2020/templates/chat/default-roll.hbs",
-        "systems/cyberpunk2020/templates/chat/weapon-roll.hbs",
         "systems/cyberpunk2020/templates/chat/multi-hit.hbs",
 
         // Item sheet

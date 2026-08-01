@@ -106,7 +106,7 @@ export function classifyRollDice(roll) {
     /**
      * Note: You should provide either unevaluated Rolls, or fulfilledrolls (not promises). As things stand, promises will break a multiroll.
      * @param {*} speaker The speaker on the card for this multiroll
-     * @param {string} templatePath Path to the template. eg systems/cyberpunk2020/templates/chat/weapon-roll.hbs
+     * @param {string} templatePath Path to the template. eg systems/cyberpunk2020/templates/chat/multi-hit.hbs
      * Template provided should be one that loops through rolls.
      * Example data provided to the template:
      * {
@@ -155,54 +155,3 @@ export function classifyRollDice(roll) {
     }
 }
 
-/**
- * A standardized helper function for managing core Cyberpunk d10 rolls. Initially taken from Pathfinder1 and 5e, and modified
- *
- * @param {Event} event           The triggering event which initiated the roll
- * @param {Array} terms           The dice roll component parts, excluding the initial d10
- * @param {String} dice           The initial d20
- * @param {Actor} actor           The Actor making the d10 roll
- * @param {Object} rollData           Actor or item data against which to parse the roll. eg can include skillBonus etc? for at skillbonus etc
- * @param {String} title          The dice roll UI window title
- * @param {Object} speaker        The ChatMessage speaker to pass when creating the chat
- * @param {Function} flavor       A callable function for determining the chat message flavor given parts and data
- * @param {Number} critical       The value of d10 result which represents a critical success
- * @param {Number} fumble         The value of d10 result which represents a critical failure
- */
-async function d10Roll({
-    title,
-    speaker,
-    initialTerm = BaseDie,
-    terms,
-    critical = 10,
-    fumble = 1,
-    flavor,
-    rollData,
-    chatTemplate,
-    chatTemplateData,
-    useRollMessage = false
-}) {
-    // Handle input arguments
-    flavor = flavor || title;
-
-    if(terms) {
-        terms = [initialTerm, ...terms]
-    }
-    let roll = await evaluateCyberpunkRoll(new Roll(terms.join(" + "), rollData));
-
-    if(useRollMessage) {
-        await rollToCyberpunkChatMessage(roll, {
-            speaker: speaker,
-            flavor: flavor
-        });
-        return roll;
-    }
-
-    let executor = new Multiroll(title, flavor);
-    executor.addRoll(roll, {
-        critThreshold: critical,
-        fumbleThreshold: fumble
-    });
-    return executor.execute(speaker, chatTemplate, chatTemplateData);
-
-}
