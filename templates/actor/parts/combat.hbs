@@ -5,13 +5,13 @@
     <div class="field roll-initiative">
         <label class="action">{{CPLocal "Initiative"}}</label>
         <span class="flex-pad"></span>
-        <input class="roll-initiative-modificator number" type="number" value="{{initiativeMod}}" placeholder="0">
+        <input class="roll-initiative-modificator number" type="number" {{#unless (eq initiativeMod 0)}}value="{{initiativeMod}}"{{/unless}} placeholder="0">
     </div>
 
     <div class="field stun-death-save">
         <label class="action">{{CPLocal "StunDeathSave"}}</label>
         <span class="flex-pad"></span>
-        <input class="roll-stun-death-modificator number" type="number" value="{{StunDeathMod}}" placeholder="0">
+        <input class="roll-stun-death-modificator number" type="number" {{#unless (eq StunDeathMod 0)}}value="{{StunDeathMod}}"{{/unless}} placeholder="0">
     </div>
 </div>
     </section>

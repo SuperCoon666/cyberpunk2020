@@ -1,4 +1,4 @@
-import { martialOptions, meleeAttackTypes, meleeBonkOptions, rangedModifiers, weaponTypes, FNFF2_ONLY_MARTIAL_ART_IDS, isFnff2Enabled, COMBAT_SENSE_SKILL_IDS, INTERFACE_SKILL_IDS } from "../lookups.js";
+import { martialOptions, meleeAttackTypes, meleeBonkOptions, rangedModifiers, weaponTypes, FNFF2_ONLY_MARTIAL_ART_IDS, isFnff2Enabled, COMBAT_SENSE_SKILL_IDS, INTERFACE_SKILL_IDS, programTypes } from "../lookups.js";
 import { deleteFieldUpdate, localize, localizeParam, cwHasType, cwIsEnabled, withCompendiumSource } from "../utils.js"
 import { ModifiersDialog } from "../dialog/modifiers.js"
 import { SortOrders, sortSkills } from "./skill-sort.js";
@@ -103,7 +103,17 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     // Collect all programs that belong to this actor.
     const allPrograms = this.actor.items.filter(i => i.type === "program");
     allPrograms.sort((a, b) => a.name.localeCompare(b.name));
-    sheetData.netrunPrograms = allPrograms;
+
+    sheetData.netrunPrograms = allPrograms.map(p => {
+      const typeKey = programTypes.find(t => t.value === p.system.programType)?.localKey;
+      return {
+        id: p.id,
+        name: p.name,
+        img: p.img,
+        mu: p.system.mu,
+        typeLabel: typeKey ? localize(typeKey) : ""
+      };
+    });
 
     sheetData.programsTotalCost = allPrograms
     .reduce((sum, p) => sum + Number(p.system.cost || 0), 0);
@@ -137,9 +147,11 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     sheetData.skillsSort = this.actor.system.skillsSortedBy || "Name";
     sheetData.skillsSortChoices = Object.keys(SortOrders);
 
-    sheetData.filteredSkillIDs = this._filterSkills(sheetData);
-
-    sheetData.skillDisplayList = sheetData.filteredSkillIDs
+    // Every skill is rendered whatever the search box holds: the filter only hides rows, and it
+    // cannot bring back a row the template never emitted. Filtering here too meant a re-render
+    // while a filter was live left the sheet with just the matches in the DOM, and clearing the
+    // box then restored nothing.
+    sheetData.skillDisplayList = this._getSortedSkillIDs(sheetData)
       .map(id => this.actor.items.get(id))
       .filter(Boolean)
       .map(skill => ({
@@ -170,23 +182,6 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     if (cachedOk) return cached;
 
     return sortSkills(currentSkills, SortOrders[sortOrder]).map(s => s.id);
-  }
-
-  // Handle searching skills. The filter is intentionally sheet-local:
-  // it must not be written into actor.system or submitted with the form.
-  _filterSkills(sheetData) {
-    const upperSearch = String(this._cpSkillFilter ?? "").toUpperCase();
-    const listToFilter = this._getSortedSkillIDs(sheetData);
-
-    if (upperSearch === "") return listToFilter;
-
-    return listToFilter.filter(id => {
-      const skill = this.actor.items.get(id);
-      if (!skill) return false;
-      const displayName = this.actor.getSkillDisplayName?.(skill) ?? skill.name;
-      return String(skill.name).toUpperCase().includes(upperSearch)
-        || String(displayName).toUpperCase().includes(upperSearch);
-    });
   }
 
   _addWoundTrack(sheetData) {
@@ -243,8 +238,10 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       it.system.cwSubtypeLabel = st ? game.i18n.localize(`CYBERPUNK.CWT_ImplantSubtype_${st}`) : "";
     }
 
-    const isEnabled = (it) => !!it.system?.equipped && cwIsEnabled(it);
-    const activeCyber = allCyber.filter(isEnabled);
+    // "Active cyberware" is the installed set, so an Activatable implant belongs on the body map
+    // whether or not its effect is switched on — the row carries the toggle. `cwIsEnabled` still
+    // gates the rules engine in actor.js, which is where being switched off has to matter.
+    const activeCyber = allCyber.filter(it => !!it.system?.equipped);
 
     const zoneOf = (it) => String(it.system?.MountZone || it.system?.CyberBodyType?.Type || "");
     const sideOf = (it) => String(it.system?.CyberBodyType?.Location || "");
@@ -283,6 +280,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     this._cpActivateActorFilePickers(root);
     this._cpActivateBasicActorActions(root);
     this._cpActivateActorFormControls(root);
+    this._cpActivateWoundTracker(root);
     this._cpActivateNotesEditor(root);
     this._cpActivateCyberwareControls(root);
     this._cpActivateNetrunningControls(root);
@@ -449,7 +447,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
       const itemEdit = target.closest(".item-edit");
       if (itemEdit) {
-        if (target.closest(".fire-weapon, .item-delete, .item-unequip")) return;
+        if (target.closest(".fire-weapon, .item-delete, .item-unequip, .cyber-effect-toggle")) return;
 
         event.preventDefault();
         event.stopPropagation();
@@ -469,8 +467,12 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
         return;
       }
 
+      // Both rows roll on a click anywhere in the field, so their own modifier input has to opt
+      // out: selecting its value to retype it lands a click on the row and fired a roll.
+      const modifierInput = target.matches("input");
+
       const initiativeRoll = target.closest(".roll-initiative");
-      if (initiativeRoll) {
+      if (initiativeRoll && !modifierInput) {
         event.preventDefault();
         event.stopPropagation();
 
@@ -480,7 +482,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       }
 
       const stunDeathSave = target.closest(".stun-death-save");
-      if (stunDeathSave) {
+      if (stunDeathSave && !modifierInput) {
         event.preventDefault();
         event.stopPropagation();
 
@@ -741,32 +743,56 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     });
   }
 
+  /**
+   * Preview the whole span a click would change, not just the box under the pointer. Delegated on
+   * root rather than bound to the tracker, because a render replaces every box.
+   */
+  _cpActivateWoundTracker(root) {
+    if (!root?.addEventListener) return;
+    if (!this.isEditable) return;
+
+    if (root.dataset.cpWoundTrackerBound === "1") return;
+    root.dataset.cpWoundTrackerBound = "1";
+
+    const paint = (hovered) => {
+      const tracker = root.querySelector(".wound-tracker");
+      if (!tracker) return;
+
+      const boxes = [...tracker.querySelectorAll(".damage")];
+      // data-damage is the value the click would store, so the span it bounds is the span that
+      // would change — including the off-by-one on the last filled box, which deselects itself.
+      const to = hovered ? Number(hovered.dataset.damage) : 0;
+      const from = Number(this.actor.system.damage) || 0;
+      const low = Math.min(from, to);
+      const high = Math.max(from, to);
+
+      boxes.forEach((box, index) => {
+        const woundNo = index + 1;
+        box.classList.toggle("wound-hover", !!hovered && woundNo > low && woundNo <= high);
+      });
+    };
+
+    root.addEventListener("mouseover", (event) => {
+      const target = event.target;
+      if (!target?.closest?.(".wound-tracker")) return paint(null);
+
+      paint(target.closest(".damage"));
+    });
+
+    root.addEventListener("mouseleave", () => paint(null));
+  }
+
   _cpActivateActorFormControls(root) {
     if (!root?.addEventListener) return;
 
     const isEditable = this.isEditable;
     if (!isEditable) return;
 
-    // A render replaces the part's contents while root survives, so the pair must be re-queried on
-    // every call: the listeners below bind once and their closure would keep writing to the button
-    // this render detached.
-    const toggleSkillClear = () => {
-      const skillSearch = root.querySelector("input.skill-search");
-      const skillClear = root.querySelector(".skill-search-clear");
-      if (!skillClear || !skillSearch) return;
-
-      const visible = !!skillSearch.value;
-
-      skillClear.classList.toggle("is-visible", visible);
-      skillClear.hidden = !visible;
-      skillClear.setAttribute("aria-hidden", visible ? "false" : "true");
-      skillClear.style.display = visible ? "inline-block" : "none";
-    };
-
-    // The × is styled by this method alone, so it has to be re-applied on every render. The block
-    // below the guard must not be: nothing that re-renders the sheet originates in the search box,
-    // so restoring focus there would take it from the control the user is actually editing.
-    toggleSkillClear();
+    // A render replaces the part's contents while root survives, so every skill row is a new
+    // element and the filter has to be re-applied here, above the guard. The block below it must
+    // not be: nothing that re-renders the sheet originates in the search box, so restoring focus
+    // there would take it from the control the user is actually editing.
+    this._cpApplySkillFilterToDOM(root, this._cpSkillFilter ?? "");
 
     if (root.dataset.cpActorFormControlsBound === "1") return;
     root.dataset.cpActorFormControlsBound = "1";
@@ -786,8 +812,6 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       this._restoreSkillCaret = null;
     }
 
-    this._cpApplySkillFilterToDOM(root, this._cpSkillFilter ?? "");
-
     root.addEventListener("click", async (event) => {
       const target = event.target;
       if (!target?.closest) return;
@@ -803,39 +827,6 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
         event.stopPropagation();
         return;
       }
-
-      const clearSkillSearch = target.closest('[data-action="clear-skill-search"], .skill-search-clear');
-      if (clearSkillSearch) {
-        event.preventDefault();
-        event.stopPropagation();
-
-        const input = root.querySelector("input.skill-search");
-        if (input) {
-          input.value = "";
-          input.focus({ preventScroll: true });
-        }
-
-        this._restoreSkillCaret = null;
-        this._cpSkillFilter = "";
-        toggleSkillClear();
-        this._cpApplySkillFilterToDOM(root, "");
-      }
-    });
-
-    root.addEventListener("pointerdown", (event) => {
-      const target = event.target;
-      if (!target?.closest?.('[data-action="clear-skill-search"], .skill-search-clear')) return;
-
-      event.preventDefault();
-      event.stopPropagation();
-    });
-
-    root.addEventListener("mousedown", (event) => {
-      const target = event.target;
-      if (!target?.closest?.('[data-action="clear-skill-search"], .skill-search-clear')) return;
-
-      event.preventDefault();
-      event.stopPropagation();
     });
 
     root.addEventListener("keydown", (event) => {
@@ -857,7 +848,6 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       this._restoreSkillCaret = target.selectionStart ?? value.length;
       this._cpSkillFilter = value;
 
-      toggleSkillClear();
       this._cpApplySkillFilterToDOM(root, value);
     });
 
@@ -955,6 +945,15 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
     root.addEventListener("change", async (event) => {
       const target = event.target;
+
+      if (target?.matches?.(".cyber-effect-active")) {
+        event.stopPropagation();
+
+        const item = this.actor.items.get(target.dataset.itemId);
+        if (item) await item.update({ "system.EffectActive": !!target.checked });
+        return;
+      }
+
       if (!target?.matches?.(".chip-toggle input[data-skill-id]")) return;
 
       event.preventDefault();

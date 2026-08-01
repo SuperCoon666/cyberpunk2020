@@ -48,7 +48,14 @@
             {{#each (lookup ../cyberZones this.area) as |cyber|}}
                 <div class="field gear item-edit full-width item" data-item-id="{{cyber.id}}" draggable="true">
                 <label>{{cyber.name}}</label>
+                <span class="flex-pad"></span>
                 {{#with cyber.system}}
+                    {{#if (equals EffectMode "Activatable")}}
+                        <span class="cyber-effect-toggle" title="{{CPLocal 'CWT_EffectActive'}}">
+                            <input type="checkbox" class="cyber-effect-active"
+                                   data-item-id="{{cyber.id}}" {{checked EffectActive}}/>
+                        </span>
+                    {{/if}}
                     <span>{{CPLocal "HumanityLossAbbrev"}}: {{humanityLoss}}</span>
                 {{/with}}
                 <span class="item-unequip" data-item-id="{{cyber.id}}" draggable="false">X</span>
@@ -74,7 +81,14 @@
                 {{#each (lookup ../cyberZones this.area) as |cyber|}}
                     <div class="field gear item-edit full-width item" data-item-id="{{cyber.id}}" draggable="true">
                     <label>{{cyber.name}}</label>
+                    <span class="flex-pad"></span>
                     {{#with cyber.system}}
+                        {{#if (equals EffectMode "Activatable")}}
+                            <span class="cyber-effect-toggle" title="{{CPLocal 'CWT_EffectActive'}}">
+                                <input type="checkbox" class="cyber-effect-active"
+                                       data-item-id="{{cyber.id}}" {{checked EffectActive}}/>
+                            </span>
+                        {{/if}}
                         <span>{{CPLocal "HumanityLossAbbrev"}}: {{humanityLoss}}</span>
                     {{/with}}
                     <span class="item-unequip" data-item-id="{{cyber.id}}" draggable="false">X</span>
@@ -100,6 +114,7 @@
             <img src={{cyber.img}}>
         </div>
         <label class="cyber-name">{{cyber.name}}</label>
+        <span class="flex-pad"></span>
             {{#with cyber.system}}
                 <span class="cyber-hm-loss">{{CPLocal "HumanityLossAbbrev"}}: {{humanityLoss}}</span>
             {{/with}}

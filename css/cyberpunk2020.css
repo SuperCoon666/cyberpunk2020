@@ -67,6 +67,13 @@
 .sheet header.cyberheader > div {
   margin-bottom: 3px;
 }
+/* The header is a flex-start column, so its children size to their content. The wound tracker used
+   to be the widest of them and dragged the row out as the sheet grew; as a fixed five-column grid
+   it no longer does, so the row has to ask for the width itself — the same way `.fieldrow` above
+   it already does. Measured without this: the column stays 462px at both 700 and 950. */
+.sheet header.cyberheader > .flexrow {
+  width: 100%;
+}
 
 .cyberpunk h2 {
   font-family: "Noto Sans", sans-serif;
@@ -131,6 +138,14 @@
   flex-shrink: 2;
   width: 15%;
   margin-right: 4px;
+}
+
+.cyberpunk.sheet.item .sheet-tabs {
+  margin-bottom: 6px;
+}
+
+.cyberpunk.sheet.actor .sheet-tabs {
+  margin-bottom: 0.5px;
 }
 
 .cyberpunk .sheet-body .tab {
@@ -275,8 +290,13 @@ input.cyberware-humanity-locked {
   flex-grow: 1;
   flex-shrink: 1;
 }
+/* Never re-enable the native widget: Foundry v14 sets `appearance: none` and paints the whole
+   control with ::before/::after, so `appearance: checkbox` stacks the native box on top of
+   Foundry's and the row shows two. Measured in the modifiers dialog: 159x16, because the
+   `flex-grow: 1` on `.cyberpunk .field > input` applies to checkboxes as well. */
 .cyberpunk .field > input[type=checkbox] {
-  -webkit-appearance: checkbox;
+  flex: 0 0 auto;
+  align-self: center;
 }
 .cyberpunk .field > input[type=number] {
   width: 2.5em;
@@ -369,6 +389,13 @@ input.cyberware-humanity-locked {
 }
 
 .not-editable {
+  cursor: not-allowed;
+}
+
+/* Every read-only input reads as read-only, without each template having to remember
+   `.not-editable`. `.action` is excluded because some of them are roll triggers — the stat totals
+   in statsrow.hbs are readonly and clickable. */
+.cyberpunk input[readonly]:not(.action) {
   cursor: not-allowed;
 }
 
@@ -498,9 +525,12 @@ div.statderive .value.rightborder {
   border-right-width: 2px;
 }
 
+/* Five columns rather than wrapping: there are ten states, so a wrap splits them 9+1, 8+2 or 7+3
+   depending on the sheet's width (measured), while five always splits 5+5. The columns themselves
+   are what flexes. */
 .wound-tracker {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
   flex-grow: 2;
   margin-right: -3px;
 }
@@ -551,10 +581,12 @@ div.statderive .value.rightborder {
   border-color: black;
   transition: background-color 0.25s;
 }
-.wound-tracker .damage.filled:hover {
+.wound-tracker .damage.filled:hover,
+.wound-tracker .damage.filled.wound-hover {
   background-color: rgba(178, 34, 34, 0.7);
 }
-.wound-tracker .damage.unfilled:hover {
+.wound-tracker .damage.unfilled:hover,
+.wound-tracker .damage.unfilled.wound-hover {
   background-color: rgba(178, 34, 34, 0.3);
 }
 .wound-tracker .damage + .damage {
@@ -586,6 +618,11 @@ div.statderive .value.rightborder {
 .skill-top-matter div.search-icon {
   background-color: black;
   background-image: url(../img/search.png);
+}
+/* Chrome draws the search field's clear cross at the inner edge of the content box, so this
+   padding is what keeps it off the field border. */
+.field.skill-search-field > input.skill-search {
+  padding-right: 6px;
 }
 
 .field.skill > * {
@@ -1165,7 +1202,9 @@ div.statderive .value.rightborder {
   min-width: 0;
 }
 
-.cyberware-field-list {
+/* Scoped with .cyberpunk to outweigh `.cyberpunk .field-list`, which the segments also carry and
+   which would otherwise lay them out as its two-column grid. */
+.cyberpunk .cyberware-field-list {
   display: flex;
   flex-direction: column;
 }
@@ -1255,54 +1294,6 @@ div.statderive .value.rightborder {
 
 /* CYBERWARE TAB END*/
 
-/* The cleanup button in the skill search */
-.field.skill-search-field { position: relative; }
-
-.field.skill-search-field > input.skill-search {
-  padding-right: 1.9rem;
-  box-sizing: border-box;
-}
-
-
-.field.skill-search-field > .skill-search-clear {
-  position: absolute;
-  top: 50%;
-  right: 6px;
-  transform: translateY(-50%);
-  display: none;
-  width: 22px;
-  height: 22px;
-  border-radius: 9999px;
-  border: 0;
-  background: rgba(0,0,0,0.08);
-  color: rgba(0,0,0,0.7);
-  font: inherit;
-  line-height: 22px;
-  text-align: center;
-  padding: 0;
-  cursor: pointer;
-  user-select: none;
-
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.field.skill-search-field > .skill-search-clear:hover {
-  background: rgba(0,0,0,0.16);
-  color: rgba(0,0,0,0.9);
-}
-
-.field.skill-search-field > .skill-search-clear.is-visible {
-  display: inline-block;
-}
-
-.cyberpunk .field.skill-search-field > .skill-search-clear {
-  background: rgba(0,0,0,0.08) !important;
-  font-variant: normal !important;
-  padding-left: 0 !important;
-  padding-right: 0 !important;
-}
-
 /* === Cyberware tab row (only) === */
 .cyberpunk .tab[data-tab="cyberware"] .field.gear {
   display: flex;
@@ -1361,7 +1352,10 @@ div.statderive .value.rightborder {
   }
 }
 /* -- Skill modifier checkbox ------------------------------------ */
-.skill-mod-toggle input[type=checkbox] {
+/* The wrapping span is load-bearing: a checkbox that is a direct child of `.field` picks up
+   `-webkit-appearance: checkbox`, which puts the native widget on top of the one Foundry paints. */
+.skill-mod-toggle input[type=checkbox],
+.cyber-effect-toggle input[type=checkbox] {
   display: inline-block !important;
   margin: 0 4px;
 }
@@ -1511,34 +1505,16 @@ div.statderive .value.rightborder {
   cursor: pointer;
 }
 
+/* Nothing here may re-enable the native widget. Foundry v14 sets `appearance: none` and draws the
+   whole control with ::before/::after, so an `appearance: auto` puts the native box on top of
+   Foundry's and the row shows two. The skill rows' `.skill-mod-toggle` is the reference: it sets
+   display and margin and leaves the painting alone. */
 .application.cyberpunk.sheet.item .field-list .field.boolean-field.checkbox-boolean-field .item-boolean-checkbox,
 .cyberpunk.sheet.item .field-list .field.boolean-field.checkbox-boolean-field .item-boolean-checkbox {
-  display: block !important;
-  -webkit-appearance: checkbox;
-  appearance: auto;
-
-  position: relative;
-  top: 50%;
-  transform: translateY(-50%);
-
-  width: 13px;
-  min-width: 13px;
-  max-width: 13px;
-  height: 13px;
-  min-height: 13px;
-  max-height: 13px;
-
-  margin: 0 auto !important;
+  display: inline-block !important;
+  align-self: center;
+  margin: 0 4px !important;
   padding: 0 !important;
-
-  box-sizing: border-box;
-  line-height: 13px;
-
-  background-color: initial;
-  color: initial;
-  font: initial;
-  font-variant: normal;
-
   cursor: pointer;
 }
 /* Trigger button */
@@ -1618,6 +1594,13 @@ div.statderive .value.rightborder {
 .weapon-modifier .field input[type="text"],
 .weapon-modifier .field input[type="number"] {
   min-width: 0;
+}
+
+/* `.cyberpunk .field > input` is black on a transparent background, which reads on the sheet's
+   beige paper and disappears into this dialog's dark window. */
+.weapon-modifier .field > input {
+  background-color: black;
+  color: whitesmoke;
 }
 
 @media (max-width: 560px) {
@@ -1765,29 +1748,67 @@ div.statderive .value.rightborder {
 
 .netrun-row-four {
 
-  display: flex;
+  /* A grid rather than a wrapping flex row: with an explicit column count the cells that end a
 
-  flex-direction: row;
+     line are addressable, and a wrap cannot leave one of them stretched across the full width. */
+
+  display: grid;
+
+  grid-template-columns: repeat(5, 1fr);
 
   width: 100%;
-
-  border-bottom: 3px solid black;
 
 }
 
 .netrun-row-four .netrun-cell {
 
-  flex: 1;
+  /* Both separators live on the cell rather than the row — once the row wraps, only the cells
+
+     know where the lines are. */
+
+  min-width: 0;
 
   border-right: 3px solid black;
+
+  border-bottom: 3px solid black;
 
   padding: 6px;
 
 }
 
+/* A cell ending a line must not add its border to `.netrun-container`'s own 3px, which is what
+
+   read as a thicker right edge. Which cells those are depends on the column count. */
+
+.netrun-row-four .netrun-cell:nth-child(5n),
+
 .netrun-row-four .netrun-cell:last-child {
 
   border-right: none;
+
+}
+
+@container (max-width: 720px) {
+
+  .netrun-row-four {
+
+    grid-template-columns: repeat(3, 1fr);
+
+  }
+
+  .netrun-row-four .netrun-cell:nth-child(5n) {
+
+    border-right: 3px solid black;
+
+  }
+
+  .netrun-row-four .netrun-cell:nth-child(3n),
+
+  .netrun-row-four .netrun-cell:last-child {
+
+    border-right: none;
+
+  }
 
 }
 
@@ -1856,6 +1877,26 @@ div.statderive .value.rightborder {
   padding: 4px;
 
   margin-bottom: 3px;
+
+}
+
+
+
+/* Left alone these keep Foundry's own input colours, rgb(48,40,49) and rgb(11,10,19), against the
+
+   pure black of the program tiles below them. */
+
+.netrun-cell input[type="text"],
+
+.netrun-cell input[type="number"],
+
+.deck-type-select {
+
+  background-color: black;
+
+  border-color: black;
+
+  color: whitesmoke;
 
 }
 
@@ -1954,6 +1995,24 @@ div.statderive .value.rightborder {
 .deck-option input[type="checkbox"] {
 
   margin-right: 5px;
+
+}
+
+
+
+/* Foundry's tick is knocked out of the box glyph, so it shows whatever is behind it. Everywhere
+
+   else in the system that is a black row; here it is the beige page, which is why the tick came
+
+   out white. The backdrop has to be the ::before layer rather than the element's background: the
+
+   two pseudo-elements draw the same glyph at the same place, while the element's box is larger
+
+   than the glyph's ink and spilled out around it. */
+
+.deck-option input[type="checkbox"]:checked::before {
+
+  color: black;
 
 }
 
@@ -2075,7 +2134,7 @@ div.statderive .value.rightborder {
 
 
 
-  background-color: rgb(90, 90, 90);
+  background-color: black;
 
   color: whitesmoke;
 
@@ -2122,6 +2181,80 @@ div.statderive .value.rightborder {
   font-style: italic;
 
   color: #ccc;
+
+}
+
+.field.netrun-program .program-mu {
+
+  color: #ccc;
+
+  white-space: nowrap;
+
+}
+
+
+
+/* The row overflows its column by ~15px from 760px down (measured), so the name is the part that
+
+   gives: everything else is short and must stay on one line. */
+
+.field.netrun-program .program-left {
+
+  min-width: 0;
+
+  flex: 1 1 auto;
+
+}
+
+
+
+.field.netrun-program .program-name {
+
+  min-width: 0;
+
+  overflow: hidden;
+
+  text-overflow: ellipsis;
+
+  white-space: nowrap;
+
+}
+
+
+
+.field.netrun-program .program-type {
+
+  white-space: nowrap;
+
+}
+
+
+
+.field.netrun-program .program-controls {
+
+  flex: 0 0 auto;
+
+  white-space: nowrap;
+
+}
+
+
+
+/* Everything in the row but the name measures 218px, and the name truncates, so two columns stay
+
+   readable well below the 760px the cyberware tab uses. Scoped with .cyberpunk because the list
+
+   also carries .field-list, whose two-column rule is (0,2,0) — a container query does not raise
+
+   specificity. */
+
+@container (max-width: 620px) {
+
+  .cyberpunk .netrun-program-list {
+
+    grid-template-columns: 1fr;
+
+  }
 
 }
 

@@ -401,11 +401,7 @@
       <span class="flex-pad"></span>
     </div>
 
-    <div class="field">
-      <label>{{CPLocal "CWT_Chip_Active"}}</label>
-      <span class="flex-pad"></span>
-      <input type="checkbox" name="system.CyberWorkType.ChipActive" {{checked system.CyberWorkType.ChipActive}}/>
-    </div>
+    {{> (template "fields/boolean") label="CWT_Chip_Active" edit="system.CyberWorkType.ChipActive"}}
   {{/if}}
   {{!-- ===== Chip ===== --}}
   {{#if (cwHasType system.CyberWorkType "Chip")}}

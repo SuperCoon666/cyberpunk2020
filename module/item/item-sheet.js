@@ -1,4 +1,4 @@
-import { weaponTypes, meleeAttackTypes, rangedAttackTypes, attackSkills, concealability, availability, reliability, getStatNames } from "../lookups.js";
+import { weaponTypes, meleeAttackTypes, rangedAttackTypes, attackSkills, concealability, availability, reliability, getStatNames, programTypes } from "../lookups.js";
 import { formulaHasDice } from "../dice.js";
 import { deleteFieldUpdate, localize, cwHasType, getSkillIndex } from "../utils.js";
 import { createCyberpunkChatMessage, getHtmlElement, getPublicMessageMode, getRichEditorHTML, saveRichEditorHTML, rollToCyberpunkChatMessage } from "../compat.js";
@@ -73,6 +73,10 @@ export class CyberpunkItemSheet extends HandlebarsApplicationMixin(ItemSheetV2) 
 
       case "ammo":
         this._prepareAmmo(data);
+        break;
+
+      case "program":
+        data.programTypes = programTypes;
         break;
 
       default:
@@ -656,6 +660,7 @@ async _prepareCyberware(sheet) {
     if (!root) return;
 
     this._cpActivateTabs(root);
+    this._cpActivateItemFilePicker(root);
     this._cpActivateNotesEditor(root);
     this._cpActivateVehicleSpeedControls(root);
     this._cpActivateBasicItemActions(root);
@@ -666,6 +671,30 @@ async _prepareCyberware(sheet) {
     this._cpActivateCyberwareWeaponControls(root);
     this._cpActivateAmmoControls(root);
     this._cpActivateSkillItemControls(root);
+  }
+
+  /** The header image carries `data-edit="img"`, which ApplicationV2 does not wire up on its own. */
+  _cpActivateItemFilePicker(root) {
+    if (!root?.addEventListener) return;
+    if (!this.isEditable) return;
+
+    if (root.dataset.cpItemFilePickerBound === "1") return;
+    root.dataset.cpItemFilePickerBound = "1";
+
+    root.addEventListener("click", (event) => {
+      if (!event.target?.closest?.('[data-edit="img"]')) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      // position.top/left are undefined until the sheet has been positioned once.
+      new foundry.applications.apps.FilePicker.implementation({
+        type: "image",
+        current: this.item.img || "",
+        callback: (path) => this.item.update({ img: path }),
+        position: { top: (this.position.top ?? 0) + 40, left: (this.position.left ?? 0) + 10 }
+      }).render(true);
+    });
   }
 
   _cpActivateVehicleSpeedControls(root) {

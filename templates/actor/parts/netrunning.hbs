@@ -185,8 +185,9 @@
         <div class="program-left">
             <img src="{{this.img}}" alt="{{CPLocal 'NetProgramIcon'}}" />
             <label class="program-name">{{this.name}}</label>
-            <span class="program-type">({{this.system.programType}})</span>
+            <span class="program-type">{{this.typeLabel}}</span>
         </div>
+        <span class="program-mu">{{this.mu}} {{CPLocal "UnitMU"}}</span>
         <div class="program-controls">
             <i class="fas fa-edit"></i>
             <i class="fas fa-trash"></i>

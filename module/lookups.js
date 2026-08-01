@@ -14,6 +14,21 @@ export const INTERFACE_SKILL_IDS = new Set([
   "Nc1zY8vB6qWt4pXj"  // Интерфейс
 ]);
 
+// Stored value paired with its localization key: the item sheet's dropdown and the netrunning
+// tab's program list both need the same mapping.
+export const programTypes = [
+    { value: "Intrusion", localKey: "ProgramIntrusion" },
+    { value: "Decryption", localKey: "ProgramDecryption" },
+    { value: "Detection", localKey: "ProgramDetection" },
+    { value: "Anti-System", localKey: "ProgramAntiSystem" },
+    { value: "Stealth", localKey: "ProgramStealth" },
+    { value: "Protection", localKey: "ProgramProtection" },
+    { value: "Anti-ICE", localKey: "ProgramAntiICE" },
+    { value: "Anti-Personnel", localKey: "ProgramAntiPersonnel" },
+    { value: "Controller", localKey: "ProgramController" },
+    { value: "Utility", localKey: "ProgramUtility" }
+];
+
 export let weaponTypes = {
     pistol: "Pistol",
     submachinegun: "SMG",

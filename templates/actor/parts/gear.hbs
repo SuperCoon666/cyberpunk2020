@@ -12,7 +12,7 @@
 <div class="field-list no-wrap">
     <div class="field">
         <label for="system.eurobucks">{{CPLocal "Eurobucks"}}</label>
-        <input name="system.eurobucks" type="number" value="{{system.eurobucks}}">
+        <input name="system.eurobucks" type="number" {{#unless (eq system.eurobucks 0)}}value="{{system.eurobucks}}"{{/unless}} placeholder="0">
     </div>
     <div class="field">
         <label for="system.carryWeight">{{CPLocal "Weight"}}</label>
