@@ -273,10 +273,10 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
         return;
       }
 
-      await ammoItem.update(
-        { "system.quantity": Math.max(0, ammoQty - ammoToLoad) },
-        { render: false }
-      );
+      // Rendered on purpose: an open ammo sheet shows this number and the box count derived from
+      // it, and {render: false} suppresses the item's own re-render, so the card sat stale until
+      // it was closed and reopened.
+      await ammoItem.update({ "system.quantity": Math.max(0, ammoQty - ammoToLoad) });
 
       await updateWeaponShotsLeft(shotsLeftAfter);
 

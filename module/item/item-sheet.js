@@ -1,4 +1,4 @@
-import { weaponTypes, meleeAttackTypes, rangedAttackTypes, attackSkills, concealability, availability, reliability, getStatNames, programTypes } from "../lookups.js";
+import { weaponTypes, meleeAttackTypes, rangedAttackTypes, attackSkills, concealability, availability, reliability, getStatNames, programTypes, AMMO_ROUNDS_PER_BOX } from "../lookups.js";
 import { formulaHasDice } from "../dice.js";
 import { deleteFieldUpdate, localize, cwHasType, getSkillIndex } from "../utils.js";
 import { createCyberpunkChatMessage, getHtmlElement, getPublicMessageMode, getRichEditorHTML, saveRichEditorHTML, rollToCyberpunkChatMessage } from "../compat.js";
@@ -200,6 +200,18 @@ export class CyberpunkItemSheet extends HandlebarsApplicationMixin(ItemSheetV2) 
       "AmmoReloadOther"
     ];
 
+    // Boxes are display-only: the stored total is what reload spends, so a box count is a division
+    // of it and the remainder is the box that has been opened.
+    // Clamped so that "a box size exists" is one expression: the template disables the counter on
+    // this same value, and a negative size must not leave it live with nothing to divide by.
+    const perBox = Math.max(0, Number(sheet.system?.perBox ?? 0));
+    const quantity = Number(sheet.system?.quantity ?? 0);
+    sheet.ammoPack = {
+      perBox,
+      boxes: perBox ? Math.floor(quantity / perBox) : 0,
+      loose: perBox ? quantity % perBox : 0
+    };
+
     // Blast zones selector options
     sheet.blastZonesOptions = Object.fromEntries(
       Array.from({ length: 10 }, (_, i) => {
@@ -261,9 +273,8 @@ export class CyberpunkItemSheet extends HandlebarsApplicationMixin(ItemSheetV2) 
       sheet.ammoChoices = [...ammoItems]
         .sort((a, b) => String(a.name).localeCompare(String(b.name)))
         .map(a => {
-          const ammoType = String(a.system?.ammoType ?? "");
-          const typeLabel = ammoType ? ammoType : "";
-          const label = typeLabel ? `${a.name} (${typeLabel})` : a.name;
+          const reloadType = String(a.system?.weaponType ?? "");
+          const label = reloadType ? `${a.name} (${localize(reloadType)})` : a.name;
           return { value: a.id, localKey: label };
         });
     }
@@ -475,8 +486,8 @@ async _prepareCyberware(sheet) {
     sheet.cwAmmoChoices = [...ammoItems]
       .sort((a, b) => String(a.name).localeCompare(String(b.name)))
       .map(a => {
-        const ammoType = String(a.system?.ammoType ?? "");
-        const label = ammoType ? `${a.name} (${ammoType})` : a.name;
+        const reloadType = String(a.system?.weaponType ?? "");
+        const label = reloadType ? `${a.name} (${localize(reloadType)})` : a.name;
         return { value: a.id, localKey: label };
       });
   }
@@ -1736,6 +1747,12 @@ async _prepareCyberware(sheet) {
       const multiplier = target.closest("input.ammo-blast-mult");
       if (multiplier && root.contains(multiplier)) {
         await this._cpHandleAmmoBlastMultiplierChange(multiplier, event);
+        return;
+      }
+
+      const pack = target.closest("input.ammo-pack");
+      if (pack && root.contains(pack)) {
+        await this._cpHandleAmmoPackChange(pack, event);
       }
     };
 
@@ -1803,6 +1820,36 @@ async _prepareCyberware(sheet) {
     // No re-render: the value lives in the input being edited, so rebuilding the form
     // would only drop focus out of it.
     await this.item.update({ "system.blastMultipliers": multipliers }, { render: false });
+  }
+
+  async _cpHandleAmmoPackChange(input, event) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+
+    const form = input.form;
+    const perBox = Number(this.item.system?.perBox ?? 0);
+    const read = (part) => Math.max(0,
+      parseInt(form?.querySelector(`input.ammo-pack[data-part="${part}"]`)?.value, 10) || 0);
+    const total = (read("boxes") * perBox) + read("loose");
+
+    // No re-render: `change` also fires from the spinner arrows, where focus stays in the control
+    // and a rebuilt form would end the drag. The other two fields are written by hand instead —
+    // and for the total that is not cosmetic, because it carries a name, so the next submit of
+    // any other field would post the stale figure back over this one.
+    await this.item.update({ "system.quantity": total }, { render: false });
+    const totalInput = form?.querySelector('input[name="system.quantity"]');
+    if (totalInput) totalInput.value = String(total);
+    // The two counters show a zero as their placeholder, the way every editable number on this
+    // sheet does; the read-only total prints it, the way its shared widget renders it. Writing
+    // the digit into all three is what put a hard zero into the counters after each edit.
+    for (const [part, value] of [
+      ["boxes", Math.floor(total / perBox)],
+      ["loose", total % perBox]
+    ]) {
+      const el = form?.querySelector(`input.ammo-pack[data-part="${part}"]`);
+      if (el) el.value = value === 0 ? "" : String(value);
+    }
   }
 
   _cpActivateSkillItemControls(root) {
@@ -2306,6 +2353,17 @@ async _prepareCyberware(sheet) {
       }
       if (foundry.utils.hasProperty(data, "system.chipLevel")) {
         foundry.utils.setProperty(data, "system.chipLevel", fixNum(foundry.utils.getProperty(data, "system.chipLevel")));
+      }
+    }
+
+    if (this.item.type === "ammo") {
+      // Picking a reload type seeds the box size from the rules table, but only on the change
+      // itself and only while there is no size: a number already on screen is the player's, and a
+      // submit of some other field must not put a cleared size back.
+      const reloadType = foundry.utils.getProperty(data, "system.weaponType");
+      const changedType = reloadType && reloadType !== this.item.system.weaponType;
+      if (changedType && !this.item.system.perBox && AMMO_ROUNDS_PER_BOX[reloadType]) {
+        foundry.utils.setProperty(data, "system.perBox", AMMO_ROUNDS_PER_BOX[reloadType]);
       }
     }
 

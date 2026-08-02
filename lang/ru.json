@@ -640,7 +640,11 @@
     "CYBERPUNK.Roll.OtherRoll": "Второй бросок",
 
     "CYBERPUNK.Ammo": "Боеприпасы",
-    "CYBERPUNK.AmmoQuantity": "Количество",
+    "CYBERPUNK.AmmoQuantity": "Всего патронов",
+    "CYBERPUNK.AmmoPerBox": "В коробке",
+    "CYBERPUNK.AmmoBoxes": "Коробок",
+    "CYBERPUNK.AmmoLoose": "Россыпью",
+    "CYBERPUNK.AmmoLooseHint": "Остаток патронов из уже открытой коробки — то, что осталось от общего счёта после целых коробок.",
     "CYBERPUNK.AmmoReloadLightPistolSMG": "Лёгкий Пистолет/ПП",
     "CYBERPUNK.AmmoReloadMediumPistolSMG": "Средний Пистолет/ПП",
     "CYBERPUNK.AmmoReloadHeavyPistolSMG": "Тяжёлый Пистолет/ПП",
@@ -785,6 +789,7 @@
     "CYBERPUNK.Packs.Armor": "Броня",
     "CYBERPUNK.Packs.Vehicles": "Транспорт",
     "CYBERPUNK.Packs.Programs": "Программы",
+    "CYBERPUNK.Packs.Ammo": "Боеприпасы",
     "CYBERPUNK.SheetLabels.Actor": "Лист персонажа Cyberpunk 2020",
     "CYBERPUNK.SheetLabels.Item": "Лист предмета Cyberpunk 2020"
 }

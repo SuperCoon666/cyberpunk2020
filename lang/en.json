@@ -641,7 +641,11 @@
     "CYBERPUNK.Roll.OtherRoll": "Other roll",
 
     "CYBERPUNK.Ammo": "Ammo",
-    "CYBERPUNK.AmmoQuantity": "Quantity",
+    "CYBERPUNK.AmmoQuantity": "Total rounds",
+    "CYBERPUNK.AmmoPerBox": "Per box",
+    "CYBERPUNK.AmmoBoxes": "Boxes",
+    "CYBERPUNK.AmmoLoose": "Loose",
+    "CYBERPUNK.AmmoLooseHint": "The remainder of rounds from the box already opened — what the total has left over once the full boxes are counted out.",
     "CYBERPUNK.AmmoReloadLightPistolSMG": "Light Pistol & SMG",
     "CYBERPUNK.AmmoReloadMediumPistolSMG": "Medium Pistol & SMG",
     "CYBERPUNK.AmmoReloadHeavyPistolSMG": "Heavy Pistol & SMG",
@@ -786,6 +790,7 @@
     "CYBERPUNK.Packs.Armor": "Armor",
     "CYBERPUNK.Packs.Vehicles": "Vehicles",
     "CYBERPUNK.Packs.Programs": "Programs",
+    "CYBERPUNK.Packs.Ammo": "Ammunition",
     "CYBERPUNK.SheetLabels.Actor": "Cyberpunk 2020 Actor Sheet",
     "CYBERPUNK.SheetLabels.Item": "Cyberpunk 2020 Item Sheet"
 }

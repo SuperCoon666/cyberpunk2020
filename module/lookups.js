@@ -29,6 +29,29 @@ export const programTypes = [
     { value: "Utility", localKey: "ProgramUtility" }
 ];
 
+// Rounds a box of each reload type holds — the RELOADS & OPTIONS table. Keyed by the ammo item's
+// weaponType, whose values are the localization keys listed in the item sheet's ammoReloadTypes.
+// The four the table has no row for are sold by the piece, hence one per box.
+export const AMMO_ROUNDS_PER_BOX = {
+    AmmoReloadLightPistolSMG: 100,
+    AmmoReloadMediumPistolSMG: 50,
+    AmmoReloadHeavyPistolSMG: 50,
+    AmmoReloadVeryHeavyPistol: 50,
+    AmmoReloadAssaultRifle: 100,
+    AmmoReloadShotgun: 12,
+    AmmoReload20mmCannonRound: 1,
+    AmmoWeaponArrows: 12,
+    AmmoWeaponCrossbowQuarrels: 12,
+    AmmoWeaponAirguns: 100,
+    AmmoReloadNeedlegunRounds: 50,
+    AmmoReloadFlamethrower: 1,
+    AmmoReloadRockets: 4,
+    AmmoWeaponPaintloads: 1,
+    AmmoWeaponGauss: 1,
+    AmmoReloadGrenades: 1,
+    AmmoReloadOther: 1
+};
+
 export let weaponTypes = {
     pistol: "Pistol",
     submachinegun: "SMG",

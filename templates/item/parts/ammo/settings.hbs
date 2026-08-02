@@ -55,14 +55,47 @@
         </div>
     </div>
 
-    {{> (template "fields/number") label="AmmoQuantity" edit="system.quantity"}}
-
     {{> (template "fields/select")
         label="WeaponType"
         edit="system.weaponType"
         choices=ammoReloadTypes
         allowBlank=true
     }}
+
+    {{!-- Boxes and loose are not stored: the total is, and these two are it divided by the box
+          size — full boxes, and the one that has been opened. Editing either recomputes the
+          total. The grid is row-major, so this order reads boxes / per box over total / loose. --}}
+    <div class="field">
+        <label>{{CPLocal "AmmoBoxes"}}</label>
+        <span class="flex-pad"></span>
+        <input
+            type="number"
+            class="number nogrow nowidth ammo-pack"
+            data-part="boxes"
+            min="0"
+            placeholder="0"
+            {{#unless (eq ammoPack.boxes 0)}}value="{{ammoPack.boxes}}"{{/unless}}
+            {{#unless ammoPack.perBox}}disabled{{/unless}}
+        />
+    </div>
+
+    {{> (template "fields/number") label="AmmoPerBox" edit="system.perBox"}}
+
+    {{> (template "fields/number") label="AmmoQuantity" edit="system.quantity" readOnly=true}}
+
+    <div class="field" data-tooltip="{{CPLocal 'AmmoLooseHint'}}">
+        <label>{{CPLocal "AmmoLoose"}}</label>
+        <span class="flex-pad"></span>
+        <input
+            type="number"
+            class="number nogrow nowidth ammo-pack"
+            data-part="loose"
+            min="0"
+            placeholder="0"
+            {{#unless (eq ammoPack.loose 0)}}value="{{ammoPack.loose}}"{{/unless}}
+            {{#unless ammoPack.perBox}}disabled{{/unless}}
+        />
+    </div>
 
     {{!-- ===== Core modifiers ===== --}}
     {{#if (ammoHasEffect system "CoreMods")}}
