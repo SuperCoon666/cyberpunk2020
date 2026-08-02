@@ -42,18 +42,24 @@
     <div class="field-list">
         <div class="field full-width">
             <label>{{CPLocal "Advantage"}}</label>
-            <input type="checkbox" name="advantage" class="adv-dis adv">
+            <span class="skill-mod-toggle">
+                <input type="checkbox" name="advantage" class="adv-dis adv">
+            </span>
         </div>
 
         <div class="field full-width">
             <label>{{CPLocal "Disadvantage"}}</label>
-            <input type="checkbox" name="disadvantage" class="adv-dis dis">
+            <span class="skill-mod-toggle">
+                <input type="checkbox" name="disadvantage" class="adv-dis dis">
+            </span>
         </div>
 
         {{#if isGM}}
         <div class="field full-width">
             <label>{{CPLocal "HiddenAdvantage"}}</label>
-            <input type="checkbox" name="hiddenAdvantage" class="adv-hidden">
+            <span class="skill-mod-toggle">
+                <input type="checkbox" name="hiddenAdvantage" class="adv-hidden">
+            </span>
         </div>
         {{/if}}
     </div>
