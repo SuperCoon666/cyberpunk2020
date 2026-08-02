@@ -683,6 +683,13 @@ export class CyberpunkActor extends Actor {
     add(itemData?._id);
     add(itemData?._source?._id);
 
+    // Core stopped writing flags.core.sourceId in 13.336 and records the origin in
+    // _stats.compendiumSource instead. Reading only the legacy path left every skill dropped
+    // out of a compendium unidentifiable, so built-in martial arts registered as custom ones
+    // and their key-attack bonuses never applied. Both paths are read: worlds migrated before
+    // 13.336 still carry the old field and are never cleaned up.
+    addSourceId(itemData?._stats?.compendiumSource);
+    addSourceId(itemData?._source?._stats?.compendiumSource);
     addSourceId(itemData?.flags?.core?.sourceId);
     addSourceId(itemData?._source?.flags?.core?.sourceId);
 
