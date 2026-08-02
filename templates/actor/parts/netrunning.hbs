@@ -41,7 +41,8 @@
     </div><!-- /netrun-row -->
 
 
-    <!-- 2nd line: CPU, Speed, DataWall, RAM (Strength removed) -->
+    <!-- 2nd line: CPU, Speed, Data Wall, Strength, RAM. Five cells — the grid's column count and
+         the border exceptions in .netrun-row-four are written against that number. -->
     <div class="netrun-row-four">
       <div class="netrun-cell">
         <label class="netrun-label">{{CPLocal "NetCPU"}}</label>
@@ -49,7 +50,7 @@
                name="system.cpu"
                class="short-input"
                placeholder="0"
-               value="{{actor.system.cpu}}" />
+               {{#unless (eq actor.system.cpu 0)}}value="{{actor.system.cpu}}"{{/unless}} />
       </div>
       <div class="netrun-cell">
         <label class="netrun-label">{{CPLocal "NetSpeed"}}</label>
@@ -57,7 +58,7 @@
                name="system.speed"
                class="short-input"
                placeholder="0"
-               value="{{actor.system.speed}}" />
+               {{#unless (eq actor.system.speed 0)}}value="{{actor.system.speed}}"{{/unless}} />
       </div>
       <div class="netrun-cell">
         <label class="netrun-label">{{CPLocal "NetDataWall"}}</label>
@@ -65,7 +66,7 @@
                name="system.dataWall"
                class="short-input"
                placeholder="0"
-               value="{{actor.system.dataWall}}" />
+               {{#unless (eq actor.system.dataWall 0)}}value="{{actor.system.dataWall}}"{{/unless}} />
       </div>
       <div class="netrun-cell">
         <label class="netrun-label">{{CPLocal "NetStrength"}}</label>
@@ -73,7 +74,7 @@
                name="system.strength"
                class="short-input"
                placeholder="0"
-               value="{{actor.system.strength}}" />
+               {{#unless (eq actor.system.strength 0)}}value="{{actor.system.strength}}"{{/unless}} />
       </div>
       <div class="netrun-cell netrun-cell-ram">
         <label class="netrun-label">{{CPLocal "NetRAM"}}</label>
@@ -84,7 +85,7 @@
                    name="system.ramMax"
                    class="netrun-ram-short"
                    placeholder="0"
-                   value="{{actor.system.ramMax}}" />
+                   {{#unless (eq actor.system.ramMax 0)}}value="{{actor.system.ramMax}}"{{/unless}} />
           </div>
         </div>
       </div>

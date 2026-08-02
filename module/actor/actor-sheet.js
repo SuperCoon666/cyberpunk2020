@@ -265,8 +265,22 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       cwIsEnabled(it) &&
       it.system?.CyberWorkType?.ChipActive === true
     );
+  }
 
-    sheetData.gear.cyberwareActive = activeCyber;
+  /** @override */
+  _processFormData(event, form, formData) {
+    const data = super._processFormData(event, form, formData);
+
+    // `sdp.current` is the player's note of what is left in a zone, and 0 is a value they can
+    // legitimately write there. Marking the zone on the same write is what lets the rules engine
+    // tell that 0 apart from the untouched default, which it reseeds from the sum.
+    const current = data?.system?.sdp?.current;
+    if (current) {
+      data.system.sdp.touched = Object.assign(data.system.sdp.touched ?? {},
+        Object.fromEntries(Object.keys(current).map(zone => [zone, true])));
+    }
+
+    return data;
   }
 
   /** @override */
@@ -791,7 +805,9 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     // A render replaces the part's contents while root survives, so every skill row is a new
     // element and the filter has to be re-applied here, above the guard. The block below it must
     // not be: nothing that re-renders the sheet originates in the search box, so restoring focus
-    // there would take it from the control the user is actually editing.
+    // there would take it from the control the user is actually editing. A close and reopen is the
+    // other way to reach a fresh bind, and there the sheet instance survives — which is what makes
+    // the block below reachable at all (F.3.6).
     this._cpApplySkillFilterToDOM(root, this._cpSkillFilter ?? "");
 
     if (root.dataset.cpActorFormControlsBound === "1") return;

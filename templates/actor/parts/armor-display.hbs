@@ -22,17 +22,17 @@
         value="{{hitLoc.stoppingPower}}"
         {{#unless ../edit}}readonly{{/unless}}>
 
-        {{!-- SDP: actors only (system.sdp.sum exists). A hand-entered `current` outlives the
-              implant that gave the zone its sum, so hiding on sum alone left that stored value
-              with no control at all — it could be neither seen nor corrected. --}}
+        {{!-- SDP: actors only (system.sdp.sum exists). The sum alone decides: it is the zone's
+              maximum, so a zone with no implant has no SDP to show. `current` is the player's own
+              note of what is left and never gates the row — editing it to 0 used to hide the pair
+              and leave no way back. An orphaned `current` is not stranded by this: the
+              reconciliation in actor.js resyncs it when the sum changes, including to 0. --}}
         {{#if ../system.sdp.sum}}
-          {{#unless (and
-                      (or (equals (lookup ../system.sdp.sum name) 0) (equals (lookup ../system.sdp.sum name) "0"))
-                      (or (equals (lookup ../system.sdp.current name) 0) (equals (lookup ../system.sdp.current name) "0")))}}
+          {{#unless (or (equals (lookup ../system.sdp.sum name) 0) (equals (lookup ../system.sdp.sum name) "0"))}}
             <div class="segment-sdp-row">
               <input
                 type="number"
-                class="smallnumber not-editable"
+                class="smallnumber"
                 title="{{CPLocal "SDPSumTooltip"}}"
                 value="{{lookup ../system.sdp.sum name}}"
                 readonly>

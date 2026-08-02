@@ -5,7 +5,7 @@
     </div>
     <div class="field">
         <label for="system.stats.emp.humanity.loss">{{CPLocal "HumanityLoss"}}</label>
-        <input class="not-editable" type="number" value="{{system.stats.emp.humanity.loss}}" readonly>
+        <input type="number" value="{{system.stats.emp.humanity.loss}}" readonly>
     </div>
 </div>
 
@@ -39,48 +39,16 @@
 </header>
 
 
-<div class="active-cyberware" style="background-image: url('systems/cyberpunk2020/img/grid-beige-big-tile.png')">
-    <div class="active-cyberware-right" >
-        {{#each cyberwareSegmentsRight}}
-            <section class="field-list cyberware-field-list active-cyberware-segment"
-            data-drop-target="zone:{{this.area}}">
+{{!-- One body for both zone columns. They were hand-duplicated, and a change made to one of the
+      two copies shipped half-applied — the activation toggle reached the right column only. --}}
+{{#*inline "cyberZoneColumn"}}
+    {{#each segments}}
+        <section class="field-list cyberware-field-list active-cyberware-segment"
+                 data-drop-target="zone:{{this.area}}">
             <button type="button">{{this.areaLabel}}</button>
-            {{#each (lookup ../cyberZones this.area) as |cyber|}}
+            {{#each (lookup ../zones this.area) as |cyber|}}
                 <div class="field gear item-edit full-width item" data-item-id="{{cyber.id}}" draggable="true">
-                <label>{{cyber.name}}</label>
-                <span class="flex-pad"></span>
-                {{#with cyber.system}}
-                    {{#if (equals EffectMode "Activatable")}}
-                        <span class="cyber-effect-toggle" title="{{CPLocal 'CWT_EffectActive'}}">
-                            <input type="checkbox" class="cyber-effect-active"
-                                   data-item-id="{{cyber.id}}" {{checked EffectActive}}/>
-                        </span>
-                    {{/if}}
-                    <span>{{CPLocal "HumanityLossAbbrev"}}: {{humanityLoss}}</span>
-                {{/with}}
-                <span class="item-unequip" data-item-id="{{cyber.id}}" draggable="false">X</span>
-                </div>
-            {{/each}}
-            </section>
-        {{/each}}
-    </div>
-
-    <div class="anatomy-container" style="background-image: url('systems/cyberpunk2020/img/black_gray_grid.png');">
-        <img
-            src="systems/cyberpunk2020/img/male-anatomy-unsegmented.svg"
-            id="anatomy-img"
-            alt="{{CPLocal 'CyberwareAnatomyAlt'}}"
-            draggable="false"
-        />
-    </div>
-    <div class="active-cyberware-left">
-        {{#each cyberwareSegmentsLeft}}
-            <section class="field-list cyberware-field-list active-cyberware-segment"
-                data-drop-target="zone:{{this.area}}">
-                <button type="button">{{this.areaLabel}}</button>
-                {{#each (lookup ../cyberZones this.area) as |cyber|}}
-                    <div class="field gear item-edit full-width item" data-item-id="{{cyber.id}}" draggable="true">
-                    <label>{{cyber.name}}</label>
+                    <label title="{{cyber.name}}">{{cyber.name}}</label>
                     <span class="flex-pad"></span>
                     {{#with cyber.system}}
                         {{#if (equals EffectMode "Activatable")}}
@@ -92,10 +60,27 @@
                         <span>{{CPLocal "HumanityLossAbbrev"}}: {{humanityLoss}}</span>
                     {{/with}}
                     <span class="item-unequip" data-item-id="{{cyber.id}}" draggable="false">X</span>
-                    </div>
-                {{/each}}
-            </section>
-         {{/each}}
+                </div>
+            {{/each}}
+        </section>
+    {{/each}}
+{{/inline}}
+
+<div class="active-cyberware" style="background-image: url('systems/cyberpunk2020/img/grid-beige-big-tile.png')">
+    <div class="active-cyberware-right" >
+        {{> cyberZoneColumn segments=cyberwareSegmentsRight zones=cyberZones}}
+    </div>
+
+    <div class="anatomy-container" style="background-image: url('systems/cyberpunk2020/img/black_gray_grid.png');">
+        <img
+            src="systems/cyberpunk2020/img/male-anatomy-unsegmented.svg"
+            id="anatomy-img"
+            alt="{{CPLocal 'CyberwareAnatomyAlt'}}"
+            draggable="false"
+        />
+    </div>
+    <div class="active-cyberware-left">
+        {{> cyberZoneColumn segments=cyberwareSegmentsLeft zones=cyberZones}}
     </div>
 </div>
 
@@ -113,7 +98,7 @@
         <div class="field-image" data-item-id="{{cyber.id}}">
             <img src={{cyber.img}}>
         </div>
-        <label class="cyber-name">{{cyber.name}}</label>
+        <label class="cyber-name" title="{{cyber.name}}">{{cyber.name}}</label>
         <span class="flex-pad"></span>
             {{#with cyber.system}}
                 <span class="cyber-hm-loss">{{CPLocal "HumanityLossAbbrev"}}: {{humanityLoss}}</span>

@@ -415,8 +415,12 @@ export class CyberpunkActor extends Actor {
           // If the player has already entered a non-zero value (e.g., 18), do not overwrite it
           const curRaw = system.sdp.current?.[z];
           const curNum = Number(curRaw);
+          // A zone the player has written to keeps its number, 0 included: that is the value they
+          // record once the implant has taken all its damage, and without the marker it is
+          // indistinguishable from the untouched default and gets reseeded from the sum.
+          const touched = system.sdp.touched?.[z] === true;
 
-          if (curRaw == null || Number.isNaN(curNum) || curNum === 0) {
+          if (curRaw == null || Number.isNaN(curNum) || (curNum === 0 && !touched)) {
             system.sdp.current[z] = sumNow;
           }
           system.sdp._lastSum[z] = sumNow;

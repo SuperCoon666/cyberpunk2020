@@ -131,7 +131,8 @@
                     type="number"
                     class="ammo-blast-mult"
                     data-index="{{this}}"
-                    value="{{lookup ../system.blastMultipliers this}}"
+                    placeholder="0"
+                    {{#unless (eq (lookup ../system.blastMultipliers this) 0)}}value="{{lookup ../system.blastMultipliers this}}"{{/unless}}
                     step="0.01"
                     min="0"
                 />

@@ -667,6 +667,8 @@ div.statderive .value.rightborder {
   font-weight: bold;
   font-style: italic;
   align-self: stretch;
+  background-color: black;
+  color: whitesmoke;
   border: 2px solid black;
   border-radius: 0px;
   min-height: 5em;
@@ -1317,9 +1319,15 @@ div.statderive .value.rightborder {
   background-size: contain;
 }
 
+/* The row is `flex-wrap: wrap`, so a name that does not fit pushed everything after it onto a
+   second line and left HL wherever the wrap put it. Truncating keeps HL pinned right on every row;
+   the full name is on the label's own `title` and on the card. */
 .cyberpunk .tab[data-tab="cyberware"] .field.gear label {
   flex: 1 1 auto;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cyberpunk .tab[data-tab="cyberware"] .field.gear .flex-pad {
@@ -1511,9 +1519,15 @@ div.statderive .value.rightborder {
    display and margin and leaves the painting alone. */
 .application.cyberpunk.sheet.item .field-list .field.boolean-field.checkbox-boolean-field .item-boolean-checkbox,
 .cyberpunk.sheet.item .field-list .field.boolean-field.checkbox-boolean-field .item-boolean-checkbox {
-  display: inline-block !important;
-  align-self: center;
-  margin: 0 4px !important;
+  /* Foundry drives the box and the tick from `--checkbox-size` (`foundry2.css:3832-3835`), so
+     setting it scales the painted control whole instead of stretching a 16px glyph inside a
+     larger box. 24px is the height of the number inputs sharing this column, and `margin-left:
+     auto` puts its right edge on theirs. */
+  --checkbox-size: 24px;
+  display: block !important;
+  width: 24px;
+  height: 24px;
+  margin: 0 0 0 auto !important;
   padding: 0 !important;
   cursor: pointer;
 }
@@ -1780,8 +1794,6 @@ div.statderive .value.rightborder {
 
    read as a thicker right edge. Which cells those are depends on the column count. */
 
-.netrun-row-four .netrun-cell:nth-child(5n),
-
 .netrun-row-four .netrun-cell:last-child {
 
   border-right: none;
@@ -1793,12 +1805,6 @@ div.statderive .value.rightborder {
   .netrun-row-four {
 
     grid-template-columns: repeat(3, 1fr);
-
-  }
-
-  .netrun-row-four .netrun-cell:nth-child(5n) {
-
-    border-right: 3px solid black;
 
   }
 
@@ -2098,19 +2104,11 @@ div.statderive .value.rightborder {
 
 
 
-/* List (2 columns) */
+/* The element also carries `field-list`, so its two-column grid comes from `.cyberpunk .field-list`
+   at (0,2,0) — width, display, columns, gap and auto-rows declared here never applied and are
+   gone. Anything layout-related added back has to be scoped with `.cyberpunk` to have any effect. */
 
 .netrun-program-list {
-
-  width: 100%;
-
-  display: grid;
-
-  grid-template-columns: 1fr 1fr;
-
-  gap: 4px;
-
-  grid-auto-rows: auto;
 
   margin-top: 5px;
 
