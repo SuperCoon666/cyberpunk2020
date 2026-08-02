@@ -270,7 +270,11 @@ export class CyberpunkAmmoData extends CyberpunkBaseItemData {
   static defineSchema() {
     return {
       ...commonSchema(),
-      ammoType: stringField(""),
+      // The reload category the sheet has always written and the summary has always read. It was
+      // in no schema, so every write of it was pruned and no world holds one.
+      weaponType: stringField(""),
+      // Rounds a full box holds; 0 means not configured, which is what disables the box counter.
+      perBox: numberField(0),
       quantity: numberField(0),
       armorMultSoft: numberField(1),
       armorMultHard: numberField(1),

@@ -453,6 +453,17 @@ export async function migrateItem(item) {
     }
   }
 
+  // AMMO: the stock predates boxes, and no world item carries a reload type to size a box by --
+  // the key was never in the schema, so every write of it was pruned. One box holding everything
+  // is therefore the only conversion that changes no player's round count; they set the real size
+  // themselves, and that repacks without losing any. Guarded on the data rather than on a version
+  // so the 1.2.x run over a world 1.1.2 already converted leaves it alone.
+  if (itemData.type === "ammo") {
+    const perBox = Number(foundry.utils.getProperty(itemData, "system.perBox") ?? 0);
+    const quantity = Number(foundry.utils.getProperty(itemData, "system.quantity") ?? 0);
+    if (!(perBox > 0) && quantity > 0) updateData["system.perBox"] = quantity;
+  }
+
   // CYBERWARE: replace content from compendium template, then transfer user values.
   if (item.type === "cyberware") {
     const stableIds = getItemStableIdCandidates(itemData, item);
