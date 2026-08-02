@@ -3,7 +3,6 @@ import { DEFAULT_HIT_LOCATIONS, DEFAULT_SDP, DEFAULT_STATS } from "../constants.
 import {
   arrayField,
   booleanField,
-  filePathField,
   htmlField,
   mergeDefaults,
   numberField,
@@ -57,7 +56,9 @@ class CyberpunkBaseActorData extends foundry.abstract.TypeDataModel {
       _cwChecks: objectField({ saveStun: 0 }),
 
       // Netrunning fields are top-level in the current templates and sheet code.
-      icon: filePathField(""),
+      // Not a FilePathField: its extension check throws out of DataModel.validate, which fails the
+      // whole actor over a decorative deck image and makes the document unavailable.
+      icon: stringField(""),
       deckModel: stringField(""),
       interface: numberField(0),
       cpu: numberField(0),

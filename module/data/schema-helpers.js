@@ -43,11 +43,6 @@ export function arrayField(elementField = null, initial = []) {
   return new ArrayField(elementField ?? new AnyField(), { required: true, nullable: false, initial: clone(initial) });
 }
 
-export function filePathField(initial = "", categories = ["IMAGE"]) {
-  const { FilePathField } = fields();
-  return new FilePathField({ required: true, nullable: false, initial, categories, blank: true });
-}
-
 export function mergeDefaults(source, defaults) {
   source ??= {};
   return foundry.utils.mergeObject(clone(defaults), source, {

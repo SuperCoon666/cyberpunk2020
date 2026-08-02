@@ -1,3 +1,1 @@
-{{#with data ~}}
-    {{weaponType}}{{#if attackType}} ({{attackType}}){{/if}}
-{{~/with}}
+{{#if system.weaponType}}{{CPLocal system.weaponType}}{{/if}}{{#if system.attackType}} ({{CPLocal system.attackType}}){{/if}}

@@ -100,11 +100,15 @@ export class CyberpunkActor extends Actor {
     const updates = {};
 
     if (actorType === "character") {
-      updates["img"] = "systems/cyberpunk2020/img/edgerunner.svg";
-      updates["prototypeToken.texture.src"] = "systems/cyberpunk2020/img/edgerunner.svg";
+      // Seeded only where the creation data left the image unset: these are defaults, and a
+      // default that overwrites a supplied value silently discards it on import.
+      if (!data?.img) updates["img"] = "systems/cyberpunk2020/img/edgerunner.svg";
+      if (!data?.prototypeToken?.texture?.src) {
+        updates["prototypeToken.texture.src"] = "systems/cyberpunk2020/img/edgerunner.svg";
+      }
       updates["prototypeToken.actorLink"] = true;
       updates["prototypeToken.sight.enabled"] = true;
-      updates["system.icon"] = "systems/cyberpunk2020/img/edgerunner.svg";
+      if (!data?.system?.icon) updates["system.icon"] = "systems/cyberpunk2020/img/edgerunner.svg";
     }
 
     const items = this._getInitialItemsSource(data);

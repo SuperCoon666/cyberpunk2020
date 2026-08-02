@@ -55,7 +55,7 @@
             <span class="flex-pad"></span>
             <span>
                 {{#with weapon.system}}
-                <div class="field-label inactive">{{#if attackType}}{{attackType}}{{else}}{{weaponType}}{{/if}}</div>
+                <div class="field-label inactive">{{#if attackType}}{{CPLocal attackType}}{{else}}{{CPLocal weaponType}}{{/if}}</div>
                 {{/with}}
             </span>
             </div>
@@ -70,7 +70,7 @@
                 <span class="flex-pad"></span>
                 <span>
                 {{#with cyber.system.CyberWorkType.Weapon}}
-                <div class="field-label inactive">{{#if attackType}}{{attackType}}{{else}}{{weaponType}}{{/if}}</div>
+                <div class="field-label inactive">{{#if attackType}}{{CPLocal attackType}}{{else}}{{CPLocal weaponType}}{{/if}}</div>
                 {{/with}}
                 </span>
             </div>
