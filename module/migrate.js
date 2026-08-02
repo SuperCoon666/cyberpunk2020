@@ -551,8 +551,14 @@ export async function migrateCompendium(compendium) {
     }
   }
 
-  if (updates.length > 0) {
-    await compendium.updateDocuments(updates, { diff: false, recursive: false });
+  // A batch carries one set of options, so the two update shapes go in two batches.
+  for (const batch of [updates.filter(u => "system" in u), updates.filter(u => !("system" in u))]) {
+    if (!batch.length) continue;
+    // CompendiumCollection has no updateDocuments; the write goes through the document class.
+    await compendium.documentClass.updateDocuments(batch, {
+      pack: compendium.collection,
+      ...itemUpdateOptions(batch[0])
+    });
   }
 }
 
