@@ -360,27 +360,6 @@ import { createCyberpunkChatMessage, getGMUserIds } from "../compat.js";
         );
       };
 
-      const validateNumberMinInput = (input, { min = 1, messageKey = "NumberMinInvalid", report = false } = {}) => {
-        if (!input) return true;
-
-        input.setCustomValidity("");
-
-        const rawValue = String(input.value ?? "").trim();
-        const value = Number(rawValue);
-
-        const invalid = rawValue === ""
-          || !Number.isFinite(value)
-          || value < min;
-
-        if (!invalid) return true;
-
-        return showFieldValidation(
-          input,
-          localizeParam(messageKey, { min }),
-          { report }
-        );
-      };
-
       const validateIntegerMinInput = (input, { min = 1, messageKey = "IntegerMinInvalid", report = false } = {}) => {
         if (!input) return true;
 
@@ -428,9 +407,9 @@ import { createCyberpunkChatMessage, getGMUserIds } from "../compat.js";
 
         const zoneMin = Math.max(1, Math.floor(Number(zoneWidthInput?.dataset?.min) || 2));
 
-        const zoneValid = validateNumberMinInput(zoneWidthInput, {
+        const zoneValid = validateIntegerMinInput(zoneWidthInput, {
           min: zoneMin,
-          messageKey: "NumberMinInvalid",
+          messageKey: "IntegerMinInvalid",
           report
         });
 
@@ -612,12 +591,13 @@ import { createCyberpunkChatMessage, getGMUserIds } from "../compat.js";
 
         const zoneInvalid = zoneRaw === ""
           || !Number.isFinite(zoneWidth)
+          || !Number.isInteger(zoneWidth)
           || zoneWidth < zoneMin;
 
         if (zoneInvalid) {
           return invalidate(
             zoneWidthInput,
-            localizeParam("NumberMinInvalid", { min: zoneMin })
+            localizeParam("IntegerMinInvalid", { min: zoneMin })
           );
         }
 

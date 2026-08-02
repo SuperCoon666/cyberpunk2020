@@ -344,6 +344,8 @@
     "CYBERPUNK.NoHits": "Без попаданий",
     "CYBERPUNK.SuppressiveFire":"Подавляющий огонь",
     "CYBERPUNK.FireZoneWidth": "Ширина подавления (м)",
+    "CYBERPUNK.UnitMetres": "м",
+    "CYBERPUNK.DifficultyClassShort": "СЛ:",
     "CYBERPUNK.RoundsFiredLbl": "Выстрелов: Подавление",
     "CYBERPUNK.SuppressiveDesc": "Каждая цель на линии огня или пересекающая её делает бросок Атлетика + РЕФ + 1d10 против DC ({save}).",
     "CYBERPUNK.SuppressiveHitsDesc": "При провале цель получает 1D6 попаданий; каждое попадание наносит {dmg} урона в случайную зону.",

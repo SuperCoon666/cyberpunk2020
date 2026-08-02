@@ -344,6 +344,8 @@
     "CYBERPUNK.NoHits": "No Hits",
     "CYBERPUNK.SuppressiveFire": "Suppressive Fire",
     "CYBERPUNK.FireZoneWidth": "Fire-zone width (m)",
+    "CYBERPUNK.UnitMetres": "m",
+    "CYBERPUNK.DifficultyClassShort": "DC:",
     "CYBERPUNK.RoundsFiredLbl": "Rounds: Suppressive",
     "CYBERPUNK.SuppressiveDesc": "Each creature inside or crossing the fire-zone rolls Athletics + REF + 1d10 vs DC ({save}).",
     "CYBERPUNK.SuppressiveHitsDesc":"On failure the target suffers 1D6 hits; each hit deals {dmg} damage to a random location.",

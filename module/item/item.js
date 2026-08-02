@@ -631,7 +631,7 @@ export class CyberpunkItem extends Item {
     const rounds = maxRounds > 0
       ? clamp(requestedRounds, 1, maxRounds)
       : 0;
-    const width = Math.max(2, Number(mods.zoneWidth ?? 2));
+    const width = Math.max(2, Math.floor(Number(mods.zoneWidth ?? 2)));
     const targets = Math.max(1, Math.floor(Number(mods.targetsCount ?? 1)));
 
     await this.__setWeaponField("shotsLeft", sys.shotsLeft - rounds);
