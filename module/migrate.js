@@ -18,7 +18,7 @@ export const migrateWorld = async function (targetVersion = game.system.version)
       // Migrate embedded items (critical for cyberware replacement)
       for (const item of actor.items.contents) {
         const itemUpdate = await migrateItem(item);
-        await defaultDataUse(item, itemUpdate, { diff: false, recursive: false });
+        await defaultDataUse(item, itemUpdate, itemUpdateOptions(itemUpdate));
       }
     } catch (err) {
       console.error(err);
@@ -29,7 +29,7 @@ export const migrateWorld = async function (targetVersion = game.system.version)
   for (const item of game.items.contents) {
     try {
       const itemUpdate = await migrateItem(item);
-      await defaultDataUse(item, itemUpdate, { diff: false, recursive: false });
+      await defaultDataUse(item, itemUpdate, itemUpdateOptions(itemUpdate));
     } catch (err) {
       console.error(err);
     }
@@ -52,7 +52,7 @@ export const migrateWorld = async function (targetVersion = game.system.version)
         // Best-effort: migrate embedded items on synthetic actor
         for (const item of token.actor.items.contents) {
           const itemUpdate = await migrateItem(item);
-          await defaultDataUse(item, itemUpdate, { diff: false, recursive: false });
+          await defaultDataUse(item, itemUpdate, itemUpdateOptions(itemUpdate));
         }
       } catch (err) {
         console.error(err);
@@ -207,7 +207,11 @@ const CYBERWARE_PACK_NAMES = [
   "cyberlimbs",
   "cyberoptic",
   "chipware",
-  "other-cyberware"
+  "other-cyberware",
+  // Last on purpose: both lookup maps keep the first ref they see for an id or a name, and this
+  // pack is the largest by far (349 entries), so ahead of the others it would shadow their
+  // templates on the name-matching fallback.
+  "cyberware-old"
 ];
 
 function normalizeName(name) {
@@ -335,6 +339,23 @@ async function getCyberwareTemplateByName(itemName) {
   return getCyberwareTemplateByRef(ref);
 }
 
+// A blank is not a value: a pre-refactor implant often carries the key with "" or null, and the
+// template is the only thing that can fill it — a blank MountZone left as-is is an uninstalled
+// implant. This is also what heals an implant a pre-D1 migration had already stripped.
+// `foundry.utils.isPlainObject` does not exist in v13, hence `getType`.
+function fillFromCyberwareTemplate(target, source) {
+  for (const [key, value] of Object.entries(source)) {
+    const current = target[key];
+    if (foundry.utils.getType(value) === "Object" && foundry.utils.getType(current) === "Object") {
+      fillFromCyberwareTemplate(current, value);
+      continue;
+    }
+    if (current === undefined || current === null || current === "") {
+      target[key] = foundry.utils.duplicate(value);
+    }
+  }
+}
+
 function transferCyberwareUserValues({ oldSystem, newSystem }) {
   if (oldSystem?.humanityLoss !== undefined) newSystem.humanityLoss = oldSystem.humanityLoss;
   if (oldSystem?.cost !== undefined) newSystem.cost = oldSystem.cost;
@@ -423,11 +444,6 @@ export async function migrateItem(item) {
   const itemData = item.toObject();
   const updateData = {};
 
-  // Always store sourceId on world items.
-  if (itemData._stats?.compendiumSource) {
-    updateData["flags.core.sourceId"] = itemData._stats.compendiumSource;
-  }
-
   // Convert legacy rangeDamage to object-shaped rangeDamages for weapons.
   if (itemData.type === "weapon") {
     const rangeDamage = foundry.utils.getProperty(itemData, "system.rangeDamage");
@@ -452,17 +468,22 @@ export async function migrateItem(item) {
     if (template) {
       const tpl = template.toObject();
       const oldSystem = itemData.system ?? {};
-      const newSystem = foundry.utils.duplicate(tpl.system ?? {});
+
+      // The template exists to supply the schema block a pre-refactor implant has no key for.
+      // Every value the world item already carries is user content: implants get renamed,
+      // translated and re-costed, so letting the template win reverts the player's own item to
+      // stock. Measured on a real v12 world: 278 of 283 implants differ from their template.
+      const newSystem = foundry.utils.duplicate(oldSystem);
+      fillFromCyberwareTemplate(newSystem, tpl.system ?? {});
 
       transferCyberwareUserValues({ oldSystem, newSystem });
       preserveCyberwareRuntimeState({ oldSystem, newSystem });
 
-      updateData.name = tpl.name;
-      updateData.img = tpl.img;
       updateData.type = tpl.type;
       updateData.system = newSystem;
 
-      // Flags: keep existing ones, add template flags.
+      // This arm updates with recursive:false, which replaces flags wholesale — so the item's
+      // existing flags are carried across explicitly, template flags merged over them.
       const oldFlags = itemData.flags ?? {};
       const tplFlags = tpl.flags ?? {};
       updateData.flags = foundry.utils.mergeObject(oldFlags, tplFlags, {
@@ -559,6 +580,23 @@ export function convertOldSkill(skillName, oldSkillData = {}) {
 
 function isEmptyObject(obj) {
   return !obj || (typeof obj === "object" && Object.keys(obj).length === 0);
+}
+
+/**
+ * The two migrateItem branches return different update *shapes* and need different merge
+ * behaviour, so the options are chosen from the shape rather than fixed at the call site.
+ *
+ * The compendium-template path returns a whole `system` object, where `recursive: false` is
+ * load-bearing: it is what lets the reconciled block replace the old one outright.
+ *
+ * The no-template path returns dotted keys. Those expand into nested objects, and under
+ * `recursive: false` the expansion replaces `system` wholesale — every field the update does not
+ * name reverts to its schema default. Measured: a user-authored implant lost 33 of its 62 keys in
+ * one migration, including MountZone, humanityLoss, cost, weight, notes, the installed side,
+ * ChipActive, SDP and OptionsAvailable.
+ */
+function itemUpdateOptions(updateData) {
+  return "system" in updateData ? { diff: false, recursive: false } : { diff: false };
 }
 
 async function defaultDataUse(document, updateData, options = {}) {
