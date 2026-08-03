@@ -236,6 +236,8 @@ function migrateLegacyActorSystemShape(actor, actorUpdates) {
 /*  Item Migration                               */
 /* -------------------------------------------- */
 
+// Order is load-bearing: the name fallback in ensureCyberwareIndex is first-wins, so the legacy
+// pack goes last and a modern template of the same name wins.
 const CYBERWARE_PACK_NAMES = [
   "fashonware",
   "bioware",
@@ -246,7 +248,8 @@ const CYBERWARE_PACK_NAMES = [
   "cyberlimbs",
   "cyberoptic",
   "chipware",
-  "other-cyberware"
+  "other-cyberware",
+  "cyberware-old"
 ];
 
 function normalizeName(name) {
