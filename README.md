@@ -18,9 +18,14 @@ R. Talsorian Games’ [Cyberpunk 2020](https://talsorianstore.com/products/cyber
 * **Consistent UI** inspired by the Core Rulebook, with a strong focus on usability.
 * **Skills as items**, sortable by name or governing stat; full chipped/unchipped tracking, IP, roll-able, etc.
 * **Proportional stopping power & encumbrance** for armour.
-* **Ranged combat**: single shots, three-round burst, and autofire.
+* **Ranged combat**: single shots, three-round burst, autofire and suppressive fire.
 * **Quick modifier picker** when making ranged attacks.
-* The **beginning of the melee system**: cyberlimb damage bonuses and martial-arts bonuses are already in.
+* **Melee combat**: cyberlimb damage bonuses, martial-arts bonuses, and an **opposed defence** — the defender is asked which defensive skill to use and rolls against the attack.
+* **Target selection and damage application.** The attack card knows its target, hit locations come from *that* target's table, and applying the damage runs the whole chain: layered zone stopping power, armour-piercing, ammunition multipliers, x2 to the head, BTM, and damage routed into a cyberlimb's SDP — with a breakdown card showing every step. The GM applies it with a button, or the system applies it automatically.
+* **Wounds have consequences**: wound-level statuses on the token (kept in step with hand edits to the wound tracker), Stun Saves, Death Saves, and limb severance past a configurable threshold.
+* **Combat frame**: initiative ties broken deterministically, the sheet's initiative modifier finally reaching the roll, a Death Save at the start of a mortally wounded character's turn, and a turn announcement for the player whose turn it is.
+* **Movement allowance on the ruler**: metres spent and remaining against MA walking and MA x 3 running, with an overspent move highlighted.
+* **Sixteen settings** covering optional rules, house rules and client preferences — among them Staged Penetration (armour ablation), the action economy's -3 for every action after the first, one initiative die per side, Friday Night Fistfight 2, a movement allowance that refuses a player's overspend, and a **house rule** (off by default, and marked as one) letting a declared dodge hinder gunfire.
 * **Solo professional ability** is factored into initiative and awareness rolls.
 * **Ammo tracking & quick reloads** directly from chat.
 * **Netrunning**: major core functionality — deck builder with configuration, purchased program list, active program panel, automatic RAM usage & total cost, and one-click *Interface* rolls from the Netrunning tab.
@@ -31,7 +36,8 @@ R. Talsorian Games’ [Cyberpunk 2020](https://talsorianstore.com/products/cyber
 
 ## Planned features
 
-* Target selection and automatic damage application.
+* **Explosions and blast zones** — a placed blast area with scatter on a miss, damage applied over everything caught inside, and the shotgun spread pattern. *(In progress for this release.)*
+* **Suppressive-fire zones** — the fire corridor becomes a real area on the canvas, and a token crossing it saves against being hit. *(In progress for this release.)*
 * Shopping workflow with automatic money deduction.
 * Automatic generation of cinematic finishing moves.
 * **Mech sheet**.

@@ -4,6 +4,7 @@ import { localize, localizeParam, rollLocation, cwHasType, cwIsEnabled, isFumble
 import { createCyberpunkChatMessage, renderCyberpunkTemplate } from "../compat.js";
 import { ATTACK_FLAG_VERSION, snapshotAmmo } from "../damage.js";
 import { declareDodge, dodgeRangedPenalty, resolveDefense } from "../combat.js";
+import { blastProfile, blastRings, isBlastAttack, isSpreadAttack, pickBlastCentre, scatterCentre, spreadProfileFor } from "../zones.js";
 /** @extends {Item} */
 export class CyberpunkItem extends Item {
 
@@ -409,6 +410,12 @@ export class CyberpunkItem extends Item {
       }
     }
 
+    // An area-effect charge is aimed and rolled like any other ranged weapon (ch. 07:837), but it
+    // lands on a point rather than a body, so it never reaches the fire modes below.
+    if (isBlastAttack(system, snapshotAmmo(this))) {
+      return this.__blastAttack(mods, targets);
+    }
+
     // ---- Firemode-specific rolling. I may roll together some common aspects later ----
     // Full auto
     if(mods.fireMode === fireModes.fullAuto) {
@@ -454,6 +461,7 @@ export class CyberpunkItem extends Item {
       cyberpunk2020: {
         attack: {
           version: ATTACK_FLAG_VERSION,
+          kind: "attack",
           itemId: this.id,
           attackerActorUuid: this.actor?.uuid ?? "",
           fireMode: fireMode ?? "",
@@ -471,6 +479,134 @@ export class CyberpunkItem extends Item {
         }
       }
     };
+  }
+
+  /**
+   * The card payload the apply-over-zone button reads. Undefined when no zone was placed, which is
+   * what leaves a blast with no canvas as a card the GM applies by hand.
+   *
+   * @param {object} card
+   * @param {"blast"|"spread"} card.kind
+   * @param {object|null} card.blast Centre, geometry and the rolled damage
+   */
+  __zoneFlags({ kind, ammo, fireMode, range, blast }) {
+    if (!blast) return undefined;
+
+    return {
+      cyberpunk2020: {
+        attack: {
+          version: ATTACK_FLAG_VERSION,
+          kind,
+          itemId: this.id,
+          attackerActorUuid: this.actor?.uuid ?? "",
+          fireMode: fireMode ?? "",
+          range: range ?? "",
+          ap: !!this._getWeaponSystem()?.ap,
+          ammo,
+          blast,
+          targets: [],
+          hits: [],
+          applied: {}
+        }
+      }
+    };
+  }
+
+  /**
+   * The one card both area-effect paths post. Occupancy is deliberately not part of it: the zone
+   * is collected when the GM applies it, so a target that walked into the crater meanwhile is in.
+   *
+   * @param {object} card
+   * @param {object} card.profile The blast geometry, printed so a GM with no tokens can apply it
+   * @param {object|null} card.blast The same geometry with a centre, or null when none was placed
+   */
+  async __zoneCard({ title, kind, attackMods, attackRoll, ammo, profile, blast, damage, damageRoll,
+    onTarget, scatter, target, fumble }) {
+    const system = this._getWeaponSystem();
+    const roll = new Multiroll(title).addRoll(attackRoll, { name: localize("Attack") });
+
+    await roll.execute(
+      undefined,
+      "systems/cyberpunk2020/templates/chat/blast.hbs",
+      {
+        weaponName: this.name,
+        target,
+        range: attackMods.range,
+        toHit: rangeDCs[attackMods.range],
+        attackRoll,
+        onTarget,
+        scatter,
+        placed: !!blast,
+        radius: profile.radius,
+        fullDamageWithin: profile.fullDamageWithin,
+        rings: blastRings(profile),
+        damage,
+        damageHtml: CyberpunkItem._inlineRollHtml(damage, damageRoll, "damage"),
+        fumble: fumble ?? null,
+        locals: { range: { range: rangeResolve[attackMods.range](system.range) } }
+      },
+      this.__zoneFlags({ kind, ammo, fireMode: attackMods.fireMode, range: attackMods.range, blast })
+    );
+
+    return roll;
+  }
+
+  /**
+   * Throw or launch an area-effect charge. The acting client places the blast, the attack roll says
+   * whether it landed there, and a miss scatters it off the Grenade Table.
+   *
+   * @param {object} attackMods
+   * @param {Array} targetTokens
+   * @returns {Promise<Multiroll|null>} null when the placement was dismissed
+   */
+  async __blastAttack(attackMods, targetTokens = []) {
+    const system = this._getWeaponSystem();
+    const ammo = snapshotAmmo(this);
+    const profile = blastProfile(ammo);
+
+    let centre = null;
+    if (canvas.ready) {
+      centre = await pickBlastCentre(profile.radius, localizeParam("BlastZoneName", { weapon: this.name }));
+      // Dismissing the placement takes the throw back: nothing has been rolled or spent yet.
+      if (!centre) return null;
+    }
+
+    const attackRoll = await this.attackRoll(attackMods);
+    const rangedFumble = await this._maybeApplyRangedFumble(attackRoll);
+    const onTarget = attackRoll.total >= rangeDCs[attackMods.range] && !rangedFumble?.forceMiss;
+
+    let scatter = null;
+    if (!onTarget) {
+      // Ch. 07:839 — 1d10 for the direction on the Grenade Table, a second for the metres.
+      const direction = await new Roll("1d10").evaluate();
+      const distance = await new Roll("1d10").evaluate();
+      scatter = { direction: direction.total, distance: distance.total };
+      if (centre) centre = scatterCentre(centre, scatter.direction, scatter.distance);
+    }
+
+    const rollData = this.actor?.getRollData?.() ?? {};
+    const damageRoll = await new Roll(this.__ammoDamageFormula(system.damage, ammo), rollData).evaluate();
+    const damage = CyberpunkItem._floorDamageTotal(damageRoll.total);
+
+    // The charge is spent whether or not the card renders, as in every other fire mode.
+    await this.__setWeaponField("shotsLeft",
+      rangedFumble?.outcome?.discharge ? 0 : Math.max(0, Number(system.shotsLeft) - 1));
+
+    return this.__zoneCard({
+      title: localize("BlastTitle"),
+      kind: "blast",
+      attackMods,
+      attackRoll,
+      ammo,
+      profile,
+      blast: centre ? { ...centre, ...profile, damage } : null,
+      damage,
+      damageRoll,
+      onTarget,
+      scatter,
+      target: targetTokens[0],
+      fumble: rangedFumble?.fumble
+    });
   }
 
   /**
@@ -820,8 +956,13 @@ export class CyberpunkItem extends Item {
       const rangedFumble = await this._maybeApplyRangedFumble(attackRoll);
       const rollData = this.actor?.getRollData?.() ?? {};
       const ammo = snapshotAmmo(this);
+      // Ch. 07's Shotgun Table gives the pattern its own damage per band, so the spread replaces
+      // the weapon's formula rather than adding to it. A blank band keeps the weapon's own.
+      const spread = isSpreadAttack(ammo, attackMods.range)
+        ? spreadProfileFor(attackMods.range, ammo)
+        : null;
       const maximizeDamage = this._shouldMaximizePointBlankDamage(attackMods);
-      const damageRoll = await new Roll(this.__ammoDamageFormula(system.damage, ammo), rollData)
+      const damageRoll = await new Roll(this.__ammoDamageFormula(spread?.damage || system.damage, ammo), rollData)
         .evaluate({ maximize: maximizeDamage });
       const dmg = CyberpunkItem._floorDamageTotal(damageRoll.total);
       let locationRoll = await rollLocation(attackMods.targetActor, attackMods.targetArea);
@@ -859,9 +1000,6 @@ export class CyberpunkItem extends Item {
         }
       };
 
-      let roll = new Multiroll(localize("SemiAuto"))
-        .addRoll(attackRoll, { name: localize("Attack") });
-
       // The ammo write goes first: rounds are spent whether or not the card renders. Awaiting the
       // card at all is what stops a chat failure being swallowed as an unhandled rejection.
       if (rangedFumble?.outcome?.discharge) {
@@ -869,6 +1007,33 @@ export class CyberpunkItem extends Item {
       } else {
         await this.__setWeaponField("shotsLeft", system.shotsLeft - roundsFired);
       }
+
+      // Ch. 07:855 — a 2 m pattern caught a booster standing 1 m from the one it was aimed at, so
+      // the pattern is half its width around the target and everything in it takes the same damage.
+      const patternCentre = spread && attackHits && canvas.ready
+        ? canvas.tokens.get(targetTokens[0]?.id)?.center
+        : null;
+      if (patternCentre) {
+        const profile = { radius: spread.width / 2, fullDamageWithin: spread.width / 2, multipliers: [] };
+        return this.__zoneCard({
+          title: localize("SpreadTitle"),
+          kind: "spread",
+          attackMods,
+          attackRoll,
+          ammo,
+          profile,
+          blast: { x: patternCentre.x, y: patternCentre.y, ...profile, damage: dmg },
+          damage: dmg,
+          damageRoll,
+          onTarget: attackHits,
+          scatter: null,
+          target: targetTokens[0],
+          fumble: rangedFumble?.fumble
+        });
+      }
+
+      let roll = new Multiroll(localize("SemiAuto"))
+        .addRoll(attackRoll, { name: localize("Attack") });
 
       await roll.execute(
         undefined,

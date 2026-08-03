@@ -1,4 +1,4 @@
-import { MORTAL_WOUND_STATE, requestSave } from "./damage.js";
+import { MORTAL_WOUND_STATE, requestSave, tickDot } from "./damage.js";
 import { localizeParam } from "./utils.js";
 import { createCyberpunkChatMessage } from "./compat.js";
 import { BaseDie } from "./dice.js";
@@ -113,6 +113,8 @@ export class CyberpunkCombat extends Combat {
     if (actor.getFlag("cyberpunk2020", DODGING_FLAG) !== undefined) {
       await actor.unsetFlag("cyberpunk2020", DODGING_FLAG);
     }
+
+    await tickDot(actor);
 
     if (actor.woundState() < MORTAL_WOUND_STATE || actor.system.stabilized) return;
 

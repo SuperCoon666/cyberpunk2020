@@ -1,0 +1,97 @@
+<div class="cyberpunk cyberpunk-card flexcol">
+    <h2>{{title}}</h2>
+
+    <div class="field-list one-col">
+        <div class="field">
+            <span>{{CPLocal "Weapon"}}: </span>
+            <span class="flex-pad">{{weaponName}}</span>
+        </div>
+
+        {{#if target}}
+        <div class="field">
+            <span>{{CPLocal "Target"}}: </span>
+            <span class="flex-pad">{{target.name}}</span>
+        </div>
+        {{/if}}
+
+        {{#if range}}
+        <div class="field">
+            <span>{{CPLocal "Range"}}: </span>
+            <span class="flex-pad">{{CPLocalParam range locals.range}}</span>
+        </div>
+        {{/if}}
+
+        {{#if toHit}}
+        <div class="field">
+            <span>{{CPLocal "ToHit"}}: </span>
+            <span class="flex-pad">{{toHit}}</span>
+        </div>
+        {{/if}}
+    </div>
+
+    <div class="field-list one-col">
+        <div class="field" style="grid-column-end: span 1">
+            <span>{{CPLocal "Attack"}}: </span>
+            <span>{{attackRoll._total}}</span>
+            <span class="flex-pad"></span>
+            <span class="roll-results">
+                {{#each attackRoll.terms as |term|}}
+                    {{#if term.results}}
+                        {{#each term.results as |die|}}
+                            <span class="roll-result roll die d{{term.faces}}">{{die.result}}</span>
+                        {{/each}}
+                    {{else}}
+                        <span class="roll-result inactive">{{compare term.operator "||" term.number}}</span>
+                    {{/if}}
+                {{/each}}
+            </span>
+        </div>
+    </div>
+
+    <p><em>{{#if onTarget}}{{CPLocal "BlastOnTarget"}}{{else}}{{CPLocalParam "BlastScattered" scatter}}{{/if}}</em></p>
+
+    <h3>{{CPLocal "Damage"}}</h3>
+    <div class="field-list one-col">
+        <div class="field">
+            <span>{{CPLocal "Damage"}}: </span>
+            <span class="flex-pad">{{{damageHtml}}}</span>
+        </div>
+        <div class="field">
+            <span>{{CPLocal "BlastRadius"}}: </span>
+            <span class="flex-pad">{{radius}} {{CPLocal "UnitMetres"}}</span>
+        </div>
+        <div class="field">
+            <span>{{CPLocal "BlastFullDamage"}}: </span>
+            <span class="flex-pad">{{fullDamageWithin}} {{CPLocal "UnitMetres"}}</span>
+        </div>
+    </div>
+
+    {{#if rings}}
+    <div class="damage-tally">
+        <label><b>{{CPLocal "BlastFalloff"}}</b></label>
+        <ul>
+            {{#each rings as |ring|}}
+                <li>{{CPLocalParam "BlastRingBand" ring}}</li>
+            {{/each}}
+        </ul>
+    </div>
+    {{/if}}
+
+    {{#if placed}}
+    <div class="cp-card-actions">
+        <button type="button" class="cp-apply-zone" data-action="applyZone">
+            {{CPLocal "ApplyZone"}}
+        </button>
+    </div>
+    {{else}}
+    <p><em>{{CPLocal "BlastManual"}}</em></p>
+    {{/if}}
+
+    {{#if fumble}}
+        <hr/>
+        <div class="fumble-block">
+            <h3>{{fumble.title}}</h3>
+            {{{fumble.html}}}
+        </div>
+    {{/if}}
+</div>

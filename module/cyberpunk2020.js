@@ -19,7 +19,7 @@ import { registerHandlebarsHelpers } from "./handlebars-helpers.js"
 import * as migrations from "./migrate.js";
 import { registerSystemSettings } from "./settings.js"
 import { getHtmlElement } from "./compat.js";
-import { ATTACK_FLAG_VERSION, SAVE_PROMPT_DEADLINE_MS, applyAttackFromMessage } from "./damage.js";
+import { ATTACK_FLAG_VERSION, SAVE_PROMPT_DEADLINE_MS, applyAttackFromMessage, applyBlastFromMessage } from "./damage.js";
 import { CyberpunkCombat, announceTurn, DEFENSE_PROMPT_DEADLINE_MS } from "./combat.js";
 import { CyberpunkTokenRuler, vetoOverspentMovement } from "./movement.js";
 import { localize, localizeParam } from "./utils.js";
@@ -367,6 +367,29 @@ Hooks.once('init', async function () {
       button.addEventListener("click", () => applyAttackFromMessage(message, { tokenId }));
     });
 
+    // The zone's own button. Separate from the one above because it has no target to name: who is
+    // caught is decided when it is clicked, not when the card was written.
+    Hooks.on("renderChatMessageHTML", (message, html) => {
+      const root = getHtmlElement(html);
+      const button = root?.querySelector?.('button[data-action="applyZone"]');
+      if (!button || button.dataset.cpApplyBound === "1") return;
+      button.dataset.cpApplyBound = "1";
+
+      const attack = message.flags?.cyberpunk2020?.attack;
+      if (!game.user.isGM || attack?.version !== ATTACK_FLAG_VERSION) {
+        button.remove();
+        return;
+      }
+
+      if (attack.applied?.zone) {
+        button.disabled = true;
+        button.textContent = game.i18n.localize("CYBERPUNK.ZoneApplied");
+        return;
+      }
+
+      button.addEventListener("click", () => applyBlastFromMessage(message));
+    });
+
     // Wound icons follow system.damage wherever it comes from, which is what makes a hand click on
     // the wound tracker behave like an applied attack. One writer, as everywhere else here.
     Hooks.on("updateActor", (actor, changes) => {
@@ -390,6 +413,11 @@ Hooks.once('init', async function () {
 
       const attack = message.flags?.cyberpunk2020?.attack;
       if (attack?.version !== ATTACK_FLAG_VERSION) return;
+
+      if (attack.kind === "blast" || attack.kind === "spread") {
+        await applyBlastFromMessage(message);
+        return;
+      }
 
       for (const target of attack.targets ?? []) {
         await applyAttackFromMessage(message, { tokenId: target.tokenId });

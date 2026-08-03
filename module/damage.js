@@ -1,11 +1,16 @@
 import { createCyberpunkChatMessage, renderCyberpunkTemplate } from "./compat.js";
-import { localize } from "./utils.js";
+import { localize, localizeParam, rollLocation } from "./utils.js";
+import { blastDamageFor, tokensInBlast } from "./zones.js";
 
 /**
  * The shape of flags.cyberpunk2020.attack. A card written by an older version is ignored rather
  * than guessed at, so the number changes whenever a field the apply path reads is added or moved.
+ * 2: `kind` decides which apply path a card takes.
  */
-export const ATTACK_FLAG_VERSION = 1;
+export const ATTACK_FLAG_VERSION = 2;
+
+/** The flag a damage-over-time effect burns down from, one tick per turn. */
+const DOT_FLAG = "dot";
 
 /** Only a cyberlimb absorbs a hit into its own SDP; Head and Torso implants do not. */
 const LIMB_ZONES = new Set(["lArm", "rArm", "lLeg", "rLeg"]);
@@ -54,7 +59,20 @@ export function snapshotAmmo(item) {
     bonusDamageFormula: String(a.bonusDamageFormula ?? ""),
     armorMultSoft: numberOr(a.armorMultSoft, 1),
     armorMultHard: numberOr(a.armorMultHard, 1),
-    penDamageMult: numberOr(a.penDamageMult, 1)
+    penDamageMult: numberOr(a.penDamageMult, 1),
+    dotEnabled: !!a.dotEnabled,
+    dotTurns: numberOr(a.dotTurns, 0),
+    dotDamageFormula: String(a.dotDamageFormula ?? ""),
+    blastRadius: numberOr(a.blastRadius, 0),
+    blastFullDamageWithin: numberOr(a.blastFullDamageWithin, 0),
+    blastMultipliers: Array.isArray(a.blastMultipliers) ? [...a.blastMultipliers] : [],
+    spreadMode: String(a.spreadMode ?? "single"),
+    spreadWidthShort: numberOr(a.spreadWidthShort, 0),
+    spreadWidthMedium: numberOr(a.spreadWidthMedium, 0),
+    spreadWidthLong: numberOr(a.spreadWidthLong, 0),
+    spreadDamageShort: String(a.spreadDamageShort ?? ""),
+    spreadDamageMedium: String(a.spreadDamageMedium ?? ""),
+    spreadDamageLong: String(a.spreadDamageLong ?? "")
   };
 }
 
@@ -173,6 +191,132 @@ export async function requestSave(actor, kind) {
 }
 
 /**
+ * Arm the damage-over-time burn an incendiary round leaves behind. Nothing to do while the
+ * ammunition carries no burn, which is every round in the shipped packs.
+ *
+ * @param {CyberpunkActor} actor
+ * @param {object|null} ammo Snapshot from snapshotAmmo
+ */
+async function startDot(actor, ammo) {
+  if (!ammo?.dotEnabled || !(ammo.dotTurns > 0) || !ammo.dotDamageFormula) return;
+  await actor.setFlag("cyberpunk2020", DOT_FLAG,
+    { turns: Math.floor(ammo.dotTurns), formula: ammo.dotDamageFormula });
+}
+
+/**
+ * Burn one turn off a damage-over-time effect at the start of its victim's turn.
+ *
+ * The tick ignores armour (plan assumption 13): the round is already inside, so there is nothing
+ * left to stop. A pure SDP hit takes no save and this takes none either — it is not an attack.
+ *
+ * @param {CyberpunkActor} actor
+ * @returns {Promise<void>}
+ */
+export async function tickDot(actor) {
+  const dot = actor.getFlag("cyberpunk2020", DOT_FLAG);
+  // User-authored flag data: a hand-edited or half-written one must not throw inside a turn change.
+  if (!dot?.formula || !(dot.turns > 0)) return;
+
+  const roll = await new Roll(String(dot.formula)).evaluate();
+  const damage = Math.max(0, Math.floor(roll.total));
+  await actor.applyDamage({ wound: damage });
+
+  await createCyberpunkChatMessage({
+    speaker: ChatMessage.getSpeaker({ actor }),
+    content: localizeParam("DotTick", { name: actor.name, damage, turns: dot.turns - 1 }),
+    rolls: [roll]
+  }, { useDefaultRollMode: true });
+
+  const turns = Math.floor(dot.turns) - 1;
+  if (turns > 0) await actor.setFlag("cyberpunk2020", DOT_FLAG, { ...dot, turns });
+  else await actor.unsetFlag("cyberpunk2020", DOT_FLAG);
+}
+
+/**
+ * Resolve a set of hits against one actor, write the result and post the breakdown.
+ *
+ * The single place damage lands on anybody, whichever card sent it: one target off an attack card,
+ * or one of everybody a blast caught. Runs on a GM client only.
+ *
+ * @param {CyberpunkActor} actor
+ * @param {object} attack
+ * @param {Array<{zone: string, damage: number}>} attack.hits
+ * @param {boolean} attack.ap
+ * @param {object|null} attack.ammo
+ * @param {string} attack.targetName
+ * @returns {Promise<ChatMessage>} the breakdown card
+ */
+async function applyHitsToActor(actor, { hits = [], ap = false, ammo = null, targetName = "" }) {
+  const severanceThreshold = game.settings.get("cyberpunk2020", "severanceThreshold");
+
+  const lines = [];
+  const sdp = {};
+  const penetratedZones = {};
+  const severedLimbs = [];
+  let wound = 0;
+  let killed = false;
+
+  for (const hit of hits) {
+    const resolved = resolveHit(
+      { damage: hit.damage, zone: hit.zone, ap, ammo },
+      actor,
+      { severanceThreshold }
+    );
+    wound += resolved.final;
+    if (resolved.toSdp > 0) sdp[hit.zone] = (sdp[hit.zone] ?? 0) + resolved.toSdp;
+    if (resolved.penetrating > 0) penetratedZones[hit.zone] = (penetratedZones[hit.zone] ?? 0) + 1;
+    if (resolved.severed) {
+      if (hit.zone === "Head") killed = true;
+      else severedLimbs.push({ zone: localize(hit.zone) });
+    }
+    lines.push({ ...resolved, zone: hit.zone, damage: hit.damage });
+  }
+
+  await actor.applyDamage({ wound, sdp });
+
+  if (game.settings.get("cyberpunk2020", "armorAblation")) await ablateArmor(actor, penetratedZones);
+
+  const limbs = Object.keys(sdp).map(zone => {
+    const taken = numberOr(actor.system.sdp?.sum?.[zone], 0) - numberOr(actor.system.sdp?.current?.[zone], 0);
+    return {
+      zone,
+      current: numberOr(actor.system.sdp?.current?.[zone], 0),
+      destroyed: taken >= LIMB_DESTROYED_AT,
+      useless: taken >= LIMB_USELESS_AT && taken < LIMB_DESTROYED_AT
+    };
+  });
+
+  const content = await renderCyberpunkTemplate(
+    "systems/cyberpunk2020/templates/chat/damage-applied.hbs",
+    { targetName, lines, wound, limbs, severedLimbs, killed,
+      totalDamage: actor.system.damage }
+  );
+
+  const card = await createCyberpunkChatMessage({
+    speaker: ChatMessage.getSpeaker({ actor }),
+    content
+  }, { useDefaultRollMode: true });
+
+  if (killed) {
+    await actor.toggleStatusEffect("dead", { active: true, overlay: true });
+  } else if (wound > 0) {
+    await startDot(actor, ammo);
+
+    // One save for the whole attack, and none at all when every hit went into a cyberlimb:
+    // ch. 06, "no saving roll against shock and stun".
+    const stun = await requestSave(actor, "stun");
+    if (!stun.success) await actor.toggleStatusEffect("cpStunned", { active: true });
+
+    if (actor.woundState() >= MORTAL_WOUND_STATE) {
+      const death = await requestSave(actor, "death");
+      if (!death.success) await actor.toggleStatusEffect("dead", { active: true, overlay: true });
+    }
+  }
+
+  return card;
+}
+
+/**
  * Apply every hit an attack card recorded against one of its targets, then post the breakdown.
  *
  * Runs on a GM client only — either the click, or the active GM under the auto setting. The flags
@@ -202,73 +346,52 @@ export async function applyAttackFromMessage(message, { tokenId } = {}) {
     return null;
   }
 
-  const severanceThreshold = game.settings.get("cyberpunk2020", "severanceThreshold");
-
-  const lines = [];
-  const sdp = {};
-  const penetratedZones = {};
-  const severedLimbs = [];
-  let wound = 0;
-  let killed = false;
-
-  for (const hit of attack.hits ?? []) {
-    const resolved = resolveHit(
-      { damage: hit.damage, zone: hit.zone, ap: attack.ap, ammo: attack.ammo },
-      actor,
-      { severanceThreshold }
-    );
-    wound += resolved.final;
-    if (resolved.toSdp > 0) sdp[hit.zone] = (sdp[hit.zone] ?? 0) + resolved.toSdp;
-    if (resolved.penetrating > 0) penetratedZones[hit.zone] = (penetratedZones[hit.zone] ?? 0) + 1;
-    if (resolved.severed) {
-      if (hit.zone === "Head") killed = true;
-      else severedLimbs.push({ zone: localize(hit.zone) });
-    }
-    lines.push({ ...resolved, zone: hit.zone, damage: hit.damage });
-  }
-
-  await actor.applyDamage({ wound, sdp });
-
-  if (game.settings.get("cyberpunk2020", "armorAblation")) await ablateArmor(actor, penetratedZones);
-
-  const limbs = Object.keys(sdp).map(zone => {
-    const taken = numberOr(actor.system.sdp?.sum?.[zone], 0) - numberOr(actor.system.sdp?.current?.[zone], 0);
-    return {
-      zone,
-      current: numberOr(actor.system.sdp?.current?.[zone], 0),
-      destroyed: taken >= LIMB_DESTROYED_AT,
-      useless: taken >= LIMB_USELESS_AT && taken < LIMB_DESTROYED_AT
-    };
-  });
-
   // Keyed by token id rather than uuid: a uuid carries dots, and a dotted key in an update is
   // expanded into nested objects instead of being stored whole.
   await message.update({ [`flags.cyberpunk2020.attack.applied.${tokenId}`]: true });
 
-  const content = await renderCyberpunkTemplate(
-    "systems/cyberpunk2020/templates/chat/damage-applied.hbs",
-    { targetName: target.name, lines, wound, limbs, severedLimbs, killed,
-      totalDamage: actor.system.damage }
-  );
+  return applyHitsToActor(actor, {
+    hits: attack.hits ?? [], ap: attack.ap, ammo: attack.ammo, targetName: target.name
+  });
+}
 
-  const card = await createCyberpunkChatMessage({
-    speaker: ChatMessage.getSpeaker({ actor }),
-    content
-  }, { useDefaultRollMode: true });
+/**
+ * Apply a blast over everyone standing in it.
+ *
+ * Occupancy is read **now**, not at roll time: a token that walked into the crater between the roll
+ * and the click is in it. Each target takes the blast's own rolled damage scaled by the ring it is
+ * standing in, on a location of its own.
+ *
+ * @param {ChatMessage} message
+ * @returns {Promise<ChatMessage[]|null>} the breakdown cards, or null when nothing was applied
+ */
+export async function applyBlastFromMessage(message) {
+  const attack = message?.flags?.cyberpunk2020?.attack;
+  if (attack?.version !== ATTACK_FLAG_VERSION) return null;
+  if (!attack.blast || attack.applied?.zone) return null;
 
-  if (killed) {
-    await actor.toggleStatusEffect("dead", { active: true, overlay: true });
-  } else if (wound > 0) {
-    // One save for the whole attack, and none at all when every hit went into a cyberlimb:
-    // ch. 06, "no saving roll against shock and stun".
-    const stun = await requestSave(actor, "stun");
-    if (!stun.success) await actor.toggleStatusEffect("cpStunned", { active: true });
-
-    if (actor.woundState() >= MORTAL_WOUND_STATE) {
-      const death = await requestSave(actor, "death");
-      if (!death.success) await actor.toggleStatusEffect("dead", { active: true, overlay: true });
-    }
+  const caught = tokensInBlast(attack.blast);
+  if (!caught.length) {
+    ui.notifications.warn(localize("BlastNoTargets"));
+    return null;
   }
 
-  return card;
+  await message.update({ "flags.cyberpunk2020.attack.applied.zone": true });
+
+  const cards = [];
+  for (const entry of caught) {
+    const tokenDoc = await fromUuid(entry.tokenUuid);
+    const actor = tokenDoc?.actor ?? await fromUuid(entry.actorUuid);
+    if (!actor) continue;
+
+    const damage = blastDamageFor(attack.blast.damage, entry.multiplier);
+    if (damage <= 0) continue;
+
+    const zone = (await rollLocation(actor)).areaHit;
+    cards.push(await applyHitsToActor(actor, {
+      hits: [{ zone, damage }], ap: attack.ap, ammo: attack.ammo, targetName: entry.name
+    }));
+  }
+
+  return cards;
 }
