@@ -386,6 +386,9 @@
     "CYBERPUNK.DefenseSkill": "Defense skill",
     "CYBERPUNK.DefenseMod": "Modifier",
     "CYBERPUNK.DefenseRollButton": "Defend",
+    "CYBERPUNK.MoveRun": "Run",
+    "CYBERPUNK.MoveSpentOfBudget": "{spent}/{budget}",
+    "CYBERPUNK.MoveBlocked": "That move covers {total} {units}, and {budget} {units} is all this turn allows.",
 
     "CYBERPUNK.ConcealPocket": "Pocket/Pants Leg/Sleeve",
     "CYBERPUNK.ConcealJacket": "Jacket/Coat/Shoulder Rig",
@@ -451,6 +454,8 @@
     "SETTINGS.PartyInitiativeHint": "Each side rolls one initiative die per round; every combatant still adds their own REF and modifiers.",
     "SETTINGS.DodgeVsRanged": "Dodge against gunfire (house rule)",
     "SETTINGS.DodgeVsRangedHint": "House rule, not the corebook: a declared dodge gives ranged attackers -2 against that character until the start of their next turn. The corebook allows dodging melee attacks only.",
+    "SETTINGS.BlockOverspentMovement": "Movement allowance is a limit",
+    "SETTINGS.BlockOverspentMovementHint": "Refuse a player’s move that would take a token past MA metres walking, or MA x 3 running, in one turn. The GM is never restricted. With this off the ruler still marks the overspend.",
     "SETTINGS.TurnSound": "Turn notification",
     "SETTINGS.TurnSoundHint": "Play a sound and show a message when your combatant's turn starts, and when it is next.",
     "SETTINGS.FNFF2Enabled": "Friday Night Fistfight 2 (DLC)",

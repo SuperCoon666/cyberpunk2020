@@ -2936,3 +2936,13 @@ div.statderive .value.rightborder {
   box-shadow: none;
   outline: none;
 }
+
+/* The token ruler's waypoint label lives in #hud #measurement, outside every .cyberpunk root, so
+   this is deliberately unscoped — like #anatomy-img above and unlike the rest of the file. Core
+   paints the label from these variables (public/css/foundry2.css:559, 14.365.0), so the overspend
+   state redefines them instead of overriding what they produce. */
+#measurement .waypoint-label.cp-overspent {
+  --control-bg-color: rgba(120, 20, 20, 0.85);
+  --control-border-color: #ff5555;
+  --control-icon-color: #ffdede;
+}

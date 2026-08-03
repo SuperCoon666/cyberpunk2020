@@ -21,6 +21,7 @@ import { registerSystemSettings } from "./settings.js"
 import { getHtmlElement } from "./compat.js";
 import { ATTACK_FLAG_VERSION, SAVE_PROMPT_DEADLINE_MS, applyAttackFromMessage } from "./damage.js";
 import { CyberpunkCombat, announceTurn, DEFENSE_PROMPT_DEADLINE_MS } from "./combat.js";
+import { CyberpunkTokenRuler, vetoOverspentMovement } from "./movement.js";
 import { localize, localizeParam } from "./utils.js";
 
 /**
@@ -64,6 +65,19 @@ Hooks.once('init', async function () {
     // No Combatant subclass: the only thing that would live there is the party-initiative formula,
     // and the shared die has to be awaited, which _getInitiativeFormula cannot do.
     CONFIG.Combat.documentClass = CyberpunkCombat;
+    CONFIG.Token.rulerClass = CyberpunkTokenRuler;
+
+    // Walking is MA metres a turn and running three times that, so running has to be a movement
+    // action the player can pick — the budget follows the choice. terrainAction: "walk" because
+    // difficult ground costs a runner what it costs a walker.
+    CONFIG.Token.movement.actions.run = {
+      label: "CYBERPUNK.MoveRun",
+      icon: "fa-solid fa-person-running",
+      img: "icons/svg/wingfoot.svg",
+      order: 0.5,
+      speedMultiplier: 3,
+      terrainAction: "walk"
+    };
 
     // Register v13/v14 System DataModels.
     // These replace legacy system-template initialization for Actor/Item system data.
@@ -366,6 +380,7 @@ Hooks.once('init', async function () {
     });
 
     Hooks.on("combatTurnChange", announceTurn);
+    Hooks.on("preMoveToken", vetoOverspentMovement);
 
     // Auto mode: the active GM's client is the single writer, the way core drives Combat turn
     // events. With no GM connected nothing applies and the button above is still the way in.

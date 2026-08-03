@@ -152,6 +152,16 @@ export function registerSystemSettings() {
     default: false
   });
 
+  // --- Optional rules: movement allowance is a limit, not a hint ---
+  game.settings.register("cyberpunk2020", "blockOverspentMovement", {
+    name: "SETTINGS.BlockOverspentMovement",
+    hint: "SETTINGS.BlockOverspentMovementHint",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: false
+  });
+
   // --- Client UI: turn notification ---
   game.settings.register("cyberpunk2020", "turnSound", {
     name: "SETTINGS.TurnSound",

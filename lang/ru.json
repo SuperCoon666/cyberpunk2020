@@ -386,6 +386,9 @@
     "CYBERPUNK.DefenseSkill": "Навык защиты",
     "CYBERPUNK.DefenseMod": "Модификатор",
     "CYBERPUNK.DefenseRollButton": "Защищаться",
+    "CYBERPUNK.MoveRun": "Бег",
+    "CYBERPUNK.MoveSpentOfBudget": "{spent}/{budget}",
+    "CYBERPUNK.MoveBlocked": "Этот ход покрывает {total} {units}, а за ход доступно {budget} {units}.",
 
     "CYBERPUNK.ConcealPocket": "Карман/Штанина/Рукав",
     "CYBERPUNK.ConcealJacket": "Куртка/Пальто/Плечевая кобура",
@@ -451,6 +454,8 @@
     "SETTINGS.PartyInitiativeHint": "Каждая сторона бросает один кубик инициативы за раунд; REF и модификаторы каждый участник по-прежнему добавляет свои.",
     "SETTINGS.DodgeVsRanged": "Уклонение от стрельбы (домашнее правило)",
     "SETTINGS.DodgeVsRangedHint": "Домашнее правило, не из рулбука: объявленное уклонение даёт стрелкам -2 против этого персонажа до начала его следующего хода. Рулбук разрешает уклоняться только от ближнего боя.",
+    "SETTINGS.BlockOverspentMovement": "Лимит передвижения — жёсткий",
+    "SETTINGS.BlockOverspentMovementHint": "Отклонять ход игрока, если токен за один ход пройдёт больше MA метров шагом или MA x 3 бегом. На ГМа не распространяется. С выключенной настройкой линейка всё равно подсвечивает перерасход.",
     "SETTINGS.TurnSound": "Оповещение о ходе",
     "SETTINGS.TurnSoundHint": "Звук и сообщение, когда начинается ход вашего бойца и когда он следующий.",
     "SETTINGS.FNFF2Enabled": "Friday Night Fistfight 2 (DLC)",
