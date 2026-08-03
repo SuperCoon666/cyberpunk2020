@@ -31,4 +31,12 @@
             {{#if limb.useless}} — {{CPLocal "LimbUseless"}}{{/if}}
         </p>
     {{/each}}
+
+    {{#each severedLimbs as |limb|}}
+        <p><b>{{CPLocalParam "SeveranceLimb" limb}}</b></p>
+    {{/each}}
+
+    {{#if killed}}
+        <p><b>{{CPLocal "SeveranceDeath"}}</b></p>
+    {{/if}}
 </div>

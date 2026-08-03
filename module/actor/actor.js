@@ -308,6 +308,10 @@ export class CyberpunkActor extends Actor {
     // Equipped cyber-armor implants (only enabled)
     const cwArmorItems = (eqCyberEnabled || []).filter(i => cwHasType(i, "Armor"));
 
+    // Staged Penetration is optional, so ablation is recorded on the armor either way and only
+    // subtracted here while the rule is on — switching it off restores the armor's printed SP.
+    const ablationEnabled = game.settings.get("cyberpunk2020", "armorAblation");
+
     // Inventory armor: accumulate EV and layer SP
     equippedItems.filter(i => i.type === "armor").forEach(armor => {
       const armorData = armor.system;
@@ -317,7 +321,8 @@ export class CyberpunkActor extends Actor {
         const location = system.hitLocations[armorArea];
         if (!location) continue;
 
-        const addSP = Number(armorData.coverage[armorArea].stoppingPower) || 0;
+        const ablated = ablationEnabled ? Number(armorData.coverage[armorArea].ablation) || 0 : 0;
+        const addSP = (Number(armorData.coverage[armorArea].stoppingPower) || 0) - ablated;
         if (addSP <= 0) continue;
 
         if (!armorLayersByArea[armorArea]) armorLayersByArea[armorArea] = [];
@@ -1080,12 +1085,45 @@ export class CyberpunkActor extends Actor {
       name: localize("Save")
     });
     rolls.addRoll(new Roll(`${this.stunThreshold()}`), {
-      name: "Stun Threshold"
+      name: localize("SaveStunThreshold")
     });
     rolls.addRoll(new Roll(`${this.deathThreshold()}`), {
-      name: "Death Threshold"
+      name: localize("SaveDeathThreshold")
     });
     return rolls.defaultExecute();
+  }
+
+  /**
+   * Roll one Stun or Death save and post its card.
+   *
+   * The modifier is added to the roll, matching rollStunDeath: both are compared against a
+   * threshold the roll must stay at or under, so the two must not disagree on the sign.
+   *
+   * @param {"stun"|"death"} kind
+   * @param {object} [options]
+   * @param {number} [options.mod] Situational modifier chosen by whoever rolls
+   * @returns {Promise<{total: number, threshold: number, success: boolean}>}
+   */
+  async rollSave(kind, { mod = 0 } = {}) {
+    const death = kind === "death";
+    const threshold = death ? this.deathThreshold() : this.stunThreshold();
+
+    const fromImplants = Number(this.system?._cwChecks?.saveStun || 0);
+    const totalMod = (Number(mod) || 0) + fromImplants;
+    const formula = totalMod ? `1d10 + ${totalMod}` : "1d10";
+
+    const rolls = new Multiroll(
+      localize(death ? "SaveDeath" : "SaveStun"),
+      localize("UnderThresholdMessage")
+    );
+    rolls.addRoll(new Roll(formula), { name: localize("Save") });
+    rolls.addRoll(new Roll(`${threshold}`), {
+      name: localize(death ? "SaveDeathThreshold" : "SaveStunThreshold")
+    });
+    await rolls.defaultExecute();
+
+    const total = rolls.rolls[0].total;
+    return { total, threshold, success: total <= threshold };
   }
 
   async _preUpdate(changes, options, user) {

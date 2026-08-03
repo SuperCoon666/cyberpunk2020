@@ -14,6 +14,19 @@ const LIMB_ZONES = new Set(["lArm", "rArm", "lLeg", "rLeg"]);
 const LIMB_USELESS_AT = 20;
 const LIMB_DESTROYED_AT = 30;
 
+/** Ch. 07: a limb over the threshold in one hit is severed, the head kills outright. */
+const SEVERABLE_ZONES = new Set(["Head", "lArm", "rArm", "lLeg", "rLeg"]);
+
+/** woundState() counts wound slots four wide, so Mortal is the fourth. */
+const MORTAL_WOUND_STATE = 4;
+
+/**
+ * The querying side gives up at 30 s, so the owner's dialog closes at 25 and rolls itself: the
+ * answer has to be sent before the deadline, not on it.
+ */
+const SAVE_QUERY_TIMEOUT_MS = 30000;
+export const SAVE_PROMPT_DEADLINE_MS = 25000;
+
 function numberOr(value, fallback) {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
@@ -55,10 +68,13 @@ export function snapshotAmmo(item) {
  * @param {boolean} hit.ap Armour-piercing round
  * @param {object|null} hit.ammo Snapshot from snapshotAmmo
  * @param {CyberpunkActor} targetActor
+ * @param {object} [options]
+ * @param {number} [options.severanceThreshold] 0 disables the severance rule
  * @returns {{sp: number, effSp: number, penetrating: number, headDoubled: boolean, btm: number,
- *            final: number, toSdp: number}}
+ *            final: number, toSdp: number, severed: boolean}}
  */
-export function resolveHit({ damage = 0, zone = "Torso", ap = false, ammo = null }, targetActor) {
+export function resolveHit({ damage = 0, zone = "Torso", ap = false, ammo = null }, targetActor,
+  { severanceThreshold = 0 } = {}) {
   const location = targetActor?.system?.hitLocations?.[zone] ?? {};
   const sp = numberOr(location.stoppingPower, 0);
 
@@ -83,6 +99,7 @@ export function resolveHit({ damage = 0, zone = "Torso", ap = false, ammo = null
   // A cyberlimb takes the whole penetrating hit into its own SDP: no BTM, no wound track and, per
   // ch. 06, "no saving roll against shock and stun".
   const toCyberlimb = LIMB_ZONES.has(zone) && numberOr(targetActor?.system?.sdp?.sum?.[zone], 0) > 0;
+  const final = toCyberlimb || penetrating <= 0 ? 0 : Math.max(1, penetrating - btm);
 
   return {
     sp,
@@ -90,9 +107,69 @@ export function resolveHit({ damage = 0, zone = "Torso", ap = false, ammo = null
     penetrating,
     headDoubled,
     btm,
-    final: toCyberlimb || penetrating <= 0 ? 0 : Math.max(1, penetrating - btm),
-    toSdp: toCyberlimb ? penetrating : 0
+    final,
+    toSdp: toCyberlimb ? penetrating : 0,
+    // Measured after BTM — the threshold is tested against what reached the wound track. Strictly
+    // greater, per the book's "more than 8 points", which is also what leaves 0 meaning off.
+    severed: severanceThreshold > 0 && SEVERABLE_ZONES.has(zone) && final > severanceThreshold
   };
+}
+
+/**
+ * Staged Penetration: every worn layer over a zone loses a point of SP per hit that got through it.
+ * Written to the armor source here and nowhere else — the layering pass only reads it.
+ *
+ * @param {CyberpunkActor} actor
+ * @param {Record<string, number>} hitsByZone Penetrating hits per zone
+ */
+async function ablateArmor(actor, hitsByZone) {
+  const updates = [];
+
+  for (const armor of actor.itemTypes.armor) {
+    if (!armor.system.equipped) continue;
+
+    const update = {};
+    for (const [zone, hits] of Object.entries(hitsByZone)) {
+      const cover = armor.system.coverage?.[zone];
+      const sp = numberOr(cover?.stoppingPower, 0);
+      if (sp <= 0) continue;
+
+      const ablation = numberOr(cover.ablation, 0);
+      if (ablation >= sp) continue;
+      update[`system.coverage.${zone}.ablation`] = Math.min(sp, ablation + hits);
+    }
+
+    if (!foundry.utils.isEmpty(update)) updates.push({ _id: armor.id, ...update });
+  }
+
+  if (updates.length) await actor.updateEmbeddedDocuments("Item", updates);
+}
+
+/**
+ * Roll one save for the target. The GM's own client rolls unless the world asks a player
+ * character's owner to roll their own, in which case the owner is queried.
+ *
+ * @param {CyberpunkActor} actor
+ * @param {"stun"|"death"} kind
+ * @returns {Promise<{total: number, threshold: number, success: boolean}>}
+ */
+async function requestSave(actor, kind) {
+  const manual = game.settings.get("cyberpunk2020", "pcSaveMode") === "manual" && actor.type !== "npc";
+  const owner = manual
+    ? game.users.players.find(u => u.active && actor.testUserPermission(u, "OWNER"))
+    : null;
+  if (!owner) return actor.rollSave(kind);
+
+  try {
+    return await owner.query(
+      "cyberpunk2020.savePrompt",
+      { actorUuid: actor.uuid, kind },
+      { timeout: SAVE_QUERY_TIMEOUT_MS }
+    );
+  } catch (err) {
+    // The owner disconnected or the query outlived its deadline; the save still has to happen.
+    return actor.rollSave(kind);
+  }
 }
 
 /**
@@ -125,21 +202,34 @@ export async function applyAttackFromMessage(message, { tokenId } = {}) {
     return null;
   }
 
+  const severanceThreshold = game.settings.get("cyberpunk2020", "severanceThreshold");
+
   const lines = [];
   const sdp = {};
+  const penetratedZones = {};
+  const severedLimbs = [];
   let wound = 0;
+  let killed = false;
 
   for (const hit of attack.hits ?? []) {
     const resolved = resolveHit(
       { damage: hit.damage, zone: hit.zone, ap: attack.ap, ammo: attack.ammo },
-      actor
+      actor,
+      { severanceThreshold }
     );
     wound += resolved.final;
     if (resolved.toSdp > 0) sdp[hit.zone] = (sdp[hit.zone] ?? 0) + resolved.toSdp;
+    if (resolved.penetrating > 0) penetratedZones[hit.zone] = (penetratedZones[hit.zone] ?? 0) + 1;
+    if (resolved.severed) {
+      if (hit.zone === "Head") killed = true;
+      else severedLimbs.push({ zone: localize(hit.zone) });
+    }
     lines.push({ ...resolved, zone: hit.zone, damage: hit.damage });
   }
 
   await actor.applyDamage({ wound, sdp });
+
+  if (game.settings.get("cyberpunk2020", "armorAblation")) await ablateArmor(actor, penetratedZones);
 
   const limbs = Object.keys(sdp).map(zone => {
     const taken = numberOr(actor.system.sdp?.sum?.[zone], 0) - numberOr(actor.system.sdp?.current?.[zone], 0);
@@ -157,11 +247,28 @@ export async function applyAttackFromMessage(message, { tokenId } = {}) {
 
   const content = await renderCyberpunkTemplate(
     "systems/cyberpunk2020/templates/chat/damage-applied.hbs",
-    { targetName: target.name, lines, wound, limbs, totalDamage: actor.system.damage }
+    { targetName: target.name, lines, wound, limbs, severedLimbs, killed,
+      totalDamage: actor.system.damage }
   );
 
-  return createCyberpunkChatMessage({
+  const card = await createCyberpunkChatMessage({
     speaker: ChatMessage.getSpeaker({ actor }),
     content
   }, { useDefaultRollMode: true });
+
+  if (killed) {
+    await actor.toggleStatusEffect("dead", { active: true, overlay: true });
+  } else if (wound > 0) {
+    // One save for the whole attack, and none at all when every hit went into a cyberlimb:
+    // ch. 06, "no saving roll against shock and stun".
+    const stun = await requestSave(actor, "stun");
+    if (!stun.success) await actor.toggleStatusEffect("cpStunned", { active: true });
+
+    if (actor.woundState() >= MORTAL_WOUND_STATE) {
+      const death = await requestSave(actor, "death");
+      if (!death.success) await actor.toggleStatusEffect("dead", { active: true, overlay: true });
+    }
+  }
+
+  return card;
 }

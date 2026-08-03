@@ -8,8 +8,12 @@
         </label>
       {{/if}}
 
-      {{!-- Ablate and repair buttons aren't functional yet, but ARE styled --}}
-      {{!-- <span class="segment-ablate action inactive" title={{CPLocal "Ablate"}} data-hit-loc="{{name}}">-</span> --}}
+      {{!-- Ablation belongs to one armor item, so the buttons live on the editable path only: on the
+            actor sheet the zone's SP is layered from several items and there is no single owner. --}}
+      {{#if ../edit}}
+        <span class="segment-ablate action" title="{{CPLocalParam "AblationCurrent" hitLoc}}" data-hit-loc="{{name}}">-</span>
+        <span class="segment-repair action" title="{{CPLocalParam "AblationCurrent" hitLoc}}" data-hit-loc="{{name}}">+</span>
+      {{/if}}
 
       {{!-- The name is emitted only on the editable path: this partial is shared with the armor
             item sheet, where this input is the real control, while on the actor sheet the same

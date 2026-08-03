@@ -682,6 +682,35 @@ async _prepareCyberware(sheet) {
     this._cpActivateCyberwareWeaponControls(root);
     this._cpActivateAmmoControls(root);
     this._cpActivateSkillItemControls(root);
+    this._cpActivateArmorAblationControls(root);
+  }
+
+  /** The ablate/repair buttons carry no `name`, so this handler is their only persistence path. */
+  _cpActivateArmorAblationControls(root) {
+    if (!root?.addEventListener) return;
+    if (this.item.type !== "armor" || !this.isEditable) return;
+
+    if (root.dataset.cpAblationBound === "1") return;
+    root.dataset.cpAblationBound = "1";
+
+    root.addEventListener("click", async (event) => {
+      const button = event.target?.closest?.(".segment-ablate, .segment-repair");
+      if (!button || !root.contains(button)) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const zone = button.dataset.hitLoc;
+      const cover = this.item.system.coverage?.[zone];
+      if (!cover) return;
+
+      const step = button.classList.contains("segment-ablate") ? 1 : -1;
+      const sp = Number(cover.stoppingPower) || 0;
+      const next = Math.min(sp, Math.max(0, (Number(cover.ablation) || 0) + step));
+      if (next === (Number(cover.ablation) || 0)) return;
+
+      await this.item.update({ [`system.coverage.${zone}.ablation`]: next });
+    }, true);
   }
 
   /** The header image carries `data-edit="img"`, which ApplicationV2 does not wire up on its own. */

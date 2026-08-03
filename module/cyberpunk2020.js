@@ -19,7 +19,29 @@ import { registerHandlebarsHelpers } from "./handlebars-helpers.js"
 import * as migrations from "./migrate.js";
 import { registerSystemSettings } from "./settings.js"
 import { getHtmlElement } from "./compat.js";
-import { ATTACK_FLAG_VERSION, applyAttackFromMessage } from "./damage.js";
+import { ATTACK_FLAG_VERSION, SAVE_PROMPT_DEADLINE_MS, applyAttackFromMessage } from "./damage.js";
+import { localizeParam } from "./utils.js";
+
+/**
+ * Wound levels the token shows, indexed by woundState(). Mortal covers every state above it, so
+ * this is read with a clamp rather than a lookup.
+ */
+const WOUND_STATUSES = ["cpWoundLight", "cpWoundSerious", "cpWoundCritical", "cpWoundMortal"];
+
+/**
+ * One in-flight wound sync per actor. Two damage updates in quick succession otherwise overlap:
+ * both invocations read the same ActiveEffect and both delete it, and the loser throws
+ * `ActiveEffect "…" does not exist!` — measured against six consecutive writes.
+ */
+const woundSyncs = new Map();
+
+async function syncWoundStatuses(actor) {
+  const state = actor.woundState();
+  const active = state > 0 ? WOUND_STATUSES[Math.min(state, WOUND_STATUSES.length) - 1] : null;
+  for (const id of WOUND_STATUSES) {
+    await actor.toggleStatusEffect(id, { active: id === active });
+  }
+}
 
 const { Actors, Items } = foundry.documents.collections;
 
@@ -66,6 +88,51 @@ Hooks.once('init', async function () {
       themes: null,
       makeDefault: true
     });
+
+    // Wound levels and being out of action are token icons. Assigning by id appends to the core
+    // list; hud: false on the wound levels because they are derived from system.damage and a hand
+    // toggle would be undone by the next hit.
+    CONFIG.statusEffects.cpWoundLight = {
+      id: "cpWoundLight", name: "CYBERPUNK.StatusWoundLight", img: "icons/svg/blood.svg", hud: false
+    };
+    CONFIG.statusEffects.cpWoundSerious = {
+      id: "cpWoundSerious", name: "CYBERPUNK.StatusWoundSerious", img: "icons/svg/degen.svg", hud: false
+    };
+    CONFIG.statusEffects.cpWoundCritical = {
+      id: "cpWoundCritical", name: "CYBERPUNK.StatusWoundCritical", img: "icons/svg/hazard.svg", hud: false
+    };
+    CONFIG.statusEffects.cpWoundMortal = {
+      id: "cpWoundMortal", name: "CYBERPUNK.StatusWoundMortal", img: "icons/svg/bones.svg", hud: false
+    };
+    CONFIG.statusEffects.cpStunned = {
+      id: "cpStunned", name: "CYBERPUNK.StatusStunned", img: "icons/svg/daze.svg"
+    };
+
+    // The owner of a player character rolls their own save when the world asks for it. The reply
+    // has to beat the sender's timeout, so the dialog is closed here rather than waited on forever.
+    CONFIG.queries["cyberpunk2020.savePrompt"] = async ({ actorUuid, kind }) => {
+      const actor = await fromUuid(actorUuid);
+      if (!actor) throw new Error(`No actor for save prompt: ${actorUuid}`);
+
+      let dialog = null;
+      const deadline = new Promise(resolve => setTimeout(() => {
+        dialog?.close();
+        resolve(null);
+      }, SAVE_PROMPT_DEADLINE_MS));
+
+      const answer = await Promise.race([
+        foundry.applications.api.DialogV2.input({
+          window: { title: kind === "death" ? "CYBERPUNK.SaveDeath" : "CYBERPUNK.SaveStun" },
+          content: `<p>${localizeParam("SavePrompt", { name: actor.name })}</p>
+            <input type="number" name="mod" value="0" step="1" autofocus>`,
+          ok: { label: "CYBERPUNK.SaveRollButton" },
+          render: (event, app) => { dialog = app; }
+        }),
+        deadline
+      ]);
+
+      return actor.rollSave(kind, { mod: Number(answer?.mod) || 0 });
+    };
 
     // Register System Settings
     registerSystemSettings();
@@ -241,6 +308,18 @@ Hooks.once('init', async function () {
       }
 
       button.addEventListener("click", () => applyAttackFromMessage(message, { tokenId }));
+    });
+
+    // Wound icons follow system.damage wherever it comes from, which is what makes a hand click on
+    // the wound tracker behave like an applied attack. One writer, as everywhere else here.
+    Hooks.on("updateActor", (actor, changes) => {
+      if (!game.user.isActiveGM) return;
+      if (!("damage" in (changes.system ?? {}))) return;
+
+      const queued = (woundSyncs.get(actor.id) ?? Promise.resolve())
+        .then(() => syncWoundStatuses(actor))
+        .finally(() => { if (woundSyncs.get(actor.id) === queued) woundSyncs.delete(actor.id); });
+      woundSyncs.set(actor.id, queued);
     });
 
     // Auto mode: the active GM's client is the single writer, the way core drives Combat turn

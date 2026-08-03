@@ -88,6 +88,40 @@ export function registerSystemSettings() {
     default: "gmButton"
   });
 
+  // --- Combat: who rolls a player character's Stun/Death save ---
+  game.settings.register("cyberpunk2020", "pcSaveMode", {
+    name: "SETTINGS.PcSaveMode",
+    hint: "SETTINGS.PcSaveModeHint",
+    scope: "world",
+    config: true,
+    type: String,
+    choices: {
+      auto: "SETTINGS.PcSaveModeAuto",
+      manual: "SETTINGS.PcSaveModeManual"
+    },
+    default: "auto"
+  });
+
+  // --- Optional rules: Staged Penetration (armor ablation) ---
+  game.settings.register("cyberpunk2020", "armorAblation", {
+    name: "SETTINGS.ArmorAblation",
+    hint: "SETTINGS.ArmorAblationHint",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: false
+  });
+
+  // --- Optional rules: limb severance ---
+  game.settings.register("cyberpunk2020", "severanceThreshold", {
+    name: "SETTINGS.SeveranceThreshold",
+    hint: "SETTINGS.SeveranceThresholdHint",
+    scope: "world",
+    config: true,
+    type: Number,
+    default: 8
+  });
+
   // --- Optional rules: Friday Night Fistfight 2 ---
   game.settings.register("cyberpunk2020", "fnff2Enabled", {
     name: "SETTINGS.FNFF2Enabled",
