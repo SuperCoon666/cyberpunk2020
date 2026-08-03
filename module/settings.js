@@ -122,6 +122,36 @@ export function registerSystemSettings() {
     default: 8
   });
 
+  // --- Optional rules: more than one action per turn ---
+  game.settings.register("cyberpunk2020", "actionEconomy", {
+    name: "SETTINGS.ActionEconomy",
+    hint: "SETTINGS.ActionEconomyHint",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: false
+  });
+
+  // --- Optional rules: one initiative die per side ---
+  game.settings.register("cyberpunk2020", "partyInitiative", {
+    name: "SETTINGS.PartyInitiative",
+    hint: "SETTINGS.PartyInitiativeHint",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: false
+  });
+
+  // --- Client UI: turn notification ---
+  game.settings.register("cyberpunk2020", "turnSound", {
+    name: "SETTINGS.TurnSound",
+    hint: "SETTINGS.TurnSoundHint",
+    scope: "client",
+    config: true,
+    type: Boolean,
+    default: true
+  });
+
   // --- Optional rules: Friday Night Fistfight 2 ---
   game.settings.register("cyberpunk2020", "fnff2Enabled", {
     name: "SETTINGS.FNFF2Enabled",

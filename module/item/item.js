@@ -515,6 +515,14 @@ export class CyberpunkItem extends Item {
     else {
       attackTerms.push(...(this.__meleeModTerms(attackMods)));
     }
+
+    // Applied here rather than in either mod-term builder: the action economy charges the same
+    // penalty whatever the weapon is.
+    const actionPenalty = Number(attackMods?.actionPenalty) || 0;
+    if (actionPenalty !== 0) {
+      attackTerms.push(actionPenalty);
+    }
+
     const weaponAccuracy = Number(system?.accuracy ?? 0) || 0;
     if (weaponAccuracy !== 0) {
       attackTerms.push("@weaponAccuracy");

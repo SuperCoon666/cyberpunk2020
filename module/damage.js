@@ -18,7 +18,7 @@ const LIMB_DESTROYED_AT = 30;
 const SEVERABLE_ZONES = new Set(["Head", "lArm", "rArm", "lLeg", "rLeg"]);
 
 /** woundState() counts wound slots four wide, so Mortal is the fourth. */
-const MORTAL_WOUND_STATE = 4;
+export const MORTAL_WOUND_STATE = 4;
 
 /**
  * The querying side gives up at 30 s, so the owner's dialog closes at 25 and rolls itself: the
@@ -153,7 +153,7 @@ async function ablateArmor(actor, hitsByZone) {
  * @param {"stun"|"death"} kind
  * @returns {Promise<{total: number, threshold: number, success: boolean}>}
  */
-async function requestSave(actor, kind) {
+export async function requestSave(actor, kind) {
   const manual = game.settings.get("cyberpunk2020", "pcSaveMode") === "manual" && actor.type !== "npc";
   const owner = manual
     ? game.users.players.find(u => u.active && actor.testUserPermission(u, "OWNER"))

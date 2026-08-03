@@ -3,6 +3,7 @@ import { deleteFieldUpdate, localize, localizeParam, cwHasType, cwIsEnabled, wit
 import { ModifiersDialog } from "../dialog/modifiers.js"
 import { SortOrders, sortSkills } from "./skill-sort.js";
 import { getHtmlElement, getRichEditorHTML, itemFromDropData, saveRichEditorHTML } from "../compat.js";
+import { actionPenaltyFor, chargeAction } from "../combat.js";
 
 const { HandlebarsApplicationMixin } = foundry.applications.api;
 const { ActorSheetV2 } = foundry.applications.sheets;
@@ -444,6 +445,11 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
         event.stopPropagation();
         event.stopImmediatePropagation?.();
 
+        if (game.paused && !game.user.isGM) {
+          ui.notifications.warn(localize("PausedNoActions"));
+          return;
+        }
+
         const item = this._cpGetItemFromTarget(fireWeapon);
         if (item) this._cpOpenWeaponAttackDialog(item);
         return;
@@ -491,7 +497,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
         event.stopPropagation();
 
         const input = root.querySelector(".roll-initiative-modificator");
-        this.actor.addToCombatAndRollInitiative(input?.value ?? 0);
+        await this.actor.addToCombatAndRollInitiative(input?.value ?? 0);
         return;
       }
 
@@ -669,6 +675,18 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       modifierGroups = meleeBonkOptions(savedAttackOptions);
     }
 
+    // Read-only, so the player sees what the economy is charging and the value still submits with
+    // the rest of the form.
+    const actionPenalty = actionPenaltyFor(this.actor);
+    if (actionPenalty !== null) {
+      modifierGroups = [...modifierGroups, [{
+        localKey: "ActionPenalty",
+        dataPath: "actionPenalty",
+        defaultValue: actionPenalty,
+        readOnly: true
+      }]];
+    }
+
     const dialog = new ModifiersDialog({
       weapon: item,
       targetTokens,
@@ -679,6 +697,8 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
         } else {
           await this._cpSaveMeleeAttackOptions(item, fireOptions);
         }
+
+        await chargeAction(this.actor);
 
         return item.__weaponRoll(fireOptions, targetTokens);
       }

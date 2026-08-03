@@ -20,6 +20,7 @@ import * as migrations from "./migrate.js";
 import { registerSystemSettings } from "./settings.js"
 import { getHtmlElement } from "./compat.js";
 import { ATTACK_FLAG_VERSION, SAVE_PROMPT_DEADLINE_MS, applyAttackFromMessage } from "./damage.js";
+import { CyberpunkCombat, announceTurn } from "./combat.js";
 import { localizeParam } from "./utils.js";
 
 /**
@@ -60,6 +61,9 @@ Hooks.once('init', async function () {
     // Define custom Document classes
     CONFIG.Actor.documentClass = CyberpunkActor;
     CONFIG.Item.documentClass = CyberpunkItem;
+    // No Combatant subclass: the only thing that would live there is the party-initiative formula,
+    // and the shared die has to be awaited, which _getInitiativeFormula cannot do.
+    CONFIG.Combat.documentClass = CyberpunkCombat;
 
     // Register v13/v14 System DataModels.
     // These replace legacy system-template initialization for Actor/Item system data.
@@ -321,6 +325,8 @@ Hooks.once('init', async function () {
         .finally(() => { if (woundSyncs.get(actor.id) === queued) woundSyncs.delete(actor.id); });
       woundSyncs.set(actor.id, queued);
     });
+
+    Hooks.on("combatTurnChange", announceTurn);
 
     // Auto mode: the active GM's client is the single writer, the way core drives Combat turn
     // events. With no GM connected nothing applies and the button above is still the way in.

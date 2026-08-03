@@ -1061,6 +1061,14 @@ export class CyberpunkActor extends Actor {
       return;
     }
   
+    // The system formula already carries @initiativeMod, so the modifier reaches the roll by being
+    // persisted - not as an extra term, which would count it twice. The sheet's own change listener
+    // is not guaranteed to have finished by the time the row is clicked, hence the write here.
+    const mod = Number(modificator);
+    if (Number.isFinite(mod) && mod !== this.system.initiativeMod) {
+      await this.update({ "system.initiativeMod": mod });
+    }
+
     // Roll initiative for the combatant
     return combat.rollInitiative([combatant.id]);
   }  

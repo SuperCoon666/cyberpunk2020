@@ -526,6 +526,12 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
      * @param {FormDataExtended} formDataExtended
      */
     static async #onSubmit(event, form, formDataExtended) {
+      // Second chokepoint for the pause gate: the dialog outlives the click that opened it.
+      if (game.paused && !game.user.isGM) {
+        ui.notifications.warn(localize("PausedNoActions"));
+        return false;
+      }
+
       const formData = foundry.utils.expandObject(formDataExtended.object);
 
       if (this.options.weapon && formData.fireMode === fireModes.fullAuto) {

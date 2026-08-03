@@ -40,6 +40,7 @@ class CyberpunkBaseActorData extends foundry.abstract.TypeDataModel {
       hitLocLookup: objectField({}),
       sdp: objectField(DEFAULT_SDP),
       damage: numberField(0),
+      stabilized: booleanField(false),
 
       // Inventory / UI state
       eurobucks: numberField(0),
