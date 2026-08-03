@@ -404,7 +404,20 @@ export function defaultHitLocations() {
   return cloneSystemDefault(DEFAULT_HIT_LOCATIONS);
 }
 
-export function rangedModifiers(weapon, targetTokens = [], savedOptions = {}) {
+/**
+ * The range band a measured distance falls into, or null when there is nothing to measure — the
+ * dialog then opens on its old default and the player picks by hand.
+ */
+export function rangeBandFor(distance, weaponRange) {
+    if (!Number.isFinite(distance) || !Number.isFinite(weaponRange) || weaponRange <= 0) return null;
+    if (distance <= 1) return "RangePointBlank";
+    if (distance <= weaponRange / 4) return "RangeClose";
+    if (distance <= weaponRange / 2) return "RangeMedium";
+    if (distance <= weaponRange) return "RangeLong";
+    return "RangeExtreme";
+}
+
+export function rangedModifiers(weapon, targetTokens = [], savedOptions = {}, measuredDistance = null) {
     const sys = weapon._getWeaponSystem?.() ?? weapon.system ?? {};
     let range = sys.range || 50;
     let fireModes = weapon.__getFireModes() || [];
@@ -424,9 +437,9 @@ export function rangedModifiers(weapon, targetTokens = [], savedOptions = {}) {
             defaultValue: fireModeDefault
         },
         {
-            localKey: "Range", 
-            dataPath: "range", 
-            defaultValue: "RangeClose",
+            localKey: "Range",
+            dataPath: "range",
+            defaultValue: rangeBandFor(measuredDistance, range) ?? "RangeClose",
             choices: [
                 {value:"RangePointBlank", localData: {range: 1}},
                 {value:"RangeClose", localData: {range: range/4}},

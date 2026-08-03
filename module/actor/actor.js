@@ -227,7 +227,8 @@ export class CyberpunkActor extends Actor {
     }
 
     const armorLayersByArea = {};
-    
+    const hardArmorAreas = new Set();
+
     // Sort through this now so we don't have to later
     let equippedItems = this.items.contents.filter(item => {
       return item.system.equipped;
@@ -321,6 +322,7 @@ export class CyberpunkActor extends Actor {
 
         if (!armorLayersByArea[armorArea]) armorLayersByArea[armorArea] = [];
         armorLayersByArea[armorArea].push(addSP);
+        if (armorData.hard) hardArmorAreas.add(armorArea);
       }
     });
 
@@ -334,6 +336,8 @@ export class CyberpunkActor extends Actor {
 
         if (!armorLayersByArea[areaKey]) armorLayersByArea[areaKey] = [];
         armorLayersByArea[areaKey].push(addSP);
+        // Cyber-armour is hard armour.
+        hardArmorAreas.add(areaKey);
       }
     }
 
@@ -341,6 +345,9 @@ export class CyberpunkActor extends Actor {
     for (const [areaKey, area] of Object.entries(system.hitLocations)) {
       const layers = armorLayersByArea[areaKey] || [];
       area.stoppingPower = maxLayeredSP(layers);
+      // A zone counts as hard if any layer covering it is; the ammunition's hard/soft multipliers
+      // are the only consumer.
+      area.hard = hardArmorAreas.has(areaKey);
     }
 
     // Cyber-armor EV: add to total encumbrance
@@ -509,6 +516,33 @@ export class CyberpunkActor extends Actor {
       "system.sortedSkillIDs": sortedView,
       "system.skillsSortedBy": sortOrder
     });
+  }
+
+  /**
+   * The single writer of applied combat damage. Everything else in the pipeline resolves; only
+   * this method persists.
+   *
+   * @param {object} damage
+   * @param {number} damage.wound Points to add to the wound track
+   * @param {Object<string, number>} damage.sdp Points to take off a cyberlimb, keyed by zone
+   */
+  async applyDamage({ wound = 0, sdp = {} } = {}) {
+    const update = {};
+
+    if (wound > 0) {
+      update["system.damage"] = Math.min(40, Math.max(0, Number(this.system.damage) + wound));
+    }
+
+    for (const [zone, amount] of Object.entries(sdp)) {
+      if (!amount) continue;
+      update[`system.sdp.current.${zone}`] = Math.max(0, Number(this.system.sdp.current?.[zone] ?? 0) - amount);
+      // A zone damage drove to exactly 0 is indistinguishable from an untouched default, and the
+      // reconciliation in _prepareCharacterData reseeds it from the sum without this marker.
+      update[`system.sdp.touched.${zone}`] = true;
+    }
+
+    if (foundry.utils.isEmpty(update)) return null;
+    return this.update(update);
   }
 
   // Current wound state. 0 for uninjured, going up by 1 for each new one. 1 for Light, 2 Serious, 3 Critical etc.

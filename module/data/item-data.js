@@ -316,12 +316,14 @@ export class CyberpunkArmorData extends CyberpunkBaseItemData {
     return {
       ...commonSchema(),
       coverage: objectField(DEFAULT_COVERAGE),
-      encumbrance: numberField(0)
+      encumbrance: numberField(0),
+      hard: booleanField(false)
     };
   }
 
   static migrateData(source) {
     source ??= {};
+    normalizeBooleanIfPresent(source, "hard", false);
     // Pre-object worlds stored coverage as a covers/doesn't boolean, which carried no SP.
     // Only zones the diff already names are rewritten, so this stays safe on a partial update.
     if (hasOwn(source, "coverage") && source.coverage && typeof source.coverage === "object") {

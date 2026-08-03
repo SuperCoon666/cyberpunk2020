@@ -19,6 +19,7 @@ import { registerHandlebarsHelpers } from "./handlebars-helpers.js"
 import * as migrations from "./migrate.js";
 import { registerSystemSettings } from "./settings.js"
 import { getHtmlElement } from "./compat.js";
+import { ATTACK_FLAG_VERSION, applyAttackFromMessage } from "./damage.js";
 
 const { Actors, Items } = foundry.documents.collections;
 
@@ -215,6 +216,44 @@ Hooks.once('init', async function () {
         el.addEventListener("mouseenter", () => { void showTip(); });
         el.addEventListener("mouseleave", hideTip);
         el.addEventListener("mousemove", positionTip);
+      }
+    });
+
+    // The apply button is decided per client rather than baked into the card: only a GM sees it,
+    // and a card whose damage has already landed keeps it disabled instead of applying twice.
+    Hooks.on("renderChatMessageHTML", (message, html) => {
+      const root = getHtmlElement(html);
+      const button = root?.querySelector?.('button[data-action="applyDamage"]');
+      if (!button || button.dataset.cpApplyBound === "1") return;
+      button.dataset.cpApplyBound = "1";
+
+      const attack = message.flags?.cyberpunk2020?.attack;
+      if (!game.user.isGM || attack?.version !== ATTACK_FLAG_VERSION) {
+        button.remove();
+        return;
+      }
+
+      const tokenId = button.dataset.tokenId;
+      if (attack.applied?.[tokenId]) {
+        button.disabled = true;
+        button.textContent = game.i18n.localize("CYBERPUNK.DamageApplied");
+        return;
+      }
+
+      button.addEventListener("click", () => applyAttackFromMessage(message, { tokenId }));
+    });
+
+    // Auto mode: the active GM's client is the single writer, the way core drives Combat turn
+    // events. With no GM connected nothing applies and the button above is still the way in.
+    Hooks.on("createChatMessage", async (message) => {
+      if (!game.user.isActiveGM) return;
+      if (game.settings.get("cyberpunk2020", "damageApplyMode") !== "auto") return;
+
+      const attack = message.flags?.cyberpunk2020?.attack;
+      if (attack?.version !== ATTACK_FLAG_VERSION) return;
+
+      for (const target of attack.targets ?? []) {
+        await applyAttackFromMessage(message, { tokenId: target.tokenId });
       }
     });
 });

@@ -628,6 +628,20 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     return this.actor.rollSkill(id);
   }
 
+  /**
+   * Distance from this actor's token to the target, in the scene's own units. Null whenever either
+   * token is off the canvas, which is what leaves the range band hand-picked as before.
+   */
+  _cpTargetDistance(target) {
+    if (!target) return null;
+
+    const from = this.actor.getActiveTokens()[0];
+    const to = canvas.tokens?.get(target.id);
+    if (!from || !to) return null;
+
+    return canvas.grid.measurePath([from.center, to.center]).distance;
+  }
+
   _cpOpenWeaponAttackDialog(item) {
     if (!item) return;
 
@@ -640,11 +654,13 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     let modifierGroups;
     const targetTokens = Array.from(game.users.current.targets.values()).map(target => ({
       name: target.document.name,
-      id: target.id
+      id: target.id,
+      tokenUuid: target.document.uuid,
+      actorUuid: target.actor?.uuid ?? ""
     }));
 
     if (isRanged) {
-      modifierGroups = rangedModifiers(item, targetTokens, savedAttackOptions);
+      modifierGroups = rangedModifiers(item, targetTokens, savedAttackOptions, this._cpTargetDistance(targetTokens[0]));
     }
     else if (system.attackType === meleeAttackTypes.martial) {
       modifierGroups = martialOptions(this.actor, savedAttackOptions);

@@ -119,7 +119,7 @@ export function classifyRollDice(roll) {
      *  ...
      * }
      */
-    async execute(speaker, templatePath, extraTemplateData={}) {
+    async execute(speaker, templatePath, extraTemplateData={}, flags=undefined) {
         await Promise.all(this.rolls.map((r) => evaluateCyberpunkRoll(r)));
         
         const fullTemplateData = foundry.utils.mergeObject({
@@ -145,13 +145,14 @@ export function classifyRollDice(roll) {
         await createCyberpunkRollCard({
             rolls: this.rolls,
             speaker,
-            content: await renderCyberpunkTemplate(templatePath, fullTemplateData)
+            content: await renderCyberpunkTemplate(templatePath, fullTemplateData),
+            flags
         });
         return this;
     }
 
-    async defaultExecute(extraTemplateData={}) {
-        return this.execute(undefined, DefaultRollTemplate, extraTemplateData);
+    async defaultExecute(extraTemplateData={}, flags=undefined) {
+        return this.execute(undefined, DefaultRollTemplate, extraTemplateData, flags);
     }
 }
 

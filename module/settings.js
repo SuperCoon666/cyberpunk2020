@@ -74,6 +74,20 @@ export function registerSystemSettings() {
     default: true
   });
 
+  // --- Combat: how applied damage reaches the target ---
+  game.settings.register("cyberpunk2020", "damageApplyMode", {
+    name: "SETTINGS.DamageApplyMode",
+    hint: "SETTINGS.DamageApplyModeHint",
+    scope: "world",
+    config: true,
+    type: String,
+    choices: {
+      gmButton: "SETTINGS.DamageApplyModeGmButton",
+      auto: "SETTINGS.DamageApplyModeAuto"
+    },
+    default: "gmButton"
+  });
+
   // --- Optional rules: Friday Night Fistfight 2 ---
   game.settings.register("cyberpunk2020", "fnff2Enabled", {
     name: "SETTINGS.FNFF2Enabled",

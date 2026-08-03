@@ -45,7 +45,7 @@ export function deleteFieldUpdate(path) {
 export async function rollLocation(targetActor, targetArea) {
     if(targetArea) {
         // Area name to number lookup
-        const hitLocs = (!!targetActor) ? targetActor.hitLocations : defaultHitLocations();
+        const hitLocs = (!!targetActor) ? targetActor.system.hitLocations : defaultHitLocations();
         const targetNum = hitLocs[targetArea].location[0];
         let roll = await new Roll(`${targetNum}`).evaluate();
         return {
@@ -54,7 +54,7 @@ export async function rollLocation(targetActor, targetArea) {
         };
     }
     // Number to area name lookup
-    let hitAreaLookup = (!!targetActor && !!targetActor.hitLocLookup) ? targetActor.hitLocLookup : defaultAreaLookup;
+    let hitAreaLookup = (!!targetActor && !!targetActor.system.hitLocLookup) ? targetActor.system.hitLocLookup : defaultAreaLookup;
 
     let roll = await new Roll("1d10").evaluate();
     return {

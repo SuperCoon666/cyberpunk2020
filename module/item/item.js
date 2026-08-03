@@ -2,6 +2,7 @@ import { weaponTypes, rangedAttackTypes, meleeAttackTypes, fireModes, ranges, ra
 import { Multiroll, makeD10Roll } from "../dice.js"
 import { localize, localizeParam, rollLocation, cwHasType, cwIsEnabled, isFumbleRoll, buildRangedCombatFumbleData, buildSkillFumbleData, clamp } from "../utils.js";
 import { createCyberpunkChatMessage, renderCyberpunkTemplate } from "../compat.js";
+import { ATTACK_FLAG_VERSION, snapshotAmmo } from "../damage.js";
 /** @extends {Item} */
 export class CyberpunkItem extends Item {
 
@@ -388,29 +389,97 @@ export class CyberpunkItem extends Item {
       return false;
     }
 
+    const targets = Array.isArray(targetTokens) ? targetTokens : [];
+    // Hit locations come from the target's own table, so the first target rides along with the
+    // modifiers every branch already receives.
+    const mods = { ...attackMods, targetActor: CyberpunkItem.__targetActor(targets[0]) };
+
     if (!isRanged) {
       if (system.attackType === meleeAttackTypes.martial) {
-        return this.__martialBonk(attackMods);
+        return this.__martialBonk(mods, targets);
       } else {
-        return this.__meleeBonk(attackMods);
+        return this.__meleeBonk(mods, targets);
       }
     }
 
     // ---- Firemode-specific rolling. I may roll together some common aspects later ----
     // Full auto
-    if(attackMods.fireMode === fireModes.fullAuto) {
-      return this.__fullAuto(attackMods, targetTokens);
+    if(mods.fireMode === fireModes.fullAuto) {
+      return this.__fullAuto(mods, targets);
     }
     // Three-round burst. Shares... a lot in common with full auto actually
-    else if(attackMods.fireMode === fireModes.threeRoundBurst) {
-      return this.__threeRoundBurst(attackMods);
+    else if(mods.fireMode === fireModes.threeRoundBurst) {
+      return this.__threeRoundBurst(mods, targets);
     }
-    else if(attackMods.fireMode === fireModes.semiAuto) {
-      return this.__semiAuto(attackMods);
+    else if(mods.fireMode === fireModes.semiAuto) {
+      return this.__semiAuto(mods, targets);
     }
-    else if(attackMods.fireMode === fireModes.suppressive) {
-      return this.__suppressiveFire(attackMods);
+    else if(mods.fireMode === fireModes.suppressive) {
+      return this.__suppressiveFire(mods);
     }
+  }
+
+  /** An unlinked token owns its own delta actor, so the token document is what gets resolved. */
+  static __targetActor(target) {
+    if (!target?.tokenUuid) return undefined;
+    return fromUuidSync(target.tokenUuid)?.actor;
+  }
+
+  /**
+   * The card payload the damage-apply path reads. Undefined when there is nothing to apply, which
+   * is what leaves an untargeted or missing attack card exactly as it was.
+   *
+   * @param {object} card
+   * @param {object} card.target One entry of the sheet's target snapshot
+   * @param {Object<string, Array>} card.areaDamages Zone -> rolled damage entries
+   * @param {object|null} card.ammo Snapshot from snapshotAmmo
+   */
+  __attackFlags({ target, areaDamages, ammo, fireMode, range }) {
+    if (!target) return undefined;
+
+    const hits = [];
+    for (const [zone, entries] of Object.entries(areaDamages ?? {})) {
+      for (const entry of entries) hits.push({ zone, damage: Number(entry.damage) || 0 });
+    }
+    if (!hits.length) return undefined;
+
+    return {
+      cyberpunk2020: {
+        attack: {
+          version: ATTACK_FLAG_VERSION,
+          itemId: this.id,
+          attackerActorUuid: this.actor?.uuid ?? "",
+          fireMode: fireMode ?? "",
+          range: range ?? "",
+          ap: !!this._getWeaponSystem()?.ap,
+          ammo,
+          targets: [{
+            name: target.name,
+            tokenId: target.id,
+            tokenUuid: target.tokenUuid,
+            actorUuid: target.actorUuid
+          }],
+          hits,
+          applied: {}
+        }
+      }
+    };
+  }
+
+  /**
+   * The damage formula with the loaded ammunition's contribution folded in. The raw multiplier is
+   * applied here rather than at damage-application time so the card shows the number that was
+   * actually dealt.
+   */
+  __ammoDamageFormula(baseFormula, ammo) {
+    if (!ammo) return baseFormula;
+
+    let formula = ammo.bonusDamageFormula
+      ? `(${baseFormula}) + (${ammo.bonusDamageFormula})`
+      : baseFormula;
+
+    if (ammo.rawDamageMult !== 1) formula = `(${formula}) * ${ammo.rawDamageMult}`;
+    return formula;
   }
 
   __getFireModes() {
@@ -451,6 +520,11 @@ export class CyberpunkItem extends Item {
       attackTerms.push("@weaponAccuracy");
     }
 
+    const ammoAccuracy = isRanged ? (snapshotAmmo(this)?.accuracyMod ?? 0) : 0;
+    if (ammoAccuracy !== 0) {
+      attackTerms.push("@ammoAccuracy");
+    }
+
     const attackSkillKey = (system?.attackSkill ?? this.system?.attackSkill) || "";
     const attackSkillValRaw = this.actor?.getSkillVal?.(attackSkillKey);
     const attackSkillVal = Number.isFinite(Number(attackSkillValRaw)) ? Number(attackSkillValRaw) : 0;
@@ -458,7 +532,8 @@ export class CyberpunkItem extends Item {
     return await makeD10Roll(attackTerms, {
       stats: this.actor.system.stats,
       attackSkill: attackSkillVal,
-      weaponAccuracy
+      weaponAccuracy,
+      ammoAccuracy
     }).evaluate();
   }
 
@@ -474,9 +549,11 @@ export class CyberpunkItem extends Item {
       let DC = rangeDCs[attackMods.range];
       let targetCount = Math.max(1, targetTokens.length || Number(attackMods.targetsCount) || 1);
       const rollData = this.actor?.getRollData?.() ?? {};
+      const ammo = snapshotAmmo(this);
+      const damageFormula = this.__ammoDamageFormula(system.damage, ammo);
       const maximizeDamage = this._shouldMaximizePointBlankDamage(attackMods);
       const maxDamageRoll = maximizeDamage
-        ? await new Roll(system.damage, rollData).evaluate({ maximize: true })
+        ? await new Roll(damageFormula, rollData).evaluate({ maximize: true })
         : null;
       const maxDamage = maximizeDamage
         ? CyberpunkItem._floorDamageTotal(maxDamageRoll.total)
@@ -493,7 +570,8 @@ export class CyberpunkItem extends Item {
           const plannedRoundsForTarget = Math.ceil(roundsToAllocate / remainingTargets);
           const attackModsForTarget = {
             ...attackMods,
-            fullAutoRoundsFired: plannedRoundsForTarget
+            fullAutoRoundsFired: plannedRoundsForTarget,
+            targetActor: CyberpunkItem.__targetActor(targetTokens[i]) ?? attackMods.targetActor
           };
 
           let attackRoll = await this.attackRoll(attackModsForTarget);
@@ -527,13 +605,13 @@ export class CyberpunkItem extends Item {
           let areaDamages = {};
           // Roll damage for each of the bullets that hit
           for (let i = 0; i < roundsHit; i++) {
-              let location = (await rollLocation(attackMods.targetActor, attackMods.targetArea)).areaHit;
+              let location = (await rollLocation(attackModsForTarget.targetActor, attackMods.targetArea)).areaHit;
               if (!areaDamages[location]) {
                   areaDamages[location] = [];
               }
               const dmgRoll = maximizeDamage
                 ? maxDamageRoll
-                : await new Roll(system.damage, rollData).evaluate();
+                : await new Roll(damageFormula, rollData).evaluate();
 
               const dmg = maximizeDamage
                 ? maxDamage
@@ -562,14 +640,25 @@ export class CyberpunkItem extends Item {
 
           let roll = new Multiroll(`${localize("Autofire")}`, `${localize("Range")}: ${localizeParam(attackMods.range, {range: actualRangeBracket})}`)
             .addRoll(attackRoll, { name: localize("Attack") });
-          await roll.execute(undefined, "systems/cyberpunk2020/templates/chat/multi-hit.hbs", templateData);
+          await roll.execute(
+            undefined,
+            "systems/cyberpunk2020/templates/chat/multi-hit.hbs",
+            templateData,
+            this.__attackFlags({
+              target: targetTokens[i],
+              areaDamages,
+              ammo,
+              fireMode: attackMods.fireMode,
+              range: attackMods.range
+            })
+          );
           rolls.push(roll);
       }
 
       return rolls;
   }
 
-  async __threeRoundBurst(attackMods) {
+  async __threeRoundBurst(attackMods, targetTokens = []) {
       const system = this._getWeaponSystem();
       // The kind of distance we're attacking at, so we can display Close: <50m or something like that
       let actualRangeBracket = rangeResolve[attackMods.range](system.range);
@@ -577,9 +666,11 @@ export class CyberpunkItem extends Item {
       let attackRoll = await this.attackRoll(attackMods);
       const rangedFumble = await this._maybeApplyRangedFumble(attackRoll);
       const rollData = this.actor?.getRollData?.() ?? {};
+      const ammo = snapshotAmmo(this);
+      const damageFormula = this.__ammoDamageFormula(system.damage, ammo);
       const maximizeDamage = this._shouldMaximizePointBlankDamage(attackMods);
       const maxDamageRoll = maximizeDamage
-        ? await new Roll(system.damage, rollData).evaluate({ maximize: true })
+        ? await new Roll(damageFormula, rollData).evaluate({ maximize: true })
         : null;
       const maxDamage = maximizeDamage
         ? CyberpunkItem._floorDamageTotal(maxDamageRoll.total)
@@ -605,7 +696,7 @@ export class CyberpunkItem extends Item {
               }
               const dmgRoll = maximizeDamage
                 ? maxDamageRoll
-                : await new Roll(system.damage, rollData).evaluate();
+                : await new Roll(damageFormula, rollData).evaluate();
 
               const dmg = maximizeDamage
                 ? maxDamage
@@ -618,6 +709,7 @@ export class CyberpunkItem extends Item {
           }
       }
       let templateData = {
+          target: targetTokens[0],
           range: attackMods.range,
           toHit: DC,
           attackRoll: attackRoll,
@@ -637,7 +729,18 @@ export class CyberpunkItem extends Item {
       } else {
         await this.__setWeaponField("shotsLeft", system.shotsLeft - roundsFired);
       }
-      await roll.execute(undefined, "systems/cyberpunk2020/templates/chat/multi-hit.hbs", templateData);
+      await roll.execute(
+        undefined,
+        "systems/cyberpunk2020/templates/chat/multi-hit.hbs",
+        templateData,
+        this.__attackFlags({
+          target: targetTokens[0],
+          areaDamages,
+          ammo,
+          fireMode: attackMods.fireMode,
+          range: attackMods.range
+        })
+      );
       return roll;
   }
 
@@ -655,7 +758,8 @@ export class CyberpunkItem extends Item {
 
     await this.__setWeaponField("shotsLeft", sys.shotsLeft - rounds);
 
-    const saveDC = Math.ceil(rounds / width);
+    // Floor, not ceil: the book's own worked example is 64 rounds over 5 m for a DC of 12.
+    const saveDC = Math.floor(rounds / width);
     const dmgFormula = sys.damage || "1d6";
     const rollData = this.actor?.getRollData?.() ?? {};
 
@@ -692,16 +796,18 @@ export class CyberpunkItem extends Item {
     }, { useDefaultRollMode: true });
   }
 
-  async __semiAuto(attackMods) {
+  async __semiAuto(attackMods, targetTokens = []) {
       const system = this._getWeaponSystem();
-      
+
       // The range we're shooting at
       let DC = rangeDCs[attackMods.range];
       let attackRoll = await this.attackRoll(attackMods);
       const rangedFumble = await this._maybeApplyRangedFumble(attackRoll);
       const rollData = this.actor?.getRollData?.() ?? {};
+      const ammo = snapshotAmmo(this);
       const maximizeDamage = this._shouldMaximizePointBlankDamage(attackMods);
-      const damageRoll = await new Roll(system.damage, rollData).evaluate({ maximize: maximizeDamage });
+      const damageRoll = await new Roll(this.__ammoDamageFormula(system.damage, ammo), rollData)
+        .evaluate({ maximize: maximizeDamage });
       const dmg = CyberpunkItem._floorDamageTotal(damageRoll.total);
       let locationRoll = await rollLocation(attackMods.targetActor, attackMods.targetArea);
       let actualRangeBracket = rangeResolve[attackMods.range](system.range);
@@ -724,6 +830,7 @@ export class CyberpunkItem extends Item {
       }
       
       let templateData = {
+        target: targetTokens[0],
         range: attackMods.range,
         toHit: DC,
         attackRoll: attackRoll,
@@ -748,11 +855,22 @@ export class CyberpunkItem extends Item {
         await this.__setWeaponField("shotsLeft", system.shotsLeft - roundsFired);
       }
 
-      await roll.execute(undefined, "systems/cyberpunk2020/templates/chat/multi-hit.hbs", templateData);
+      await roll.execute(
+        undefined,
+        "systems/cyberpunk2020/templates/chat/multi-hit.hbs",
+        templateData,
+        this.__attackFlags({
+          target: targetTokens[0],
+          areaDamages,
+          ammo,
+          fireMode: attackMods.fireMode,
+          range: attackMods.range
+        })
+      );
       return roll;
   }
 
-  async __meleeBonk(attackMods) {
+  async __meleeBonk(attackMods, targetTokens = []) {
       // Melee attacks do not have a fixed DC; they are contested instead
       let attackRoll = await this.attackRoll(attackMods);
 
@@ -805,18 +923,20 @@ export class CyberpunkItem extends Item {
         undefined,
         "systems/cyberpunk2020/templates/chat/multi-hit.hbs",
         {
+          target: targetTokens[0],
           attackRoll,
           hit: true,
           hits: 1,
           areaDamages,
           suppressHitTally: true,
           fumble
-        }
+        },
+        this.__attackFlags({ target: targetTokens[0], areaDamages, ammo: null })
       );
 
       return bigRoll;
   }
-  async __martialBonk(attackMods) {
+  async __martialBonk(attackMods, targetTokens = []) {
     let actor = this.actor;
     let system = actor.system;
 
@@ -977,13 +1097,15 @@ export class CyberpunkItem extends Item {
       undefined,
       "systems/cyberpunk2020/templates/chat/multi-hit.hbs",
       {
+        target: targetTokens[0],
         attackRoll,
         hit: true,
         hits: 1,
         areaDamages,
         suppressHitTally: true,
         fumble
-      }
+      },
+      this.__attackFlags({ target: targetTokens[0], areaDamages, ammo: null })
     );
 
     return results;

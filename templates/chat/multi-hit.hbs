@@ -63,6 +63,13 @@
                 </div>
             {{/each}}
         </div>
+        {{#if target}}
+        <div class="cp-card-actions">
+            <button type="button" class="cp-apply-damage" data-action="applyDamage" data-token-id="{{target.id}}">
+                {{CPLocal "ApplyDamage"}}
+            </button>
+        </div>
+        {{/if}}
     {{else}}
         <h3>{{CPLocal "NoHits"}}</h3>
     {{/if}}
