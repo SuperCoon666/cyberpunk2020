@@ -142,6 +142,16 @@ export function registerSystemSettings() {
     default: false
   });
 
+  // --- House rule: a declared dodge also hinders gunfire ---
+  game.settings.register("cyberpunk2020", "dodgeVsRanged", {
+    name: "SETTINGS.DodgeVsRanged",
+    hint: "SETTINGS.DodgeVsRangedHint",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: false
+  });
+
   // --- Client UI: turn notification ---
   game.settings.register("cyberpunk2020", "turnSound", {
     name: "SETTINGS.TurnSound",

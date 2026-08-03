@@ -1,7 +1,7 @@
 import { makeD10Roll, Multiroll } from "../dice.js";
 import { isFumbleRoll, buildSkillFumbleData } from "../utils.js";
 import { SortOrders, sortSkills } from "./skill-sort.js";
-import { btmFromBT, MARTIAL_ART_KEY_BY_ID, MARTIAL_ART_ID_BY_KEY, FNFF2_ONLY_MARTIAL_ART_IDS, isFnff2Enabled, AWARENESS_NOTICE_SKILL_ID } from "../lookups.js";
+import { btmFromBT, MARTIAL_ART_KEY_BY_ID, MARTIAL_ART_ID_BY_KEY, FNFF2_ONLY_MARTIAL_ART_IDS, isFnff2Enabled, AWARENESS_NOTICE_SKILL_ID, MELEE_DEFENSE_SKILL_IDS } from "../lookups.js";
 import { properCase, localize, getDefaultSkills, cwHasType, cwIsEnabled, withCompendiumSource } from "../utils.js"
 
 export function combineSP(curr, add) {
@@ -619,6 +619,30 @@ export class CyberpunkActor extends Actor {
       if (item.type !== "skill") return false;
       return CyberpunkActor._getItemIdCandidates(item).includes(stableId);
     }) ?? null;
+  }
+
+  /**
+   * The defensive skills this actor can counter a melee attack with, best first. Empty when the
+   * actor has none of them, which leaves the defense at REF alone.
+   *
+   * @returns {Array<{skillId: string, label: string, total: number}>}
+   */
+  defenseOptions() {
+    const ref = Number(this.system.stats.ref.total) || 0;
+    const options = [];
+
+    for (const id of [...MELEE_DEFENSE_SKILL_IDS, ...Object.values(MARTIAL_ART_ID_BY_KEY)]) {
+      const skill = this._getSkillByStableId(id);
+      if (!skill) continue;
+
+      options.push({
+        skillId: id,
+        label: this.getSkillDisplayName(skill),
+        total: ref + CyberpunkActor.realSkillValue(skill)
+      });
+    }
+
+    return options.sort((a, b) => b.total - a.total);
   }
 
   static _customMartialPrefix() {

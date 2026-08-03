@@ -20,8 +20,8 @@ import * as migrations from "./migrate.js";
 import { registerSystemSettings } from "./settings.js"
 import { getHtmlElement } from "./compat.js";
 import { ATTACK_FLAG_VERSION, SAVE_PROMPT_DEADLINE_MS, applyAttackFromMessage } from "./damage.js";
-import { CyberpunkCombat, announceTurn } from "./combat.js";
-import { localizeParam } from "./utils.js";
+import { CyberpunkCombat, announceTurn, DEFENSE_PROMPT_DEADLINE_MS } from "./combat.js";
+import { localize, localizeParam } from "./utils.js";
 
 /**
  * Wound levels the token shows, indexed by woundState(). Mortal covers every state above it, so
@@ -136,6 +136,45 @@ Hooks.once('init', async function () {
       ]);
 
       return actor.rollSave(kind, { mod: Number(answer?.mod) || 0 });
+    };
+
+    // The defender picks the skill; the attacker's client rolls it, so this returns a choice and
+    // never a result. Null means "decide for me" — the timeout path answers that way too.
+    CONFIG.queries["cyberpunk2020.defensePrompt"] = async ({ attackerName, itemName, defenderActorUuid, attackTotal, choices }) => {
+      // Named, not "you": a player may own more than one character, and only the uuid says which
+      // of them is being attacked.
+      const defender = await fromUuid(defenderActorUuid);
+      if (!defender) throw new Error(`No actor for defense prompt: ${defenderActorUuid}`);
+
+      let dialog = null;
+      const deadline = new Promise(resolve => setTimeout(() => {
+        dialog?.close();
+        resolve(null);
+      }, DEFENSE_PROMPT_DEADLINE_MS));
+
+      // Every value here is user-authored data arriving from another client — item and actor names
+      // included — so all of it is escaped before it is interpolated into markup.
+      const esc = foundry.utils.escapeHTML;
+      const options = choices.map(c =>
+        `<option value="${esc(c.skillId)}">${esc(c.label)} (${Number(c.total) || 0})</option>`
+      ).join("");
+
+      const answer = await Promise.race([
+        foundry.applications.api.DialogV2.input({
+          window: { title: "CYBERPUNK.Defense" },
+          content: `<p>${localizeParam("DefensePrompt", {
+            attacker: esc(attackerName), defender: esc(defender.name),
+            item: esc(itemName), total: Number(attackTotal) || 0
+          })}</p>
+            <label>${localize("DefenseSkill")} <select name="skillId">${options}</select></label>
+            <label>${localize("DefenseMod")} <input type="number" name="extraMod" value="0" step="1"></label>`,
+          ok: { label: "CYBERPUNK.DefenseRollButton" },
+          render: (event, app) => { dialog = app; }
+        }),
+        deadline
+      ]);
+
+      return answer ? { skillId: answer.skillId, extraMod: Number(answer.extraMod) || 0 } : null;
     };
 
     // Register System Settings

@@ -9,6 +9,21 @@ export const COMBAT_SENSE_SKILL_IDS = new Set([
 
 export const AWARENESS_NOTICE_SKILL_ID = "jBfPdSDGwvIEq66p";
 
+// Ch. 04: the non-martial skills a defender may counter a melee attack with. One id each, because
+// the two default-skill packs share every id (103 of 103) — unlike the role-skill packs, where the
+// same skill has a different id per language, which is why COMBAT_SENSE_SKILL_IDS needs two.
+// The martial arts join these at the call site, from MARTIAL_ART_ID_BY_KEY.
+export const MELEE_DEFENSE_SKILL_IDS = new Set([
+  "2s2SKbYKsvtki3TO", // Melee
+  "Ft49pPt6Fu3rpQJq", // Fencing
+  "IWAr3E5vpS8qFzZS", // Dodge & Escape
+  "gULme1P5CR8rXXIh", // Athletics
+  "i8qoUwZ5jI9KAZeK"  // Brawling
+]);
+
+/** Choosing this one as a defense is what declares a dodge for the house rule. */
+export const DODGE_SKILL_ID = "IWAr3E5vpS8qFzZS";
+
 export const INTERFACE_SKILL_IDS = new Set([
   "sqHlfxm32pNENNFZ", // Interface
   "Nc1zY8vB6qWt4pXj"  // Интерфейс

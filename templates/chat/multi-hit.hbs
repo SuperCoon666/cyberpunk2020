@@ -41,6 +41,24 @@
                 {{/each}}
             </span>
         </div>
+        {{#if defense}}
+        <div class="field" style="grid-column-end: span 1">
+            <span>{{CPLocal "Defense"}}{{#if defense.label}} ({{defense.label}}){{/if}}: </span>
+            <span>{{defense.total}}</span>
+            <span class="flex-pad"></span>
+            <span class="roll-results">
+                {{#each defense.roll.terms as |term|}}
+                    {{#if term.results}}
+                        {{#each term.results as |die|}}
+                            <span class="roll-result roll die d{{term.faces}}">{{die.result}}</span>
+                        {{/each}}
+                    {{else}}
+                        <span class="roll-result inactive">{{compare term.operator "||" term.number}}</span>
+                    {{/if}}
+                {{/each}}
+            </span>
+        </div>
+        {{/if}}
     </div>
 
     {{#unless suppressHitTally}}

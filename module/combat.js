@@ -1,12 +1,27 @@
 import { MORTAL_WOUND_STATE, requestSave } from "./damage.js";
 import { localizeParam } from "./utils.js";
 import { createCyberpunkChatMessage } from "./compat.js";
+import { BaseDie } from "./dice.js";
+import { DODGE_SKILL_ID } from "./lookups.js";
 
 /** Cumulative penalty per extra action taken in the same turn (optional rule). */
 const ACTION_PENALTY_STEP = -3;
 
 /** The flag the optional action economy counts against. */
 const ACTIONS_TAKEN_FLAG = "actionsTaken";
+
+/** The flag a declared dodge sets, read by ranged attacks under the house rule. */
+const DODGING_FLAG = "dodging";
+
+/** House rule: what a declared dodge costs a ranged attacker. */
+const DODGE_VS_RANGED_PENALTY = -2;
+
+/**
+ * The querying side gives up at 30 s, so the owner's dialog closes at 25 and the defense rolls
+ * itself: the answer has to be sent before the deadline, not on it.
+ */
+const DEFENSE_QUERY_TIMEOUT_MS = 30000;
+export const DEFENSE_PROMPT_DEADLINE_MS = 25000;
 
 export class CyberpunkCombat extends Combat {
 
@@ -94,6 +109,11 @@ export class CyberpunkCombat extends Combat {
       await actor.unsetFlag("cyberpunk2020", ACTIONS_TAKEN_FLAG);
     }
 
+    // A declared dodge lasts until the dodger's own next turn.
+    if (actor.getFlag("cyberpunk2020", DODGING_FLAG) !== undefined) {
+      await actor.unsetFlag("cyberpunk2020", DODGING_FLAG);
+    }
+
     if (actor.woundState() < MORTAL_WOUND_STATE || actor.system.stabilized) return;
 
     await createCyberpunkChatMessage({
@@ -133,6 +153,82 @@ export async function chargeAction(actor) {
 
   const taken = Number(actor.getFlag("cyberpunk2020", ACTIONS_TAKEN_FLAG)) || 0;
   await actor.setFlag("cyberpunk2020", ACTIONS_TAKEN_FLAG, taken + 1);
+}
+
+/**
+ * Roll the defender's side of an opposed melee attack. An NPC defends on the spot; a player
+ * character's owner is asked which skill to use, and the best one is rolled anyway if they do not
+ * answer in time — ignoring the prompt must never cost the player anything.
+ *
+ * @param {CyberpunkActor} defender
+ * @param {number} attackTotal
+ * @param {object} context
+ * @param {string} context.attackerName
+ * @param {string} context.itemName
+ * @returns {Promise<{total: number, label: string, roll: Roll, hit: boolean}>} hit is the attacker's
+ *   result: ch. 04 gives a tie to the defender
+ */
+export async function resolveDefense(defender, attackTotal, { attackerName, itemName }) {
+  const options = defender.defenseOptions();
+  const owner = defender.type === "npc"
+    ? null
+    : game.users.players.find(u => u.active && defender.testUserPermission(u, "OWNER"));
+
+  let choice = null;
+  if (owner && options.length) {
+    try {
+      choice = await owner.query(
+        "cyberpunk2020.defensePrompt",
+        { attackerName, itemName, defenderActorUuid: defender.uuid, attackTotal, choices: options },
+        { timeout: DEFENSE_QUERY_TIMEOUT_MS }
+      );
+    } catch (err) {
+      // The owner disconnected or the query outlived its deadline; the defense still has to happen.
+    }
+  }
+
+  const picked = options.find(o => o.skillId === choice?.skillId) ?? options[0] ?? null;
+  const extraMod = Number(choice?.extraMod) || 0;
+  const base = picked?.total ?? (Number(defender.system.stats.ref.total) || 0);
+
+  const roll = await new Roll(`${BaseDie} + @defense + @extraMod`, { defense: base, extraMod }).evaluate();
+
+  if (picked?.skillId === DODGE_SKILL_ID) await declareDodge(defender);
+
+  return {
+    total: roll.total,
+    label: picked?.label ?? "",
+    roll,
+    hit: attackTotal > roll.total
+  };
+}
+
+/**
+ * Record that this actor is dodging, until the start of their next turn. A no-op while the house
+ * rule is off, so a world that never enables it does not accumulate the flag.
+ *
+ * @param {CyberpunkActor} actor
+ * @returns {Promise<void>}
+ */
+export async function declareDodge(actor) {
+  if (!game.settings.get("cyberpunk2020", "dodgeVsRanged")) return;
+  // The defense is resolved on the attacker's client, which for a player attacking an NPC has no
+  // permission on the defender. Losing the flag costs a -2; letting the rejected update propagate
+  // would lose the attack card with it.
+  if (!actor.isOwner) return;
+  await actor.setFlag("cyberpunk2020", DODGING_FLAG, true);
+}
+
+/**
+ * The house-rule penalty a ranged attacker takes against a target who declared a dodge.
+ *
+ * @param {CyberpunkActor} [targetActor]
+ * @returns {number} 0 when the rule is off, there is no target, or the target is not dodging
+ */
+export function dodgeRangedPenalty(targetActor) {
+  if (!targetActor) return 0;
+  if (!game.settings.get("cyberpunk2020", "dodgeVsRanged")) return 0;
+  return targetActor.getFlag("cyberpunk2020", DODGING_FLAG) ? DODGE_VS_RANGED_PENALTY : 0;
 }
 
 /**

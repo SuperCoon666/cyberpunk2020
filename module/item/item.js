@@ -3,6 +3,7 @@ import { Multiroll, makeD10Roll } from "../dice.js"
 import { localize, localizeParam, rollLocation, cwHasType, cwIsEnabled, isFumbleRoll, buildRangedCombatFumbleData, buildSkillFumbleData, clamp } from "../utils.js";
 import { createCyberpunkChatMessage, renderCyberpunkTemplate } from "../compat.js";
 import { ATTACK_FLAG_VERSION, snapshotAmmo } from "../damage.js";
+import { declareDodge, dodgeRangedPenalty, resolveDefense } from "../combat.js";
 /** @extends {Item} */
 export class CyberpunkItem extends Item {
 
@@ -271,7 +272,8 @@ export class CyberpunkItem extends Item {
     range,
     fireMode,
     extraMod,
-    fullAutoRoundsFired
+    fullAutoRoundsFired,
+    targetActor
   }) {
     const sys = this._getWeaponSystem ? this._getWeaponSystem() : this.system;
     let terms = []
@@ -305,6 +307,11 @@ export class CyberpunkItem extends Item {
     }
     if(turningToFace) {
       terms.push(-2);
+    }
+
+    const dodgeMod = dodgeRangedPenalty(targetActor);
+    if (dodgeMod) {
+      terms.push(dodgeMod);
     }
 
     // Range on its own doesn't actually apply a modifier - it only affects to-hit rolls. But it does affect certain fire modes.
@@ -882,39 +889,47 @@ export class CyberpunkItem extends Item {
       // Melee attacks do not have a fixed DC; they are contested instead
       let attackRoll = await this.attackRoll(attackMods);
 
-      // Take into account the CyberTerminus modifier for damage
-      const system = this._getWeaponSystem ? this._getWeaponSystem() : this.system;
-      let damageFormula = `${system.damage}+@strengthBonus`;
+      const defense = attackMods.targetActor
+        ? await resolveDefense(attackMods.targetActor, attackRoll.total,
+            { attackerName: this.actor.name, itemName: this.name })
+        : null;
+      const hit = defense ? defense.hit : true;
 
-      if (attackMods.cyberTerminus) {
-          switch (attackMods.cyberTerminus) {
-              case "CyberTerminusX2":
-                  damageFormula = `(${damageFormula})*2`;
-                  break;
-              case "CyberTerminusX3":
-                  damageFormula = `(${damageFormula})*3`;
-                  break;
-              case "NoCyberlimb":
-              default:
-                  break;
-          }
-      }
-
-      let damageRoll = await new Roll(damageFormula, {
-          strengthBonus: strengthDamageBonus(this.actor.system.stats.bt.total)
-      }).evaluate();
-
-      // CP2020: any fractional damage is rounded down
-      const damage = CyberpunkItem._floorDamageTotal(damageRoll.total);
-      damageRoll._total = damage;
-
-      const locationRoll = await rollLocation(attackMods.targetActor, attackMods.targetArea);
       const areaDamages = {};
+      if (hit) {
+        // Take into account the CyberTerminus modifier for damage
+        const system = this._getWeaponSystem ? this._getWeaponSystem() : this.system;
+        let damageFormula = `${system.damage}+@strengthBonus`;
 
-      areaDamages[locationRoll.areaHit] = [{
-        damage,
-        damageHtml: CyberpunkItem._inlineRollHtml(damage, damageRoll, "damage")
-      }];
+        if (attackMods.cyberTerminus) {
+            switch (attackMods.cyberTerminus) {
+                case "CyberTerminusX2":
+                    damageFormula = `(${damageFormula})*2`;
+                    break;
+                case "CyberTerminusX3":
+                    damageFormula = `(${damageFormula})*3`;
+                    break;
+                case "NoCyberlimb":
+                default:
+                    break;
+            }
+        }
+
+        let damageRoll = await new Roll(damageFormula, {
+            strengthBonus: strengthDamageBonus(this.actor.system.stats.bt.total)
+        }).evaluate();
+
+        // CP2020: any fractional damage is rounded down
+        const damage = CyberpunkItem._floorDamageTotal(damageRoll.total);
+        damageRoll._total = damage;
+
+        const locationRoll = await rollLocation(attackMods.targetActor, attackMods.targetArea);
+
+        areaDamages[locationRoll.areaHit] = [{
+          damage,
+          damageHtml: CyberpunkItem._inlineRollHtml(damage, damageRoll, "damage")
+        }];
+      }
 
       let fumble = null;
       if (game.settings.get("cyberpunk2020", "fumbleTableEnabled") && isFumbleRoll(attackRoll)) {
@@ -933,7 +948,8 @@ export class CyberpunkItem extends Item {
         {
           target: targetTokens[0],
           attackRoll,
-          hit: true,
+          defense,
+          hit,
           hits: 1,
           areaDamages,
           suppressHitTally: true,
@@ -1082,24 +1098,37 @@ export class CyberpunkItem extends Item {
 
     // Defensive/non-damaging martial actions keep the compact default roll card.
     if (!damageFormula) {
+      // Dodging as an action of one's own, rather than as a reaction to a melee attack, is the
+      // only way to earn the ranged penalty before being attacked.
+      if (action === martialActions.dodge || action === martialActions.allOutDodge) {
+        await declareDodge(actor);
+      }
       await results.defaultExecute({ img: this.img, fumble });
       return results;
     }
 
-    const locationRoll = await rollLocation(attackMods.targetActor, attackMods.targetArea);
-    const damageRoll = await new Roll(damageFormula, {
-      strengthBonus: strengthDamageBonus(system.stats.bt.total),
-      martialDamageBonus: martialDamageBonusValue
-    }).evaluate();
-
-    const damage = CyberpunkItem._floorDamageTotal(damageRoll.total);
-    damageRoll._total = damage;
+    const defense = attackMods.targetActor
+      ? await resolveDefense(attackMods.targetActor, attackRoll.total,
+          { attackerName: actor.name, itemName: this.name })
+      : null;
+    const hit = defense ? defense.hit : true;
 
     const areaDamages = {};
-    areaDamages[locationRoll.areaHit] = [{
-      damage,
-      damageHtml: CyberpunkItem._inlineRollHtml(damage, damageRoll, "damage")
-    }];
+    if (hit) {
+      const locationRoll = await rollLocation(attackMods.targetActor, attackMods.targetArea);
+      const damageRoll = await new Roll(damageFormula, {
+        strengthBonus: strengthDamageBonus(system.stats.bt.total),
+        martialDamageBonus: martialDamageBonusValue
+      }).evaluate();
+
+      const damage = CyberpunkItem._floorDamageTotal(damageRoll.total);
+      damageRoll._total = damage;
+
+      areaDamages[locationRoll.areaHit] = [{
+        damage,
+        damageHtml: CyberpunkItem._inlineRollHtml(damage, damageRoll, "damage")
+      }];
+    }
 
     await results.execute(
       undefined,
@@ -1107,7 +1136,8 @@ export class CyberpunkItem extends Item {
       {
         target: targetTokens[0],
         attackRoll,
-        hit: true,
+        defense,
+        hit,
         hits: 1,
         areaDamages,
         suppressHitTally: true,
