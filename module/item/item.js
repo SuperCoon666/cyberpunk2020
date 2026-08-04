@@ -566,7 +566,14 @@ export class CyberpunkItem extends Item {
 
     let centre = null;
     if (canvas.ready) {
-      centre = await pickBlastCentre(profile.radius, localizeParam("BlastZoneName", { weapon: this.name }));
+      // Ch. 07:839 — the centre of the area effect falls on the designated target, so a targeted
+      // throw is already aimed and asking for a click can only move it: a hand-placed centre a
+      // metre off changes which ring every other token in the crater falls in. The preview stays
+      // for a throw at an empty spot, which is the case it was built for.
+      const aimed = canvas.tokens.get(targetTokens[0]?.id)?.center;
+      centre = aimed
+        ? { x: aimed.x, y: aimed.y }
+        : await pickBlastCentre(profile.radius, localizeParam("BlastZoneName", { weapon: this.name }));
       // Dismissing the placement takes the throw back: nothing has been rolled or spent yet.
       if (!centre) return null;
     }

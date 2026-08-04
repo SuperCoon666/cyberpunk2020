@@ -42,6 +42,12 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
    */
   static TABS = {};
 
+  /**
+   * Item ids whose attack is still resolving. A contested melee attack blocks on the defender's
+   * own client for up to 30 s, and nothing else on the path is inert while it does.
+   */
+  #attacksInFlight = new Set();
+
   /** @override */
   async _prepareContext(options) {
     const sheetData = await super._prepareContext(options);
@@ -651,6 +657,11 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
   _cpOpenWeaponAttackDialog(item) {
     if (!item) return;
 
+    if (this.#attacksInFlight.has(item.id)) {
+      ui.notifications.warn(localize("AttackInFlight"));
+      return;
+    }
+
     const isRanged = item.isRanged();
     const system = item._getWeaponSystem?.() ?? item.system ?? {};
     const savedAttackOptions = isRanged
@@ -698,9 +709,17 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
           await this._cpSaveMeleeAttackOptions(item, fireOptions);
         }
 
-        await chargeAction(this.actor);
-
-        return item.__weaponRoll(fireOptions, targetTokens);
+        // Charged after the attack resolves, not before it: a contested melee blocks on the
+        // defender for up to 30 s, and a second dialog opened in that window used to charge a
+        // second action. The guard is what stops the second dialog; this is what makes the
+        // economy count attacks that happened.
+        this.#attacksInFlight.add(item.id);
+        try {
+          return await item.__weaponRoll(fireOptions, targetTokens);
+        } finally {
+          this.#attacksInFlight.delete(item.id);
+          await chargeAction(this.actor);
+        }
       }
     });
 

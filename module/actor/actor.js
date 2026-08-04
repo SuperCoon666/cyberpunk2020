@@ -1108,7 +1108,9 @@ export class CyberpunkActor extends Actor {
     const fromImplants = Number(this.system?._cwChecks?.saveStun || 0);
 
     const userMod = modificator ? parseInt(modificator, 10) : 0;
-    const totalMod = userMod + fromImplants;
+    // The roll has to come in at or under the threshold, so an implant that helps the save has to
+    // come off it. The situational modifier keeps its own sign, which is whatever the roller meant.
+    const totalMod = userMod - fromImplants;
 
     const rollType = "1d10";
     const formula = totalMod ? `${rollType} + ${totalMod}` : rollType;
@@ -1128,8 +1130,9 @@ export class CyberpunkActor extends Actor {
   /**
    * Roll one Stun or Death save and post its card.
    *
-   * The modifier is added to the roll, matching rollStunDeath: both are compared against a
-   * threshold the roll must stay at or under, so the two must not disagree on the sign.
+   * The implant bonus is subtracted and the situational modifier added, matching rollStunDeath:
+   * both are compared against a threshold the roll must stay at or under, so the two must not
+   * disagree on the sign.
    *
    * @param {"stun"|"death"} kind
    * @param {object} [options]
@@ -1141,7 +1144,7 @@ export class CyberpunkActor extends Actor {
     const threshold = death ? this.deathThreshold() : this.stunThreshold();
 
     const fromImplants = Number(this.system?._cwChecks?.saveStun || 0);
-    const totalMod = (Number(mod) || 0) + fromImplants;
+    const totalMod = (Number(mod) || 0) - fromImplants;
     const formula = totalMod ? `1d10 + ${totalMod}` : "1d10";
 
     const rolls = new Multiroll(

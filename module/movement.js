@@ -46,8 +46,12 @@ export class CyberpunkTokenRuler extends foundry.canvas.placeables.tokens.TokenR
     const budget = movementBudget(this.token.document, waypoint.action);
     if (!budget) return context;
 
-    const planned = Number.isFinite(waypoint.measurement.cost) ? waypoint.measurement.cost : 0;
-    const total = budget.spent + planned;
+    // The turn's spend is already in here. Every path the ruler measures has the token's own
+    // movement history prepended — the drag preview's (`client/canvas/placeables/token.mjs:5773`)
+    // and the executing operation's (`:2002-2006`, 14.365.0) alike — and `measurement.cost` is
+    // cumulative from path[0], which is why core renders it as `cost.total`. Adding
+    // `movementBudget`'s own `spent` on top counted the history twice from the second move on.
+    const total = Number.isFinite(waypoint.measurement.cost) ? waypoint.measurement.cost : 0;
 
     context.cost.total = localizeParam("MoveSpentOfBudget", {
       spent: total.toNearest(0.01).toLocaleString(game.i18n.lang),

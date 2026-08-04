@@ -17,6 +17,12 @@ const DODGING_FLAG = "dodging";
 const DODGE_VS_RANGED_PENALTY = -2;
 
 /**
+ * The states that cannot oppose a melee attack at all. Ch. 07:569 — a failed Stun/Shock Save
+ * "means the character is out of combat" — and `cpStunned` is exactly that state.
+ */
+const INCAPACITATED_STATUSES = ["dead", "cpStunned"];
+
+/**
  * The querying side gives up at 30 s, so the owner's dialog closes at 25 and the defense rolls
  * itself: the answer has to be sent before the deadline, not on it.
  */
@@ -167,10 +173,15 @@ export async function chargeAction(actor) {
  * @param {object} context
  * @param {string} context.attackerName
  * @param {string} context.itemName
- * @returns {Promise<{total: number, label: string, roll: Roll, hit: boolean}>} hit is the attacker's
- *   result: ch. 04 gives a tie to the defender
+ * @returns {Promise<{total: number, label: string, roll: Roll, hit: boolean}|null>} hit is the
+ *   attacker's result: ch. 04 gives a tie to the defender. Null when the defender is incapacitated,
+ *   which is what leaves the attack uncontested
  */
 export async function resolveDefense(defender, attackTotal, { attackerName, itemName }) {
+  // A Mortal but conscious defender still defends: his severity already reaches the roll through
+  // the wound penalties folded into `ref.total`.
+  if (INCAPACITATED_STATUSES.some(id => defender.statuses.has(id))) return null;
+
   const options = defender.defenseOptions();
   const owner = defender.type === "npc"
     ? null
@@ -178,6 +189,13 @@ export async function resolveDefense(defender, attackTotal, { attackerName, item
 
   let choice = null;
   if (owner && options.length) {
+    // Nothing else is posted until the answer arrives, so without this the attacker and the GM
+    // watch a blank screen for up to 30 s while the defender is the only one who can see why.
+    await createCyberpunkChatMessage({
+      speaker: ChatMessage.getSpeaker({ actor: defender }),
+      content: localizeParam("DefensePending", { attacker: attackerName, defender: defender.name })
+    });
+
     try {
       choice = await owner.query(
         "cyberpunk2020.defensePrompt",

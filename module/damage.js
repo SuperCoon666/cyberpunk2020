@@ -12,6 +12,12 @@ export const ATTACK_FLAG_VERSION = 2;
 /** The flag a damage-over-time effect burns down from, one tick per turn. */
 const DOT_FLAG = "dot";
 
+/** Ch. 07:910 — soft armour at or under this stops nothing at all against a burn. */
+const BURN_SOFT_SP_MINIMUM = 15;
+
+/** Ch. 07:910 — a burn costs the soft armour it went through two points per tick. */
+const BURN_ARMOR_WEAR = 2;
+
 /** Only a cyberlimb absorbs a hit into its own SDP; Head and Torso implants do not. */
 const LIMB_ZONES = new Set(["lArm", "rArm", "lLeg", "rLeg"]);
 
@@ -139,12 +145,15 @@ export function resolveHit({ damage = 0, zone = "Torso", ap = false, ammo = null
  *
  * @param {CyberpunkActor} actor
  * @param {Record<string, number>} hitsByZone Penetrating hits per zone
+ * @param {object} [options]
+ * @param {boolean} [options.softOnly] Skip hard armour — the burning rule wears soft armour only
  */
-async function ablateArmor(actor, hitsByZone) {
+async function ablateArmor(actor, hitsByZone, { softOnly = false } = {}) {
   const updates = [];
 
   for (const armor of actor.itemTypes.armor) {
     if (!armor.system.equipped) continue;
+    if (softOnly && armor.system.hard) continue;
 
     const update = {};
     for (const [zone, hits] of Object.entries(hitsByZone)) {
@@ -196,18 +205,21 @@ export async function requestSave(actor, kind) {
  *
  * @param {CyberpunkActor} actor
  * @param {object|null} ammo Snapshot from snapshotAmmo
+ * @param {string} zone The location the burn caught on — every tick is resolved against it
  */
-async function startDot(actor, ammo) {
+async function startDot(actor, ammo, zone) {
   if (!ammo?.dotEnabled || !(ammo.dotTurns > 0) || !ammo.dotDamageFormula) return;
   await actor.setFlag("cyberpunk2020", DOT_FLAG,
-    { turns: Math.floor(ammo.dotTurns), formula: ammo.dotDamageFormula });
+    { turns: Math.floor(ammo.dotTurns), formula: ammo.dotDamageFormula, zone });
 }
 
 /**
  * Burn one turn off a damage-over-time effect at the start of its victim's turn.
  *
- * The tick ignores armour (plan assumption 13): the round is already inside, so there is nothing
- * left to stop. A pure SDP hit takes no save and this takes none either — it is not an attack.
+ * Ch. 07:910, the burning round's own armour rule: *"Hard armors protect normally. Soft armors must
+ * be >15SP to protect the target, and are damaged 2pts/hit."* It is expressed as an ammunition
+ * snapshot so the rest of the tick is the arithmetic every other hit takes — BTM, the floor of 1, a
+ * cyberlimb's own SDP. A pure SDP hit takes no save and this takes none either: it is not an attack.
  *
  * @param {CyberpunkActor} actor
  * @returns {Promise<void>}
@@ -218,8 +230,27 @@ export async function tickDot(actor) {
   if (!dot?.formula || !(dot.turns > 0)) return;
 
   const roll = await new Roll(String(dot.formula)).evaluate();
-  const damage = Math.max(0, Math.floor(roll.total));
-  await actor.applyDamage({ wound: damage });
+  const zone = String(dot.zone || "Torso");
+  const location = actor.system.hitLocations?.[zone] ?? {};
+  const softStops = numberOr(location.stoppingPower, 0) > BURN_SOFT_SP_MINIMUM;
+
+  const resolved = resolveHit({
+    damage: Math.max(0, Math.floor(roll.total)),
+    zone,
+    ammo: { armorMultHard: 1, armorMultSoft: softStops ? 1 : 0 }
+  }, actor);
+
+  // The wound track and a cyberlimb's SDP are exclusive by construction, so this is whichever
+  // of the two the burn landed on.
+  const damage = resolved.final + resolved.toSdp;
+  await actor.applyDamage({
+    wound: resolved.final,
+    sdp: resolved.toSdp ? { [zone]: resolved.toSdp } : {}
+  });
+
+  if (game.settings.get("cyberpunk2020", "armorAblation")) {
+    await ablateArmor(actor, { [zone]: BURN_ARMOR_WEAR }, { softOnly: true });
+  }
 
   await createCyberpunkChatMessage({
     speaker: ChatMessage.getSpeaker({ actor }),
@@ -300,7 +331,7 @@ async function applyHitsToActor(actor, { hits = [], ap = false, ammo = null, tar
   if (killed) {
     await actor.toggleStatusEffect("dead", { active: true, overlay: true });
   } else if (wound > 0) {
-    await startDot(actor, ammo);
+    await startDot(actor, ammo, hits[0]?.zone ?? "Torso");
 
     // One save for the whole attack, and none at all when every hit went into a cyberlimb:
     // ch. 06, "no saving roll against shock and stun".
