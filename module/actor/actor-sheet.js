@@ -1,5 +1,5 @@
 import { martialOptions, meleeAttackTypes, meleeBonkOptions, rangedModifiers, weaponTypes, FNFF2_ONLY_MARTIAL_ART_IDS, isFnff2Enabled, COMBAT_SENSE_SKILL_IDS, INTERFACE_SKILL_IDS, programTypes } from "../lookups.js";
-import { deleteFieldUpdate, localize, localizeParam, cwHasType, cwIsEnabled, withCompendiumSource } from "../utils.js"
+import { deleteFieldUpdate, localize, localizeParam, cwHasType, cwIsEnabled, refusedWhilePaused, withCompendiumSource } from "../utils.js"
 import { ModifiersDialog } from "../dialog/modifiers.js"
 import { SortOrders, sortSkills } from "./skill-sort.js";
 import { getHtmlElement, getRichEditorHTML, itemFromDropData, saveRichEditorHTML } from "../compat.js";
@@ -452,10 +452,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
         event.stopPropagation();
         event.stopImmediatePropagation?.();
 
-        if (game.paused && !game.user.isGM) {
-          ui.notifications.warn(localize("PausedNoActions"));
-          return;
-        }
+        if (refusedWhilePaused()) return;
 
         const item = this._cpGetItemFromTarget(fireWeapon);
         if (item) this._cpOpenWeaponAttackDialog(item);
@@ -466,6 +463,8 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       if (statRoll) {
         event.preventDefault();
         event.stopPropagation();
+
+        if (refusedWhilePaused()) return;
 
         const statName = statRoll.dataset.statName;
         if (statName) this.actor.rollStat(statName);
@@ -490,6 +489,12 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
         event.preventDefault();
         event.stopPropagation();
 
+        // Before the dialog opens, not at its submit: a skill with `askMods` opened one and was
+        // refused on confirm while a skill without it rolled straight through, so the pause behaved
+        // differently per skill (`T33`). The dialog keeps its own gate for the case this cannot
+        // see — a world paused while the dialog is already open.
+        if (refusedWhilePaused()) return;
+
         await this._cpRollSkillFromElement(skillRoll);
         return;
       }
@@ -503,6 +508,8 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
         event.preventDefault();
         event.stopPropagation();
 
+        if (refusedWhilePaused()) return;
+
         const input = root.querySelector(".roll-initiative-modificator");
         await this.actor.addToCombatAndRollInitiative(input?.value ?? 0);
         return;
@@ -512,6 +519,8 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       if (stunDeathSave && !modifierInput) {
         event.preventDefault();
         event.stopPropagation();
+
+        if (refusedWhilePaused()) return;
 
         const input = root.querySelector(".roll-stun-death-modificator");
         await this._cpRollStunDeath(Number(input?.value) || 0);
@@ -774,6 +783,8 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       if (interfaceSkill) {
         event.preventDefault();
         event.stopPropagation();
+
+        if (refusedWhilePaused()) return;
 
         const skillId = interfaceSkill.dataset.skillId;
         if (!skillId) {

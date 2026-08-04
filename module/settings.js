@@ -1,4 +1,32 @@
+import { CombatAutomationSettings } from "./dialog/combat-automation-settings.js";
+
 export function registerSystemSettings() {
+  // First, so it heads the system's category: `SettingsConfig` walks `game.settings.settings` in
+  // registration order (`client/applications/settings/config.mjs:69-131`, 14.365.0).
+  // `config: false` — the submenu below owns its control, which is what makes "only activatable
+  // while the master is on" enforceable in one place.
+  game.settings.register("cyberpunk2020", "combatAutomation", {
+    name: "SETTINGS.CombatAutomation",
+    hint: "SETTINGS.CombatAutomationHint",
+    scope: "world",
+    config: false,
+    type: Boolean,
+    default: true
+  });
+
+  // Foundry v14 builds settings categories from the namespace alone (`_categorizeEntry`,
+  // `client/applications/settings/config.mjs:145`), so a registered menu is the only subsection the
+  // platform offers. Menus are pushed into the category ahead of the settings (`:54-67`), so the
+  // button heads the system's block.
+  game.settings.registerMenu("cyberpunk2020", "combatAutomationMenu", {
+    name: "SETTINGS.CombatAutomationMenu",
+    label: "SETTINGS.CombatAutomationMenuLabel",
+    hint: "SETTINGS.CombatAutomationMenuHint",
+    icon: "fa-solid fa-crosshairs",
+    type: CombatAutomationSettings,
+    restricted: true
+  });
+
    /**
    * Track the system version upon which point a migration was last applied
    */
@@ -79,7 +107,7 @@ export function registerSystemSettings() {
     name: "SETTINGS.DamageApplyMode",
     hint: "SETTINGS.DamageApplyModeHint",
     scope: "world",
-    config: true,
+    config: false,
     type: String,
     choices: {
       gmButton: "SETTINGS.DamageApplyModeGmButton",
@@ -93,7 +121,7 @@ export function registerSystemSettings() {
     name: "SETTINGS.PcSaveMode",
     hint: "SETTINGS.PcSaveModeHint",
     scope: "world",
-    config: true,
+    config: false,
     type: String,
     choices: {
       auto: "SETTINGS.PcSaveModeAuto",
@@ -107,7 +135,7 @@ export function registerSystemSettings() {
     name: "SETTINGS.ArmorAblation",
     hint: "SETTINGS.ArmorAblationHint",
     scope: "world",
-    config: true,
+    config: false,
     type: Boolean,
     default: false
   });
@@ -117,7 +145,7 @@ export function registerSystemSettings() {
     name: "SETTINGS.SeveranceThreshold",
     hint: "SETTINGS.SeveranceThresholdHint",
     scope: "world",
-    config: true,
+    config: false,
     type: Number,
     default: 8
   });
@@ -127,7 +155,7 @@ export function registerSystemSettings() {
     name: "SETTINGS.ActionEconomy",
     hint: "SETTINGS.ActionEconomyHint",
     scope: "world",
-    config: true,
+    config: false,
     type: Boolean,
     default: false
   });
@@ -147,7 +175,7 @@ export function registerSystemSettings() {
     name: "SETTINGS.DodgeVsRanged",
     hint: "SETTINGS.DodgeVsRangedHint",
     scope: "world",
-    config: true,
+    config: false,
     type: Boolean,
     default: false
   });

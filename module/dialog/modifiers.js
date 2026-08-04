@@ -1,4 +1,4 @@
-import { deepSet, localize, localizeParam } from "../utils.js"
+import { deepSet, localize, localizeParam, refusedWhilePaused } from "../utils.js"
 import { fireModes } from "../lookups.js"
 import { createCyberpunkChatMessage, getGMUserIds, getHtmlElement } from "../compat.js";
 
@@ -526,11 +526,9 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
      * @param {FormDataExtended} formDataExtended
      */
     static async #onSubmit(event, form, formDataExtended) {
-      // Second chokepoint for the pause gate: the dialog outlives the click that opened it.
-      if (game.paused && !game.user.isGM) {
-        ui.notifications.warn(localize("PausedNoActions"));
-        return false;
-      }
+      // Second chokepoint for the pause gate: the dialog outlives the click that opened it, so a
+      // world paused in between is a state the entry points cannot see.
+      if (refusedWhilePaused()) return false;
 
       const formData = foundry.utils.expandObject(formDataExtended.object);
 

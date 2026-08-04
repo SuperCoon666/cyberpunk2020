@@ -21,6 +21,7 @@ import { registerSystemSettings } from "./settings.js"
 import { getHtmlElement } from "./compat.js";
 import { ATTACK_FLAG_VERSION, SAVE_PROMPT_DEADLINE_MS, applyAttackFromMessage, rollSaveOf } from "./damage.js";
 import { CyberpunkCombat, announceTurn, applyDeclaredDodge, clearSuppressionZones, clearTurnFlags, DEFENSE_PROMPT_DEADLINE_MS } from "./combat.js";
+import { isCombatAutomationEnabled } from "./lookups.js";
 import { CyberpunkTokenRuler, vetoOverspentMovement } from "./movement.js";
 import { applyBlastFromMessage, createSuppressionZone, SuppressiveFireBehavior } from "./zones.js";
 import { localize, localizeParam } from "./utils.js";
@@ -162,7 +163,7 @@ Hooks.once('init', async function () {
 
     // A dodge declared against an attack resolved on somebody else's client. The attacker owns
     // nothing on an NPC defender, so the write is handed to the single writer everywhere else here.
-    CONFIG.queries["cyberpunk2020.declareDodge"] = ({ actorUuid }) => applyDeclaredDodge(actorUuid);
+    CONFIG.queries["cyberpunk2020.declareDodge"] = payload => applyDeclaredDodge(payload);
 
     // The defender picks the skill; the attacker's client rolls it, so this returns a choice and
     // never a result. Null means "decide for me" — the timeout path answers that way too.
@@ -185,13 +186,21 @@ Hooks.once('init', async function () {
         `<option value="${esc(c.skillId)}">${esc(c.label)} (${Number(c.total) || 0})</option>`
       ).join("");
 
+      // An empty attacker name is the ambusher case, not missing data: `resolveDefense` blanks it
+      // and the item name together, and the reduced line keeps the total (D29.5).
+      const asked = attackerName
+        ? localizeParam("DefensePrompt", {
+            attacker: esc(attackerName), defender: esc(defender.name),
+            item: esc(itemName), total: Number(attackTotal) || 0
+          })
+        : localizeParam("DefensePromptHidden", {
+            defender: esc(defender.name), total: Number(attackTotal) || 0
+          });
+
       const answer = await Promise.race([
         foundry.applications.api.DialogV2.input({
           window: { title: "CYBERPUNK.Defense" },
-          content: `<p>${localizeParam("DefensePrompt", {
-            attacker: esc(attackerName), defender: esc(defender.name),
-            item: esc(itemName), total: Number(attackTotal) || 0
-          })}</p>
+          content: `<p>${asked}</p>
             <label>${localize("DefenseSkill")} <select name="skillId">${options}</select></label>
             <label>${localize("DefenseMod")} <input type="number" name="extraMod" value="0" step="1"></label>`,
           ok: { label: "CYBERPUNK.DefenseRollButton" },
@@ -364,7 +373,7 @@ Hooks.once('init', async function () {
       button.dataset.cpApplyBound = "1";
 
       const attack = message.flags?.cyberpunk2020?.attack;
-      if (!game.user.isGM || attack?.version !== ATTACK_FLAG_VERSION) {
+      if (!game.user.isGM || !isCombatAutomationEnabled() || attack?.version !== ATTACK_FLAG_VERSION) {
         button.remove();
         return;
       }
@@ -388,7 +397,7 @@ Hooks.once('init', async function () {
       button.dataset.cpApplyBound = "1";
 
       const attack = message.flags?.cyberpunk2020?.attack;
-      if (!game.user.isGM || attack?.version !== ATTACK_FLAG_VERSION) {
+      if (!game.user.isGM || !isCombatAutomationEnabled() || attack?.version !== ATTACK_FLAG_VERSION) {
         button.remove();
         return;
       }
@@ -427,6 +436,8 @@ Hooks.once('init', async function () {
     // events. With no GM connected nothing applies and the button above is still the way in.
     Hooks.on("createChatMessage", async (message) => {
       if (!game.user.isActiveGM) return;
+      // Covers auto-apply and zone creation at one site.
+      if (!isCombatAutomationEnabled()) return;
 
       const attack = message.flags?.cyberpunk2020?.attack;
       if (attack?.version !== ATTACK_FLAG_VERSION) return;

@@ -256,6 +256,18 @@ export function isFnff2Enabled() {
   return Boolean(game?.settings?.get("cyberpunk2020", "fnff2Enabled"));
 }
 
+/**
+ * The master switch over combat *resolution*. Off leaves the system rolling dice and posting cards
+ * while the table applies everything by hand; combat *management* — initiative, the movement
+ * allowance, the pause gate, turn notices — runs either way.
+ *
+ * It lives here rather than in `combat.js` because `actor.js`, `item.js`, `damage.js` and `zones.js`
+ * all read it and all already import this module, which imports only `constants.js`.
+ */
+export function isCombatAutomationEnabled() {
+  return Boolean(game?.settings?.get("cyberpunk2020", "combatAutomation"));
+}
+
 // CORE set rules martial action bonuses
 export const martialActionBonusesCore = {
   "Martial Arts: Karate": { Strike: 2, Kick: 2, BlockParry: 2 },
@@ -370,6 +382,14 @@ export function getFnff2DamageBonusSymbol(actionKey) {
   return fnff2DamageBonusSymbols[actionKey] ?? "*";
 }
 
+/**
+ * The maneuvers that answer an attack rather than make one, in `martialActionBonuses*` keys. The
+ * same two are `martialOptions`' own "Defensive" group under both rule sets; FNFF2's All-Out pair
+ * is deliberately absent, because trading one side of the exchange for the other is a choice the
+ * defender makes and not a bonus the style always carries.
+ */
+export const DEFENSIVE_MARTIAL_ACTIONS = ["Dodge", "BlockParry"];
+
 export function getMartialActionBonus(martialKey, actionKey) {
   const fnff2 = isFnff2Enabled();
 
@@ -447,6 +467,11 @@ export function rangedModifiers(weapon, targetTokens = [], savedOptions = {}, me
     const fireModeDefault = fireModes.includes(savedFireMode)
       ? savedFireMode
       : fireModes[0];
+
+    // The abstract per-target tally is what reads the target count, and `__suppressiveFire` takes
+    // that branch on exactly this condition (`T69`). With a zone on the map every crossing rolls
+    // its own hits and the number would be a control that changes nothing.
+    const abstractSuppression = !(canvas?.ready && isCombatAutomationEnabled());
     return [
         [{
             localKey: "FireMode",
@@ -508,7 +533,7 @@ export function rangedModifiers(weapon, targetTokens = [], savedOptions = {}, me
             step: 1,
             extraClasses: "suppressive-field suppressive-rounds-fired"
         },
-        {
+        ...(abstractSuppression ? [{
             localKey: "TargetsCount",
             dataPath: "targetsCount",
             dtype: "Number",
@@ -516,7 +541,7 @@ export function rangedModifiers(weapon, targetTokens = [], savedOptions = {}, me
             min: 1,
             step: 1,
             extraClasses: "suppressive-field suppressive-targets-count"
-        },
+        }] : []),
         ]
     ];
 }

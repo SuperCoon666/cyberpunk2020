@@ -1,4 +1,4 @@
-import { weaponTypes, rangedAttackTypes, meleeAttackTypes, fireModes, ranges, rangeDCs, rangeResolve, strengthDamageBonus, getMartialActionBonus, martialActions, isFnff2Enabled, getFnff2DamageBonusSymbol, FNFF2_ONLY_MARTIAL_ART_IDS } from "../lookups.js"
+import { weaponTypes, rangedAttackTypes, meleeAttackTypes, fireModes, ranges, rangeDCs, rangeResolve, strengthDamageBonus, getMartialActionBonus, martialActions, isCombatAutomationEnabled, isFnff2Enabled, getFnff2DamageBonusSymbol, FNFF2_ONLY_MARTIAL_ART_IDS } from "../lookups.js"
 import { Multiroll, makeD10Roll } from "../dice.js"
 import { localize, localizeParam, rollLocation, cwHasType, cwIsEnabled, isFumbleRoll, buildRangedCombatFumbleData, buildSkillFumbleData, clamp } from "../utils.js";
 import { createCyberpunkChatMessage, renderCyberpunkTemplate } from "../compat.js";
@@ -411,8 +411,9 @@ export class CyberpunkItem extends Item {
     }
 
     // An area-effect charge is aimed and rolled like any other ranged weapon (ch. 07:837), but it
-    // lands on a point rather than a body, so it never reaches the fire modes below.
-    if (isBlastAttack(system, snapshotAmmo(this))) {
+    // lands on a point rather than a body, so it never reaches the fire modes below. With
+    // automation off it falls through to its fire mode, which is the plain shot v1.1.x rolled.
+    if (isCombatAutomationEnabled() && isBlastAttack(system, snapshotAmmo(this))) {
       return this.__blastAttack(mods, targets);
     }
 
@@ -446,6 +447,18 @@ export class CyberpunkItem extends Item {
   }
 
   /**
+   * Whether this attacker is an ambusher — every token they have on the viewed scene is hidden.
+   * An actor with no token there is not hidden: there is nothing on the map to give away.
+   *
+   * @param {CyberpunkActor} [actor]
+   * @returns {boolean}
+   */
+  static __attackerIsHidden(actor) {
+    const tokens = actor?.getActiveTokens?.(false, true) ?? [];
+    return tokens.length > 0 && tokens.every(token => token.hidden);
+  }
+
+  /**
    * The card payload the damage-apply path reads. Undefined when there is nothing to apply, which
    * is what leaves an untargeted or missing attack card exactly as it was.
    *
@@ -455,6 +468,9 @@ export class CyberpunkItem extends Item {
    * @param {object|null} card.ammo Snapshot from snapshotAmmo
    */
   __attackFlags({ target, areaDamages, ammo, fireMode, range }) {
+    // One site kills the apply payload for every fire mode: with no flag the card carries nothing
+    // to apply, and the render handler removes the button it came with.
+    if (!isCombatAutomationEnabled()) return undefined;
     if (!target) return undefined;
 
     const hits = [];
@@ -925,7 +941,9 @@ export class CyberpunkItem extends Item {
     const dmgFormula = sys.damage || "1d6";
 
     let zone = null;
-    if (canvas.ready) {
+    // With automation off the burst takes the existing no-canvas branch: the abstract per-target
+    // tally and `placed: false`, which is the v1.1.x card.
+    if (canvas.ready && isCombatAutomationEnabled()) {
       // The corridor covers the band being fired at; the shooter places and rotates it. A weapon
       // with no range falls back to a square, which is the zone the book's own examples describe.
       const reach = Math.round(rangeResolve[mods.range]?.(Number(sys.range) || 0) || 0);
@@ -1015,8 +1033,9 @@ export class CyberpunkItem extends Item {
       const rollData = this.actor?.getRollData?.() ?? {};
       const ammo = snapshotAmmo(this);
       // Ch. 07's Shotgun Table gives the pattern its own damage per band, so the spread replaces
-      // the weapon's formula rather than adding to it. A blank band keeps the weapon's own.
-      const spread = isSpreadAttack(ammo, attackMods.range)
+      // the weapon's formula rather than adding to it. A blank band keeps the weapon's own. With
+      // automation off there is no pattern: the weapon's own formula and the ordinary card.
+      const spread = isCombatAutomationEnabled() && isSpreadAttack(ammo, attackMods.range)
         ? spreadProfileFor(attackMods.range, ammo)
         : null;
       const maximizeDamage = this._shouldMaximizePointBlankDamage(attackMods);
@@ -1126,7 +1145,8 @@ export class CyberpunkItem extends Item {
       const defense = attackMods.targetActor
         ? await resolveDefense(attackMods.targetActor, attackRoll.total,
             { attackerName: this.actor.name, itemName: this.name,
-              messageMode: CyberpunkItem.__targetMessageMode(targetTokens[0]) })
+              messageMode: CyberpunkItem.__targetMessageMode(targetTokens[0]),
+              hideAttacker: CyberpunkItem.__attackerIsHidden(this.actor) })
         : null;
       const hit = defense ? defense.hit : true;
 
@@ -1349,7 +1369,8 @@ export class CyberpunkItem extends Item {
     const defense = attackMods.targetActor
       ? await resolveDefense(attackMods.targetActor, attackRoll.total,
           { attackerName: actor.name, itemName: this.name,
-            messageMode: CyberpunkItem.__targetMessageMode(targetTokens[0]) })
+            messageMode: CyberpunkItem.__targetMessageMode(targetTokens[0]),
+            hideAttacker: CyberpunkItem.__attackerIsHidden(actor) })
       : null;
     const hit = defense ? defense.hit : true;
 

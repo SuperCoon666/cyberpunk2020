@@ -2,7 +2,7 @@ import { MORTAL_WOUND_STATE, hiddenMessageMode, requestSave, tickDot } from "./d
 import { localizeParam } from "./utils.js";
 import { createCyberpunkChatMessage } from "./compat.js";
 import { BaseDie } from "./dice.js";
-import { DODGE_SKILL_ID } from "./lookups.js";
+import { DODGE_SKILL_ID, isCombatAutomationEnabled } from "./lookups.js";
 import { SUPPRESSION_FLAG } from "./zones.js";
 
 /** Cumulative penalty per extra action taken in the same turn (optional rule). */
@@ -120,10 +120,11 @@ export class CyberpunkCombat extends Combat {
     // alone; `combatant.hidden` is the combatant's own state, which a GM can set independently.
     const messageMode = hiddenMessageMode(combatant.hidden);
 
-    // unsetFlag always issues an update, even for a flag that is not there, and this runs on every
-    // turn of every combatant.
-    if (game.settings.get("cyberpunk2020", "actionEconomy")
-      && actor.getFlag("cyberpunk2020", ACTIONS_TAKEN_FLAG) !== undefined) {
+    // The flag test alone, deliberately: a counter charged before the rule (or the master switch)
+    // went off would otherwise freeze for the life of the world and be resurrected by a later
+    // re-enable. unsetFlag always issues an update, even for a flag that is not there, and this
+    // runs on every turn of every combatant — which is what the test is for.
+    if (actor.getFlag("cyberpunk2020", ACTIONS_TAKEN_FLAG) !== undefined) {
       await actor.unsetFlag("cyberpunk2020", ACTIONS_TAKEN_FLAG);
     }
 
@@ -134,6 +135,11 @@ export class CyberpunkCombat extends Combat {
 
     await tickDot(actor, { messageMode });
 
+    // Both turn-start saves split the same way with the master switch off, which is D22's own
+    // worked example: the notice is management and stays, the roll and the status it writes are
+    // resolution and go. What is left is a reminder the table acts on itself.
+    const automated = isCombatAutomationEnabled();
+
     // "You may make one Save roll every turn until you succeed" (ch. 02:119, ch. 07:582) — the same
     // Stun Save the wound track modifies, so a character who goes down deeper stays down longer.
     if (actor.statuses.has("cpStunned")) {
@@ -142,8 +148,10 @@ export class CyberpunkCombat extends Combat {
         content: localizeParam("TurnStartStunSave", { name: actor.name })
       }, { messageMode });
 
-      const recovery = await requestSave(actor, "stun", { messageMode });
-      if (recovery.success) await actor.toggleStatusEffect("cpStunned", { active: false });
+      if (automated) {
+        const recovery = await requestSave(actor, "stun", { messageMode });
+        if (recovery.success) await actor.toggleStatusEffect("cpStunned", { active: false });
+      }
     }
 
     if (actor.woundState() < MORTAL_WOUND_STATE || actor.system.stabilized) return;
@@ -152,6 +160,8 @@ export class CyberpunkCombat extends Combat {
       speaker: ChatMessage.getSpeaker({ actor, token: combatant.token }),
       content: localizeParam("TurnStartDeathSave", { name: actor.name })
     }, { messageMode });
+
+    if (!automated) return;
 
     const save = await requestSave(actor, "death", { messageMode });
     if (!save.success) await actor.toggleStatusEffect("dead", { active: true, overlay: true });
@@ -166,6 +176,9 @@ export class CyberpunkCombat extends Combat {
  * @returns {number|null}
  */
 export function actionPenaltyFor(actor) {
+  // The sub-setting is D25's opt-in penalty (build (a)); the master is what makes it "functional
+  // only when both are on". The dialog and the roll both reach this, so the AND lives here.
+  if (!isCombatAutomationEnabled()) return null;
   if (!game.settings.get("cyberpunk2020", "actionEconomy")) return null;
   if (!game.combat?.combatants.some(c => c.actorId === actor.id)) return null;
 
@@ -236,11 +249,17 @@ export async function clearTurnFlags(combatants) {
  * @param {string} context.attackerName
  * @param {string} context.itemName
  * @param {string} [context.messageMode] Visibility of the pending notice, for a hidden defender
+ * @param {boolean} [context.hideAttacker] The attacker is an ambusher — see the query below
  * @returns {Promise<{total: number, label: string, roll: Roll, hit: boolean}|null>} hit is the
  *   attacker's result: ch. 04 gives a tie to the defender. Null when the defender is incapacitated,
  *   which is what leaves the attack uncontested
  */
-export async function resolveDefense(defender, attackTotal, { attackerName, itemName, messageMode }) {
+export async function resolveDefense(defender, attackTotal,
+  { attackerName, itemName, messageMode, hideAttacker = false }) {
+  // One gate covers both call sites: `__meleeBonk` and `__martialBonk` already read
+  // `hit = defense ? defense.hit : true`, so a null here is the uncontested v1.1.x attack.
+  if (!isCombatAutomationEnabled()) return null;
+
   // A Mortal but conscious defender still defends: his severity already reaches the roll through
   // the wound penalties folded into `ref.total`.
   if (INCAPACITATED_STATUSES.some(id => defender.statuses.has(id))) return null;
@@ -260,9 +279,16 @@ export async function resolveDefense(defender, attackTotal, { attackerName, item
     }, { messageMode });
 
     try {
+      // D29.5 — an ambusher's prompt keeps the number, which is what makes the defender's choice
+      // informed, and drops what identifies them. The item name goes with the name: a weapon called
+      // by its own name gives the ambusher away almost as surely.
       choice = await owner.query(
         "cyberpunk2020.defensePrompt",
-        { attackerName, itemName, defenderActorUuid: defender.uuid, attackTotal, choices: options },
+        {
+          attackerName: hideAttacker ? "" : attackerName,
+          itemName: hideAttacker ? "" : itemName,
+          defenderActorUuid: defender.uuid, attackTotal, choices: options
+        },
         { timeout: DEFENSE_QUERY_TIMEOUT_MS }
       );
     } catch (err) {
@@ -299,8 +325,19 @@ export async function resolveDefense(defender, attackTotal, { attackerName, item
  * @returns {Promise<void>}
  */
 export async function declareDodge(actor) {
+  // The martial Dodge action reaches this outside any contest, so the master is ANDed here rather
+  // than left to the gate on `resolveDefense`.
+  if (!isCombatAutomationEnabled()) return;
   if (!game.settings.get("cyberpunk2020", "dodgeVsRanged")) return;
-  if (!currentTurnKey()) return;
+
+  // Which fight this actor is in is a world fact, and `game.combat` is not one: it is the viewing
+  // client's own tracker selection, and a scene-bound encounter is neither `isActive`
+  // (`client/documents/combat.mjs:118-121`) nor inferred (`client/applications/sidebar/tabs/
+  // combat-tracker.mjs:759-767`, 14.365.0) from any other scene. The declaration crosses clients,
+  // so both ends name the encounter instead of asking their own canvas (`T87`).
+  const combat = game.combats.find(c =>
+    c.started && c.combatants.some(combatant => combatant.actorId === actor.id));
+  if (!combat) return;
 
   if (actor.isOwner) {
     await actor.setFlag("cyberpunk2020", DODGING_FLAG, true);
@@ -315,7 +352,7 @@ export async function declareDodge(actor) {
   if (!gm) return;
 
   try {
-    await gm.query("cyberpunk2020.declareDodge", { actorUuid: actor.uuid },
+    await gm.query("cyberpunk2020.declareDodge", { actorUuid: actor.uuid, combatId: combat.id },
       { timeout: DODGE_QUERY_TIMEOUT_MS });
   } catch (err) {
     // The GM went away mid-attack. The dodge is worth -2 on someone else's roll; the attack card is
@@ -326,19 +363,27 @@ export async function declareDodge(actor) {
 /**
  * Write a dodge declaration handed over by another client. Runs on the active GM.
  *
- * @param {string} actorUuid
+ * @param {object} payload
+ * @param {string} payload.actorUuid
+ * @param {string} payload.combatId The encounter the sender read, validated here as a document
  * @returns {Promise<boolean>} whether the flag was written
  */
-export async function applyDeclaredDodge(actorUuid) {
-  // Another client's payload, written with the GM's rights, so the sender's own two conditions are
+export async function applyDeclaredDodge({ actorUuid, combatId } = {}) {
+  if (!isCombatAutomationEnabled()) return false;
+  // Another client's payload, written with the GM's rights, so the sender's own conditions are
   // re-applied here rather than trusted: they guard the *state*, not the sender, and a query is
   // reachable from any player's console (`T82`). Sender identity discriminates nothing — any player
   // may legitimately be attacking any actor, which is why the hand-off exists at all.
   if (!game.settings.get("cyberpunk2020", "dodgeVsRanged")) return false;
-  if (!currentTurnKey()) return false;
 
   const actor = await fromUuid(String(actorUuid ?? ""));
   if (actor?.documentName !== "Actor") return false;
+
+  // The named encounter, not `game.combat` — see `declareDodge`. The guard is unweakened: the
+  // encounter has to exist, be started, and be one this actor is actually fighting in.
+  const combat = game.combats.get(String(combatId ?? ""));
+  if (!combat?.started) return false;
+  if (!combat.combatants.some(combatant => combatant.actorId === actor.id)) return false;
 
   await actor.setFlag("cyberpunk2020", DODGING_FLAG, true);
   return true;
@@ -352,6 +397,8 @@ export async function applyDeclaredDodge(actorUuid) {
  */
 export function dodgeRangedPenalty(targetActor) {
   if (!targetActor) return 0;
+  // `__shootModTerms` always runs, so this read survives every other gate and takes its own AND.
+  if (!isCombatAutomationEnabled()) return 0;
   if (!game.settings.get("cyberpunk2020", "dodgeVsRanged")) return 0;
   return targetActor.getFlag("cyberpunk2020", DODGING_FLAG) ? DODGE_VS_RANGED_PENALTY : 0;
 }

@@ -1,7 +1,7 @@
 import { createCyberpunkChatMessage, renderCyberpunkTemplate } from "./compat.js";
 import { localize, localizeParam } from "./utils.js";
 import { CyberpunkActor } from "./actor/actor.js";
-import { ATHLETICS_SKILL_ID } from "./lookups.js";
+import { ATHLETICS_SKILL_ID, isCombatAutomationEnabled } from "./lookups.js";
 import { Multiroll } from "./dice.js";
 
 /**
@@ -318,6 +318,10 @@ async function startDot(actor, ammo, zone) {
  * @returns {Promise<void>}
  */
 export async function tickDot(actor, { messageMode } = {}) {
+  // Before the flag is read, so the burn *pauses* rather than expiring: it resumes with its
+  // remaining turns intact if the table switches automation back on.
+  if (!isCombatAutomationEnabled()) return;
+
   const dot = actor.getFlag("cyberpunk2020", DOT_FLAG);
   // User-authored flag data: a hand-edited or half-written one must not throw inside a turn change.
   if (!dot?.formula || !(dot.turns > 0)) return;
@@ -469,6 +473,10 @@ export async function applyHitsToActor(actor,
  * @returns {Promise<ChatMessage|null>} the breakdown card, or null when nothing was applied
  */
 export async function applyAttackFromMessage(message, { tokenId } = {}) {
+  // Not defence in depth: a card written while automation was on keeps a valid payload after the
+  // flip, so its button is what this refuses.
+  if (!isCombatAutomationEnabled()) return null;
+
   const attack = message?.flags?.cyberpunk2020?.attack;
   if (attack?.version !== ATTACK_FLAG_VERSION) return null;
   if (attack.applied?.[tokenId]) return null;

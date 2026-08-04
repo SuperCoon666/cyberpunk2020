@@ -1,7 +1,7 @@
 import { makeD10Roll, Multiroll } from "../dice.js";
 import { isFumbleRoll, buildSkillFumbleData } from "../utils.js";
 import { SortOrders, sortSkills } from "./skill-sort.js";
-import { btmFromBT, MARTIAL_ART_KEY_BY_ID, MARTIAL_ART_ID_BY_KEY, FNFF2_ONLY_MARTIAL_ART_IDS, isFnff2Enabled, AWARENESS_NOTICE_SKILL_ID, MELEE_DEFENSE_SKILL_IDS } from "../lookups.js";
+import { btmFromBT, MARTIAL_ART_KEY_BY_ID, MARTIAL_ART_ID_BY_KEY, DEFENSIVE_MARTIAL_ACTIONS, FNFF2_ONLY_MARTIAL_ART_IDS, getMartialActionBonus, isCombatAutomationEnabled, isFnff2Enabled, AWARENESS_NOTICE_SKILL_ID, MELEE_DEFENSE_SKILL_IDS } from "../lookups.js";
 import { properCase, localize, getDefaultSkills, cwHasType, cwIsEnabled, withCompendiumSource } from "../utils.js"
 
 export function combineSP(curr, add) {
@@ -310,7 +310,10 @@ export class CyberpunkActor extends Actor {
 
     // Staged Penetration is optional, so ablation is recorded on the armor either way and only
     // subtracted here while the rule is on — switching it off restores the armor's printed SP.
-    const ablationEnabled = game.settings.get("cyberpunk2020", "armorAblation");
+    // Derived data runs whatever the master switch says, so this read is one of the few that has to
+    // AND with it explicitly: with automation off the recorded wear stops being subtracted.
+    const ablationEnabled = isCombatAutomationEnabled()
+      && game.settings.get("cyberpunk2020", "armorAblation");
 
     // Inventory armor: accumulate EV and layer SP
     equippedItems.filter(i => i.type === "armor").forEach(armor => {
@@ -625,13 +628,22 @@ export class CyberpunkActor extends Actor {
    * The defensive skills this actor can counter a melee attack with, best first. Empty when the
    * actor has none of them, which leaves the defense at REF alone.
    *
+   * Martial arts are offered **trained only** (`T44`): `_preCreate` seeds every art at level 0, so
+   * a stock character used to open a twenty-nine row dropdown with twenty-four rows at the same
+   * total. The plain defensive skills stay whatever their level — a skill can be attempted
+   * untrained, which `M.7.2` records as a contract.
+   *
+   * A trained art's total carries its own maneuver bonus the way the attack side already does
+   * (`T93`): the better of its two defensive maneuvers, because the prompt offers a *skill* rather
+   * than a maneuver and a defender would answer with whichever their style is best at.
+   *
    * @returns {Array<{skillId: string, label: string, total: number}>}
    */
   defenseOptions() {
     const ref = Number(this.system.stats.ref.total) || 0;
     const options = [];
 
-    for (const id of [...MELEE_DEFENSE_SKILL_IDS, ...Object.values(MARTIAL_ART_ID_BY_KEY)]) {
+    for (const id of MELEE_DEFENSE_SKILL_IDS) {
       const skill = this._getSkillByStableId(id);
       if (!skill) continue;
 
@@ -639,6 +651,25 @@ export class CyberpunkActor extends Actor {
         skillId: id,
         label: this.getSkillDisplayName(skill),
         total: ref + CyberpunkActor.realSkillValue(skill)
+      });
+    }
+
+    for (const martialKey of this.trainedMartials()) {
+      // A built-in art keeps its stable id as the option's identity; a custom one has none, so its
+      // own item id is what the prompt sends back.
+      const stableId = MARTIAL_ART_ID_BY_KEY[martialKey];
+      const skill = stableId
+        ? this._getSkillByStableId(stableId)
+        : this._getCustomMartialSkill(martialKey);
+      if (!skill) continue;
+
+      const bonus = Math.max(...DEFENSIVE_MARTIAL_ACTIONS
+        .map(action => getMartialActionBonus(martialKey, action)));
+
+      options.push({
+        skillId: stableId ?? skill.id,
+        label: this.getSkillDisplayName(skill),
+        total: ref + CyberpunkActor.realSkillValue(skill) + bonus
       });
     }
 

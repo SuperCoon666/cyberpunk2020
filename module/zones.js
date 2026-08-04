@@ -1,6 +1,7 @@
-import { ranges, rangedAttackTypes } from "./lookups.js";
+import { isCombatAutomationEnabled, ranges, rangedAttackTypes } from "./lookups.js";
 import { applyHitsToActor, hiddenMessageMode, requestSave, ATTACK_FLAG_VERSION } from "./damage.js";
-import { localize, rollLocation } from "./utils.js";
+import { createCyberpunkChatMessage } from "./compat.js";
+import { localize, localizeParam, rollLocation } from "./utils.js";
 
 /**
  * Ch. 07's Grenade Table (`dev/rulebooks/corebook/07-friday-night-firefight.md:187-197`) as it is
@@ -230,6 +231,9 @@ export class SuppressiveFireBehavior extends foundry.data.regionBehaviors.Region
    */
   static async #onCrossing(event) {
     if (!game.user.isActiveGM) return;
+    // A zone laid while automation was on goes inert rather than being deleted: the region stays
+    // visible for the GM to remove, and the end-of-combat sweep still takes it.
+    if (!isCombatAutomationEnabled()) return;
     await resolveZoneCrossing(this, event.data.token);
   }
 
@@ -266,6 +270,18 @@ async function resolveZoneCrossing(zone, token) {
   const saved = zone.behavior.getFlag("cyberpunk2020", CROSSED_FLAG) ?? {};
   if (saved[token.id] === crossing) return;
   await zone.behavior.setFlag("cyberpunk2020", CROSSED_FLAG, { ...saved, [token.id]: crossing });
+
+  // The save card that follows says nothing about why it is being rolled, so this is what makes the
+  // crossing legible — and it is the reader `attackerUuid` was stored for (`T70`). The uuid is
+  // persisted on a Region that outlives the actor it names, so an unresolvable shooter drops the
+  // clause rather than the notice.
+  const attacker = zone.attackerUuid ? await fromUuid(zone.attackerUuid) : null;
+  await createCyberpunkChatMessage({
+    speaker: ChatMessage.getSpeaker({ actor }),
+    content: attacker
+      ? localizeParam("ZoneCrossing", { target: token.name, attacker: attacker.name })
+      : localizeParam("ZoneCrossingUnknown", { target: token.name })
+  }, { messageMode: hiddenMessageMode(token.hidden) });
 
   const save = await requestSave(actor, "zone", {
     dc: zone.saveDC, messageMode: hiddenMessageMode(token.hidden)
@@ -461,6 +477,9 @@ export function fireCorridor(shooter, target) {
  * @returns {Promise<ChatMessage[]|null>} the breakdown cards, or null when nothing was applied
  */
 export async function applyBlastFromMessage(message) {
+  // Same reason as `applyAttackFromMessage`: a card written before the flip keeps a valid payload.
+  if (!isCombatAutomationEnabled()) return null;
+
   const attack = message?.flags?.cyberpunk2020?.attack;
   if (attack?.version !== ATTACK_FLAG_VERSION) return null;
   if (!attack.blast || attack.applied?.zone) return null;

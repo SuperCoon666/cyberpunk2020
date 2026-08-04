@@ -1,0 +1,36 @@
+{{!-- Not a <form>: the ApplicationV2 root element is the form, and nesting one here empties the submitted data. --}}
+<div class="cyberpunk combat-automation-settings">
+    <div class="form-group">
+        <label>{{localize master.name}}</label>
+        <div class="form-fields">
+            <input type="checkbox" name="combatAutomation" {{checked master.value}}>
+        </div>
+        <p class="hint">{{localize master.hint}}</p>
+    </div>
+
+    <fieldset class="automation-rules">
+        <legend>{{CPLocal "AutomationRules"}}</legend>
+        {{#each rules}}
+        <div class="form-group">
+            <label>{{localize this.name}}</label>
+            <div class="form-fields">
+                {{#if this.choices}}
+                    <select name="{{this.key}}" {{disabled ../locked}}>
+                        {{selectOptions this.choices selected=this.value localize=true}}
+                    </select>
+                {{else if this.isNumber}}
+                    <input type="number" name="{{this.key}}" value="{{this.value}}" step="1" {{disabled ../locked}}>
+                {{else}}
+                    <input type="checkbox" name="{{this.key}}" {{checked this.value}} {{disabled ../locked}}>
+                {{/if}}
+            </div>
+            <p class="hint">{{localize this.hint}}</p>
+        </div>
+        {{/each}}
+    </fieldset>
+
+    <footer class="form-footer">
+        {{!-- No name attribute: form.submit would shadow HTMLFormElement.prototype.submit. --}}
+        <button type="submit"><i class="fa-solid fa-floppy-disk"></i> {{CPLocal "SaveSettings"}}</button>
+    </footer>
+</div>

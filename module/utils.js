@@ -17,6 +17,21 @@ export function replaceIn(replaceIn, replaceWith) {
 export function localize(key, data = {}) {
   return game.i18n.format("CYBERPUNK." + key, data);
 }
+/**
+ * The pause gate, in one place. A paused world stops a player from acting and never stops the GM,
+ * who pauses to hold the table rather than themselves.
+ *
+ * It tests and warns together on purpose: every entry point that asks this question has to say no
+ * out loud, and a silent refusal reads as a broken sheet.
+ *
+ * @returns {boolean} true when the action must not happen
+ */
+export function refusedWhilePaused() {
+  if (!game.paused || game.user.isGM) return false;
+  ui.notifications.warn(localize("PausedNoActions"));
+  return true;
+}
+
 export function tryLocalize(str, defaultResult=str) {
     let key = "CYBERPUNK." + str;
     if(!game.i18n.has(key))
