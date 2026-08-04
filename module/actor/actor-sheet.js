@@ -3,7 +3,8 @@ import { deleteFieldUpdate, localize, localizeParam, cwHasType, cwIsEnabled, wit
 import { ModifiersDialog } from "../dialog/modifiers.js"
 import { SortOrders, sortSkills } from "./skill-sort.js";
 import { getHtmlElement, getRichEditorHTML, itemFromDropData, saveRichEditorHTML } from "../compat.js";
-import { actionPenaltyFor, chargeAction } from "../combat.js";
+import { actionPenaltyFor, chargeAction, currentTurnKey } from "../combat.js";
+import { MORTAL_WOUND_STATE } from "../damage.js";
 
 const { HandlebarsApplicationMixin } = foundry.applications.api;
 const { ActorSheetV2 } = foundry.applications.sheets;
@@ -513,7 +514,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
         event.stopPropagation();
 
         const input = root.querySelector(".roll-stun-death-modificator");
-        this.actor.rollStunDeath(input?.value ?? 0);
+        await this._cpRollStunDeath(Number(input?.value) || 0);
         return;
       }
 
@@ -641,6 +642,27 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
   }
 
   /**
+   * The sheet's own Stun/Death save, applying what it rolls.
+   *
+   * The identical save reached through an applied attack sets `cpStunned`, so a save rolled from
+   * the sheet has to leave the world in the same state (`T29`); the Death Save follows only for a
+   * Mortally wounded character, which is the rule `applyHitsToActor` already implements. Rolled on
+   * this client rather than through `requestSave`: the button *is* the manual roll, and querying
+   * the owner would ask the player who just clicked it.
+   *
+   * @param {number} mod Situational modifier typed beside the button
+   */
+  async _cpRollStunDeath(mod) {
+    const stun = await this.actor.rollSave("stun", { mod });
+    if (!stun.success) await this.actor.toggleStatusEffect("cpStunned", { active: true });
+
+    if (this.actor.woundState() < MORTAL_WOUND_STATE) return;
+
+    const death = await this.actor.rollSave("death", { mod });
+    if (!death.success) await this.actor.toggleStatusEffect("dead", { active: true, overlay: true });
+  }
+
+  /**
    * Distance from this actor's token to the target, in the scene's own units. Null whenever either
    * token is off the canvas, which is what leaves the range band hand-picked as before.
    */
@@ -711,15 +733,24 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
         // Charged after the attack resolves, not before it: a contested melee blocks on the
         // defender for up to 30 s, and a second dialog opened in that window used to charge a
-        // second action. The guard is what stops the second dialog; this is what makes the
-        // economy count attacks that happened.
+        // second action. The guard is what stops the second dialog. The charge carries the turn it
+        // was declared in, because that wait can outlive the attacker's own next turn start, which
+        // is where the counter is cleared (`T67`).
         this.#attacksInFlight.add(item.id);
+        const declaredIn = currentTurnKey();
+        let attack;
         try {
-          return await item.__weaponRoll(fireOptions, targetTokens);
+          attack = await item.__weaponRoll(fireOptions, targetTokens);
         } finally {
           this.#attacksInFlight.delete(item.id);
-          await chargeAction(this.actor);
         }
+
+        // Every branch returns what it produced, and the three that produce nothing say so: a
+        // refusal returns `false` (no ammunition, a disabled cyberweapon) and a dismissed area
+        // placement returns `null` with no round spent and no card posted. Neither is an action,
+        // and charging for one costs the shooter -3 on an attack that never happened (`T80`).
+        if (attack) await chargeAction(this.actor, declaredIn);
+        return attack;
       }
     });
 

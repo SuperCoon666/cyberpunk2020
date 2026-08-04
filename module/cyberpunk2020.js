@@ -19,8 +19,8 @@ import { registerHandlebarsHelpers } from "./handlebars-helpers.js"
 import * as migrations from "./migrate.js";
 import { registerSystemSettings } from "./settings.js"
 import { getHtmlElement } from "./compat.js";
-import { ATTACK_FLAG_VERSION, SAVE_PROMPT_DEADLINE_MS, applyAttackFromMessage, rollZoneSave } from "./damage.js";
-import { CyberpunkCombat, announceTurn, clearSuppressionZones, DEFENSE_PROMPT_DEADLINE_MS } from "./combat.js";
+import { ATTACK_FLAG_VERSION, SAVE_PROMPT_DEADLINE_MS, applyAttackFromMessage, rollSaveOf } from "./damage.js";
+import { CyberpunkCombat, announceTurn, applyDeclaredDodge, clearSuppressionZones, clearTurnFlags, DEFENSE_PROMPT_DEADLINE_MS } from "./combat.js";
 import { CyberpunkTokenRuler, vetoOverspentMovement } from "./movement.js";
 import { applyBlastFromMessage, createSuppressionZone, SuppressiveFireBehavior } from "./zones.js";
 import { localize, localizeParam } from "./utils.js";
@@ -133,7 +133,7 @@ Hooks.once('init', async function () {
 
     // The owner of a player character rolls their own save when the world asks for it. The reply
     // has to beat the sender's timeout, so the dialog is closed here rather than waited on forever.
-    CONFIG.queries["cyberpunk2020.savePrompt"] = async ({ actorUuid, kind, dc }) => {
+    CONFIG.queries["cyberpunk2020.savePrompt"] = async ({ actorUuid, kind, dc, messageMode }) => {
       const actor = await fromUuid(actorUuid);
       if (!actor) throw new Error(`No actor for save prompt: ${actorUuid}`);
 
@@ -157,8 +157,12 @@ Hooks.once('init', async function () {
       ]);
 
       const mod = Number(answer?.mod) || 0;
-      return kind === "zone" ? rollZoneSave(actor, dc, { mod }) : actor.rollSave(kind, { mod });
+      return rollSaveOf(actor, kind, dc, mod, messageMode);
     };
+
+    // A dodge declared against an attack resolved on somebody else's client. The attacker owns
+    // nothing on an NPC defender, so the write is handed to the single writer everywhere else here.
+    CONFIG.queries["cyberpunk2020.declareDodge"] = ({ actorUuid }) => applyDeclaredDodge(actorUuid);
 
     // The defender picks the skill; the attacker's client rolls it, so this returns a choice and
     // never a result. Null means "decide for me" — the timeout path answers that way too.
@@ -413,6 +417,11 @@ Hooks.once('init', async function () {
     Hooks.on("combatTurnChange", announceTurn);
     Hooks.on("preMoveToken", vetoOverspentMovement);
     Hooks.on("deleteCombat", clearSuppressionZones);
+
+    // The action counter and a declared dodge are cleared by their owner's own turn start and by
+    // nothing else, so an encounter that ends mid-round carries them into the next one.
+    Hooks.on("deleteCombat", combat => clearTurnFlags(combat.combatants));
+    Hooks.on("deleteCombatant", combatant => clearTurnFlags([combatant]));
 
     // Auto mode: the active GM's client is the single writer, the way core drives Combat turn
     // events. With no GM connected nothing applies and the button above is still the way in.

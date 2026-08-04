@@ -47,6 +47,19 @@ function numberOr(value, fallback) {
 }
 
 /**
+ * The visibility a card about this token takes. Core does the same in the one place it faces the
+ * question — `messageMode: messageMode ?? (combatant.hidden ? "gm" : undefined)`, *"Private rolls
+ * for hidden combatants"* (`client/documents/combat.mjs:421`, 14.365.0) — and announcing an
+ * ambusher by name, SP and wound level is what this avoids.
+ *
+ * @param {boolean} [hidden] Whether the token (or combatant) the card is about is hidden
+ * @returns {"gm"|undefined} undefined leaves the poster's own chat mode alone
+ */
+export function hiddenMessageMode(hidden) {
+  return hidden ? "gm" : undefined;
+}
+
+/**
  * The loaded ammunition's effect fields, taken at roll time.
  *
  * The ammunition in the weapon can change between the roll and the click, so these travel in the
@@ -97,11 +110,12 @@ export function snapshotAmmo(item) {
  * @param {CyberpunkActor} targetActor
  * @param {object} [options]
  * @param {number} [options.severanceThreshold] 0 disables the severance rule
+ * @param {boolean} [options.doubleHead] Ch. 07's head rule. Off for damage that is not an attack
  * @returns {{sp: number, effSp: number, penetrating: number, headDoubled: boolean, btm: number,
  *            final: number, toSdp: number, severed: boolean}}
  */
 export function resolveHit({ damage = 0, zone = "Torso", ap = false, ammo = null }, targetActor,
-  { severanceThreshold = 0 } = {}) {
+  { severanceThreshold = 0, doubleHead = true } = {}) {
   const location = targetActor?.system?.hitLocations?.[zone] ?? {};
   const sp = numberOr(location.stoppingPower, 0);
 
@@ -118,7 +132,7 @@ export function resolveHit({ damage = 0, zone = "Torso", ap = false, ammo = null
   if (ap) penetrating = Math.floor(penetrating / 2);
   penetrating = Math.floor(penetrating * numberOr(ammo?.penDamageMult, 1));
 
-  const headDoubled = zone === "Head" && penetrating > 0;
+  const headDoubled = doubleHead && zone === "Head" && penetrating > 0;
   if (headDoubled) penetrating *= 2;
 
   const btm = numberOr(targetActor?.system?.stats?.bt?.modifier, 0);
@@ -186,15 +200,16 @@ async function ablateArmor(actor, hitsByZone, { softOnly = false } = {}) {
  * @param {number} threshold The zone's save number
  * @param {object} [options]
  * @param {number} [options.mod] Situational modifier chosen by whoever rolls
+ * @param {string} [options.messageMode] Visibility of the card, for a hidden token
  * @returns {Promise<{total: number, threshold: number, success: boolean}>}
  */
-export async function rollZoneSave(actor, threshold, { mod = 0 } = {}) {
+export async function rollZoneSave(actor, threshold, { mod = 0, messageMode } = {}) {
   const athletics = actor._getSkillByStableId(ATHLETICS_SKILL_ID);
   const bonus = (Number(actor.system.stats.ref.total) || 0)
     + CyberpunkActor.realSkillValue(athletics)
     + (Number(mod) || 0);
 
-  const rolls = new Multiroll(localize("SaveZone"), localize("OverThresholdMessage"));
+  const rolls = new Multiroll(localize("SaveZone"), localize("OverThresholdMessage"), { messageMode });
   rolls.addRoll(new Roll(bonus ? `1d10 + ${bonus}` : "1d10"), { name: localize("Save") });
   rolls.addRoll(new Roll(`${threshold}`), { name: localize("SaveZoneThreshold") });
   await rolls.defaultExecute();
@@ -204,8 +219,10 @@ export async function rollZoneSave(actor, threshold, { mod = 0 } = {}) {
 }
 
 /** The roll behind one save, whoever ends up asking for it. */
-function rollSaveOf(actor, kind, dc, mod = 0) {
-  return kind === "zone" ? rollZoneSave(actor, dc, { mod }) : actor.rollSave(kind, { mod });
+export function rollSaveOf(actor, kind, dc, mod = 0, messageMode = undefined) {
+  return kind === "zone"
+    ? rollZoneSave(actor, dc, { mod, messageMode })
+    : actor.rollSave(kind, { mod, messageMode });
 }
 
 /**
@@ -216,24 +233,36 @@ function rollSaveOf(actor, kind, dc, mod = 0) {
  * @param {"stun"|"death"|"zone"} kind
  * @param {object} [options]
  * @param {number} [options.dc] The save number, for a zone save only
+ * @param {string} [options.messageMode] Visibility of the card, for a hidden token
  * @returns {Promise<{total: number, threshold: number, success: boolean}>}
  */
-export async function requestSave(actor, kind, { dc = 0 } = {}) {
+export async function requestSave(actor, kind, { dc = 0, messageMode } = {}) {
   const manual = game.settings.get("cyberpunk2020", "pcSaveMode") === "manual" && actor.type !== "npc";
   const owner = manual
     ? game.users.players.find(u => u.active && actor.testUserPermission(u, "OWNER"))
     : null;
-  if (!owner) return rollSaveOf(actor, kind, dc);
+  if (!owner) return rollSaveOf(actor, kind, dc, 0, messageMode);
 
   try {
     return await owner.query(
       "cyberpunk2020.savePrompt",
-      { actorUuid: actor.uuid, kind, dc },
+      { actorUuid: actor.uuid, kind, dc, messageMode },
       { timeout: SAVE_QUERY_TIMEOUT_MS }
     );
   } catch (err) {
     // The owner disconnected or the query outlived its deadline; the save still has to happen.
-    return rollSaveOf(actor, kind, dc);
+    return rollSaveOf(actor, kind, dc, 0, messageMode);
+  }
+}
+
+/** The largest a formula can roll, for comparing two fires without rolling either. */
+function formulaCeiling(formula) {
+  try {
+    return new Roll(String(formula)).evaluateSync({ maximize: true }).total;
+  } catch (err) {
+    // A hand-written ammunition formula is user-authored data and reaches this before any roll of
+    // it would; an unparseable one loses the comparison rather than throwing inside an attack.
+    return 0;
   }
 }
 
@@ -241,14 +270,34 @@ export async function requestSave(actor, kind, { dc = 0 } = {}) {
  * Arm the damage-over-time burn an incendiary round leaves behind. Nothing to do while the
  * ammunition carries no burn, which is every round in the shipped packs.
  *
+ * **A second ignition refreshes and escalates; there are never two fires** (D26.3): the larger
+ * formula and the longer remaining duration each survive, chosen separately, so a weak round can
+ * only ever add to a fire and never downgrade one. The corebook has no stacking rule at all.
+ *
  * @param {CyberpunkActor} actor
  * @param {object|null} ammo Snapshot from snapshotAmmo
  * @param {string} zone The location the burn caught on — every tick is resolved against it
  */
 async function startDot(actor, ammo, zone) {
   if (!ammo?.dotEnabled || !(ammo.dotTurns > 0) || !ammo.dotDamageFormula) return;
-  await actor.setFlag("cyberpunk2020", DOT_FLAG,
-    { turns: Math.floor(ammo.dotTurns), formula: ammo.dotDamageFormula, zone });
+
+  const turns = Math.floor(ammo.dotTurns);
+  const formula = ammo.dotDamageFormula;
+  const burning = actor.getFlag("cyberpunk2020", DOT_FLAG);
+
+  if (!burning?.formula || !(burning.turns > 0)) {
+    await actor.setFlag("cyberpunk2020", DOT_FLAG, { turns, formula, zone });
+    return;
+  }
+
+  // The zone follows the formula that won: a fire is one fire, and it burns where the round that
+  // set its intensity landed.
+  const escalates = formulaCeiling(formula) > formulaCeiling(burning.formula);
+  await actor.setFlag("cyberpunk2020", DOT_FLAG, {
+    turns: Math.max(turns, Math.floor(burning.turns)),
+    formula: escalates ? formula : burning.formula,
+    zone: escalates ? zone : String(burning.zone || zone)
+  });
 }
 
 /**
@@ -259,10 +308,16 @@ async function startDot(actor, ammo, zone) {
  * snapshot so the rest of the tick is the arithmetic every other hit takes — BTM, the floor of 1, a
  * cyberlimb's own SDP. A pure SDP hit takes no save and this takes none either: it is not an attack.
  *
+ * The two **per-attack** rules are both off, as one decision (D18): a burning turn is not a hit, so
+ * it can neither sever a limb nor double a Head hit. Severance needs more than the threshold from
+ * one single attack, several attacks in a turn never sum to it, and the head follows the same logic.
+ *
  * @param {CyberpunkActor} actor
+ * @param {object} [options]
+ * @param {string} [options.messageMode] Visibility of the card, for a hidden token
  * @returns {Promise<void>}
  */
-export async function tickDot(actor) {
+export async function tickDot(actor, { messageMode } = {}) {
   const dot = actor.getFlag("cyberpunk2020", DOT_FLAG);
   // User-authored flag data: a hand-edited or half-written one must not throw inside a turn change.
   if (!dot?.formula || !(dot.turns > 0)) return;
@@ -276,7 +331,7 @@ export async function tickDot(actor) {
     damage: Math.max(0, Math.floor(roll.total)),
     zone,
     ammo: { armorMultHard: 1, armorMultSoft: softStops ? 1 : 0 }
-  }, actor);
+  }, actor, { doubleHead: false });
 
   // The wound track and a cyberlimb's SDP are exclusive by construction, so this is whichever
   // of the two the burn landed on.
@@ -294,7 +349,7 @@ export async function tickDot(actor) {
     speaker: ChatMessage.getSpeaker({ actor }),
     content: localizeParam("DotTick", { name: actor.name, damage, turns: dot.turns - 1 }),
     rolls: [roll]
-  }, { useDefaultRollMode: true });
+  }, { useDefaultRollMode: true, messageMode });
 
   const turns = Math.floor(dot.turns) - 1;
   if (turns > 0) await actor.setFlag("cyberpunk2020", DOT_FLAG, { ...dot, turns });
@@ -313,9 +368,14 @@ export async function tickDot(actor) {
  * @param {boolean} attack.ap
  * @param {object|null} attack.ammo
  * @param {string} attack.targetName
+ * @param {string} [attack.messageMode] Visibility of the breakdown and of the saves behind it
+ * @param {boolean} [attack.overallBody] An area effect, which damages the body rather than a
+ *   location (`07:960`/`:966`) — so a burn it starts catches at the Torso rather than at the
+ *   location this victim's share happened to roll
  * @returns {Promise<ChatMessage>} the breakdown card
  */
-export async function applyHitsToActor(actor, { hits = [], ap = false, ammo = null, targetName = "" }) {
+export async function applyHitsToActor(actor,
+  { hits = [], ap = false, ammo = null, targetName = "", messageMode, overallBody = false } = {}) {
   const severanceThreshold = game.settings.get("cyberpunk2020", "severanceThreshold");
 
   const lines = [];
@@ -324,6 +384,7 @@ export async function applyHitsToActor(actor, { hits = [], ap = false, ammo = nu
   const severedLimbs = [];
   let wound = 0;
   let killed = false;
+  let ignitionZone = null;
 
   for (const hit of hits) {
     const resolved = resolveHit(
@@ -332,6 +393,9 @@ export async function applyHitsToActor(actor, { hits = [], ap = false, ammo = nu
       { severanceThreshold }
     );
     wound += resolved.final;
+    // The first hit that actually got *in* is where a burn catches (D26.2): a burst across five
+    // zones whose first hit the armour stopped ignites at the one that wounded, not at that one.
+    if (ignitionZone === null && (resolved.final > 0 || resolved.toSdp > 0)) ignitionZone = hit.zone;
     if (resolved.toSdp > 0) sdp[hit.zone] = (sdp[hit.zone] ?? 0) + resolved.toSdp;
     if (resolved.penetrating > 0) penetratedZones[hit.zone] = (penetratedZones[hit.zone] ?? 0) + 1;
     if (resolved.severed) {
@@ -364,20 +428,28 @@ export async function applyHitsToActor(actor, { hits = [], ap = false, ammo = nu
   const card = await createCyberpunkChatMessage({
     speaker: ChatMessage.getSpeaker({ actor }),
     content
-  }, { useDefaultRollMode: true });
+  }, { useDefaultRollMode: true, messageMode });
 
   if (killed) {
     await actor.toggleStatusEffect("dead", { active: true, overlay: true });
-  } else if (wound > 0) {
-    await startDot(actor, ammo, hits[0]?.zone ?? "Torso");
+    return card;
+  }
 
+  // A hit that landed entirely in a cyberlimb ignites too (D26.4): ch. 07:910 conditions ignition
+  // on nothing — *"Anything caught in the sweep between the two points is ignited"* — and a burning
+  // metal arm burns. Only a hit the armour stopped leaves nothing to catch.
+  if (ignitionZone !== null) {
+    await startDot(actor, ammo, overallBody ? "Torso" : ignitionZone);
+  }
+
+  if (wound > 0) {
     // One save for the whole attack, and none at all when every hit went into a cyberlimb:
     // ch. 06, "no saving roll against shock and stun".
-    const stun = await requestSave(actor, "stun");
+    const stun = await requestSave(actor, "stun", { messageMode });
     if (!stun.success) await actor.toggleStatusEffect("cpStunned", { active: true });
 
     if (actor.woundState() >= MORTAL_WOUND_STATE) {
-      const death = await requestSave(actor, "death");
+      const death = await requestSave(actor, "death", { messageMode });
       if (!death.success) await actor.toggleStatusEffect("dead", { active: true, overlay: true });
     }
   }
@@ -420,6 +492,7 @@ export async function applyAttackFromMessage(message, { tokenId } = {}) {
   await message.update({ [`flags.cyberpunk2020.attack.applied.${tokenId}`]: true });
 
   return applyHitsToActor(actor, {
-    hits: attack.hits ?? [], ap: attack.ap, ammo: attack.ammo, targetName: target.name
+    hits: attack.hits ?? [], ap: attack.ap, ammo: attack.ammo, targetName: target.name,
+    messageMode: hiddenMessageMode(tokenDoc?.hidden)
   });
 }

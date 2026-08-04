@@ -4,28 +4,30 @@ import { localize, localizeParam } from "./utils.js";
 const RUN_ACTION = "run";
 
 /**
- * What this token may cover this turn, and what it has already spent.
+ * What this token may cover this turn.
  *
  * Null whenever the budget does not apply, which is also exactly when core records nothing:
  * `_shouldRecordMovementHistory` needs a combatant whose combat has **started**
  * (`client/documents/token.mjs:3177`, 14.365.0). Outside a fight the history is empty and stays
  * empty, so there is nothing to measure against and nothing is shown.
  *
+ * An allowance of **0 is a budget, not an absence** (D23): encumbrance and cyber-armour penalties
+ * reach `ma` like every other stat, and a character too loaded to move covers 0 m rather than
+ * being exempted from the rule. Only missing MA data leaves no rule at all — hence `null` for a
+ * non-number and a floor of 0 for a negative one.
+ *
  * @param {TokenDocument} tokenDocument
  * @param {string} [action] The movement action of the waypoint being measured
- * @returns {{spent: number, budget: number}|null}
+ * @returns {number|null} The allowance in scene units, or null when the rule does not apply
  */
 export function movementBudget(tokenDocument, action) {
   if (!tokenDocument?.combatant?.parent?.started) return null;
 
   const ma = tokenDocument.actor?.system?.stats?.ma;
   const budget = Number(action === RUN_ACTION ? ma?.run : ma?.total);
-  if (!Number.isFinite(budget) || budget <= 0) return null;
+  if (!Number.isFinite(budget)) return null;
 
-  const spent = tokenDocument.movementHistory.reduce(
-    (sum, waypoint) => sum + (Number.isFinite(waypoint.cost) ? waypoint.cost : 0), 0);
-
-  return { spent, budget };
+  return Math.max(0, budget);
 }
 
 export class CyberpunkTokenRuler extends foundry.canvas.placeables.tokens.TokenRuler {
@@ -43,21 +45,22 @@ export class CyberpunkTokenRuler extends foundry.canvas.placeables.tokens.TokenR
     const context = super._getWaypointLabelContext(waypoint, state);
     if (!context?.cost) return context;
 
+    // Not `!budget`: 0 is an allowance (D23), and the label is exactly what shows the overspend.
     const budget = movementBudget(this.token.document, waypoint.action);
-    if (!budget) return context;
+    if (budget === null) return context;
 
     // The turn's spend is already in here. Every path the ruler measures has the token's own
     // movement history prepended — the drag preview's (`client/canvas/placeables/token.mjs:5773`)
     // and the executing operation's (`:2002-2006`, 14.365.0) alike — and `measurement.cost` is
-    // cumulative from path[0], which is why core renders it as `cost.total`. Adding
-    // `movementBudget`'s own `spent` on top counted the history twice from the second move on.
+    // cumulative from path[0], which is why core renders it as `cost.total`. Summing the history a
+    // second time here counted it twice from the second move of a turn on.
     const total = Number.isFinite(waypoint.measurement.cost) ? waypoint.measurement.cost : 0;
 
     context.cost.total = localizeParam("MoveSpentOfBudget", {
       spent: total.toNearest(0.01).toLocaleString(game.i18n.lang),
-      budget: budget.budget.toNearest(0.01).toLocaleString(game.i18n.lang)
+      budget: budget.toNearest(0.01).toLocaleString(game.i18n.lang)
     });
-    if (total > budget.budget) context.cssClass = `${context.cssClass} cp-overspent`;
+    if (total > budget) context.cssClass = `${context.cssClass} cp-overspent`;
 
     return context;
   }
@@ -80,16 +83,16 @@ export function vetoOverspentMovement(tokenDocument, movement) {
 
   const action = movement.passed.waypoints.at(-1)?.action ?? movement.pending.waypoints.at(-1)?.action;
   const budget = movementBudget(tokenDocument, action);
-  if (!budget) return;
+  if (budget === null) return;
 
-  // The operation carries its own totals; `history.cost` is what `movementBudget` reads off the
-  // document, and the two halves of the move are what is being asked for.
+  // The operation carries its own totals, and its three parts are disjoint
+  // (`client/documents/token.mjs:1936-1965`, 14.365.0), so summing them counts nothing twice.
   const total = movement.history.cost + movement.passed.cost + movement.pending.cost;
-  if (total <= budget.budget) return;
+  if (total <= budget) return;
 
   ui.notifications.warn(localizeParam("MoveBlocked", {
     total: total.toNearest(0.01).toLocaleString(game.i18n.lang),
-    budget: budget.budget.toNearest(0.01).toLocaleString(game.i18n.lang),
+    budget: budget.toNearest(0.01).toLocaleString(game.i18n.lang),
     units: canvas.grid.units || localize("UnitMetres")
   }));
   return false;

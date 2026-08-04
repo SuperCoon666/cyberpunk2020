@@ -1,5 +1,5 @@
 import { ranges, rangedAttackTypes } from "./lookups.js";
-import { applyHitsToActor, requestSave, ATTACK_FLAG_VERSION } from "./damage.js";
+import { applyHitsToActor, hiddenMessageMode, requestSave, ATTACK_FLAG_VERSION } from "./damage.js";
 import { localize, rollLocation } from "./utils.js";
 
 /**
@@ -267,7 +267,9 @@ async function resolveZoneCrossing(zone, token) {
   if (saved[token.id] === crossing) return;
   await zone.behavior.setFlag("cyberpunk2020", CROSSED_FLAG, { ...saved, [token.id]: crossing });
 
-  const save = await requestSave(actor, "zone", { dc: zone.saveDC });
+  const save = await requestSave(actor, "zone", {
+    dc: zone.saveDC, messageMode: hiddenMessageMode(token.hidden)
+  });
   if (save.success) return;
 
   const hitsRoll = await new Roll("1d6").evaluate();
@@ -281,7 +283,8 @@ async function resolveZoneCrossing(zone, token) {
   }
 
   await applyHitsToActor(actor, {
-    hits, ap: zone.ap, ammo: zone.ammo, targetName: token.name
+    hits, ap: zone.ap, ammo: zone.ammo, targetName: token.name,
+    messageMode: hiddenMessageMode(token.hidden)
   });
 }
 
@@ -493,7 +496,11 @@ export async function applyBlastFromMessage(message) {
       : (await rollLocation(actor)).areaHit;
 
     cards.push(await applyHitsToActor(actor, {
-      hits: [{ zone, damage }], ap: attack.ap, ammo: attack.ammo, targetName: entry.name
+      hits: [{ zone, damage }], ap: attack.ap, ammo: attack.ammo, targetName: entry.name,
+      messageMode: hiddenMessageMode(tokenDoc?.hidden),
+      // A blast damages the overall body (`07:960`/`:966`), so a burn it starts catches at the
+      // Torso; a shotgun pattern is located pellets and keeps the zone it rolled (D26.2).
+      overallBody: attack.kind === "blast"
     }));
   }
 

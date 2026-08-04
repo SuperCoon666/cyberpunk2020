@@ -1,4 +1,4 @@
-import { MORTAL_WOUND_STATE, requestSave, tickDot } from "./damage.js";
+import { MORTAL_WOUND_STATE, hiddenMessageMode, requestSave, tickDot } from "./damage.js";
 import { localizeParam } from "./utils.js";
 import { createCyberpunkChatMessage } from "./compat.js";
 import { BaseDie } from "./dice.js";
@@ -30,6 +30,9 @@ const INCAPACITATED_STATUSES = ["dead", "cpStunned"];
 const DEFENSE_QUERY_TIMEOUT_MS = 30000;
 export const DEFENSE_PROMPT_DEADLINE_MS = 25000;
 
+/** The dodge hand-off has no human in the loop — it is one flag write on the GM's client. */
+const DODGE_QUERY_TIMEOUT_MS = 5000;
+
 export class CyberpunkCombat extends Combat {
 
   /**
@@ -51,7 +54,11 @@ export class CyberpunkCombat extends Combat {
     if (game.user.isGM) {
       const next = stored?.round === this.round ? { ...stored } : { round: this.round };
       next[side] = roll.total;
-      await this.setFlag("cyberpunk2020", "partyInitiative", next);
+      // `render: false` rather than setFlag: nothing displays this flag, and a Combat update the
+      // tracker is not viewing throws in core — `renderData.find(...)` is undefined and
+      // `"turn" in data` follows it (`client/applications/sidebar/tabs/combat-tracker.mjs:186-188`,
+      // 14.365.0). Suppressing the render this write does not need keeps the system out of it.
+      await this.update({ "flags.cyberpunk2020.partyInitiative": next }, { render: false });
     }
 
     return roll.total;
@@ -109,6 +116,10 @@ export class CyberpunkCombat extends Combat {
     const actor = combatant.actor;
     if (!actor) return;
 
+    // A turn that belongs to a token the players cannot see is announced and rolled to the GMs
+    // alone; `combatant.hidden` is the combatant's own state, which a GM can set independently.
+    const messageMode = hiddenMessageMode(combatant.hidden);
+
     // unsetFlag always issues an update, even for a flag that is not there, and this runs on every
     // turn of every combatant.
     if (game.settings.get("cyberpunk2020", "actionEconomy")
@@ -121,16 +132,28 @@ export class CyberpunkCombat extends Combat {
       await actor.unsetFlag("cyberpunk2020", DODGING_FLAG);
     }
 
-    await tickDot(actor);
+    await tickDot(actor, { messageMode });
+
+    // "You may make one Save roll every turn until you succeed" (ch. 02:119, ch. 07:582) — the same
+    // Stun Save the wound track modifies, so a character who goes down deeper stays down longer.
+    if (actor.statuses.has("cpStunned")) {
+      await createCyberpunkChatMessage({
+        speaker: ChatMessage.getSpeaker({ actor, token: combatant.token }),
+        content: localizeParam("TurnStartStunSave", { name: actor.name })
+      }, { messageMode });
+
+      const recovery = await requestSave(actor, "stun", { messageMode });
+      if (recovery.success) await actor.toggleStatusEffect("cpStunned", { active: false });
+    }
 
     if (actor.woundState() < MORTAL_WOUND_STATE || actor.system.stabilized) return;
 
     await createCyberpunkChatMessage({
       speaker: ChatMessage.getSpeaker({ actor, token: combatant.token }),
       content: localizeParam("TurnStartDeathSave", { name: actor.name })
-    });
+    }, { messageMode });
 
-    const save = await requestSave(actor, "death");
+    const save = await requestSave(actor, "death", { messageMode });
     if (!save.success) await actor.toggleStatusEffect("dead", { active: true, overlay: true });
   }
 }
@@ -152,16 +175,54 @@ export function actionPenaltyFor(actor) {
 }
 
 /**
+ * Which turn of which encounter is running. Null outside a started one, where the per-turn flags
+ * have nothing to expire them and are therefore never written.
+ *
+ * @returns {string|null}
+ */
+export function currentTurnKey() {
+  const combat = game.combat;
+  return combat?.started ? `${combat.id}.${combat.round}.${combat.turn}` : null;
+}
+
+/**
  * Charge one action against the economy. A no-op whenever `actionPenaltyFor` returns null.
  *
  * @param {CyberpunkActor} actor
+ * @param {string|null} [declaredIn] The turn key the action was declared in, for a charge that has
+ *   to survive a wait. `_onStartTurn` clears the counter, and a contested melee can outlive the
+ *   attacker's own next turn start — landing on the far side of that clear would open the new turn
+ *   at -3 for an attack made in the previous one.
  * @returns {Promise<void>}
  */
-export async function chargeAction(actor) {
+export async function chargeAction(actor, declaredIn = currentTurnKey()) {
   if (actionPenaltyFor(actor) === null) return;
+  if (declaredIn !== currentTurnKey()) return;
 
   const taken = Number(actor.getFlag("cyberpunk2020", ACTIONS_TAKEN_FLAG)) || 0;
   await actor.setFlag("cyberpunk2020", ACTIONS_TAKEN_FLAG, taken + 1);
+}
+
+/**
+ * Clear the per-turn flags an encounter leaves behind. Both are cleared by the owner's own turn
+ * start and by nothing else, so an encounter that ends mid-round carries them into the next fight —
+ * three actions in fight A become a -9 on the first attack of fight B.
+ *
+ * @param {Combatant[]|Collection<Combatant>} combatants
+ * @returns {Promise<void>}
+ */
+export async function clearTurnFlags(combatants) {
+  if (!game.user.isActiveGM) return;
+
+  for (const combatant of combatants) {
+    const actor = combatant.actor;
+    if (!actor) continue;
+
+    for (const flag of [ACTIONS_TAKEN_FLAG, DODGING_FLAG]) {
+      if (actor.getFlag("cyberpunk2020", flag) === undefined) continue;
+      await actor.unsetFlag("cyberpunk2020", flag);
+    }
+  }
 }
 
 /**
@@ -174,11 +235,12 @@ export async function chargeAction(actor) {
  * @param {object} context
  * @param {string} context.attackerName
  * @param {string} context.itemName
+ * @param {string} [context.messageMode] Visibility of the pending notice, for a hidden defender
  * @returns {Promise<{total: number, label: string, roll: Roll, hit: boolean}|null>} hit is the
  *   attacker's result: ch. 04 gives a tie to the defender. Null when the defender is incapacitated,
  *   which is what leaves the attack uncontested
  */
-export async function resolveDefense(defender, attackTotal, { attackerName, itemName }) {
+export async function resolveDefense(defender, attackTotal, { attackerName, itemName, messageMode }) {
   // A Mortal but conscious defender still defends: his severity already reaches the roll through
   // the wound penalties folded into `ref.total`.
   if (INCAPACITATED_STATUSES.some(id => defender.statuses.has(id))) return null;
@@ -195,7 +257,7 @@ export async function resolveDefense(defender, attackTotal, { attackerName, item
     await createCyberpunkChatMessage({
       speaker: ChatMessage.getSpeaker({ actor: defender }),
       content: localizeParam("DefensePending", { attacker: attackerName, defender: defender.name })
-    });
+    }, { messageMode });
 
     try {
       choice = await owner.query(
@@ -228,16 +290,58 @@ export async function resolveDefense(defender, attackTotal, { attackerName, item
  * Record that this actor is dodging, until the start of their next turn. A no-op while the house
  * rule is off, so a world that never enables it does not accumulate the flag.
  *
+ * Only inside a started encounter: the declaration lasts "until the dodger's own next turn", and
+ * outside a turn order there is no such moment — a flag written there sat on the actor for the rest
+ * of the session, taking -2 off every ranged attack against them with nothing on the sheet to show
+ * it (`T39`). The setting's hint says so rather than leaving it to be discovered.
+ *
  * @param {CyberpunkActor} actor
  * @returns {Promise<void>}
  */
 export async function declareDodge(actor) {
   if (!game.settings.get("cyberpunk2020", "dodgeVsRanged")) return;
-  // The defense is resolved on the attacker's client, which for a player attacking an NPC has no
-  // permission on the defender. Losing the flag costs a -2; letting the rejected update propagate
-  // would lose the attack card with it.
-  if (!actor.isOwner) return;
+  if (!currentTurnKey()) return;
+
+  if (actor.isOwner) {
+    await actor.setFlag("cyberpunk2020", DODGING_FLAG, true);
+    return;
+  }
+
+  // The defense resolves on the **attacker's** client, which for a player attacking an NPC owns
+  // nothing on the defender. The active GM is the single writer everywhere else here, so the
+  // declaration is handed over rather than dropped (`T41`) — a rejected update would have taken the
+  // attack card with it.
+  const gm = game.users.activeGM;
+  if (!gm) return;
+
+  try {
+    await gm.query("cyberpunk2020.declareDodge", { actorUuid: actor.uuid },
+      { timeout: DODGE_QUERY_TIMEOUT_MS });
+  } catch (err) {
+    // The GM went away mid-attack. The dodge is worth -2 on someone else's roll; the attack card is
+    // worth more, and it is what this is holding up.
+  }
+}
+
+/**
+ * Write a dodge declaration handed over by another client. Runs on the active GM.
+ *
+ * @param {string} actorUuid
+ * @returns {Promise<boolean>} whether the flag was written
+ */
+export async function applyDeclaredDodge(actorUuid) {
+  // Another client's payload, written with the GM's rights, so the sender's own two conditions are
+  // re-applied here rather than trusted: they guard the *state*, not the sender, and a query is
+  // reachable from any player's console (`T82`). Sender identity discriminates nothing — any player
+  // may legitimately be attacking any actor, which is why the hand-off exists at all.
+  if (!game.settings.get("cyberpunk2020", "dodgeVsRanged")) return false;
+  if (!currentTurnKey()) return false;
+
+  const actor = await fromUuid(String(actorUuid ?? ""));
+  if (actor?.documentName !== "Actor") return false;
+
   await actor.setFlag("cyberpunk2020", DODGING_FLAG, true);
+  return true;
 }
 
 /**

@@ -2,7 +2,7 @@ import { weaponTypes, rangedAttackTypes, meleeAttackTypes, fireModes, ranges, ra
 import { Multiroll, makeD10Roll } from "../dice.js"
 import { localize, localizeParam, rollLocation, cwHasType, cwIsEnabled, isFumbleRoll, buildRangedCombatFumbleData, buildSkillFumbleData, clamp } from "../utils.js";
 import { createCyberpunkChatMessage, renderCyberpunkTemplate } from "../compat.js";
-import { ATTACK_FLAG_VERSION, snapshotAmmo } from "../damage.js";
+import { ATTACK_FLAG_VERSION, hiddenMessageMode, snapshotAmmo } from "../damage.js";
 import { declareDodge, dodgeRangedPenalty, resolveDefense } from "../combat.js";
 import { blastProfile, blastRings, fireCorridor, isBlastAttack, isSpreadAttack, pickBlastCentre, placeSuppressionZone, scatterCentre, spreadProfileFor } from "../zones.js";
 /** @extends {Item} */
@@ -437,6 +437,12 @@ export class CyberpunkItem extends Item {
   static __targetActor(target) {
     if (!target?.tokenUuid) return undefined;
     return fromUuidSync(target.tokenUuid)?.actor;
+  }
+
+  /** A card about a token the players cannot see is whispered — the target's own state decides. */
+  static __targetMessageMode(target) {
+    if (!target?.tokenUuid) return undefined;
+    return hiddenMessageMode(fromUuidSync(target.tokenUuid)?.hidden);
   }
 
   /**
@@ -960,7 +966,9 @@ export class CyberpunkItem extends Item {
       { weaponName: this.name, rounds, width, saveDC, dmgFormula, results, placed: !!zone }
     );
 
-    await createCyberpunkChatMessage({
+    // Returned, not merely posted: `null` is how a dismissed placement is told apart from a burst
+    // that happened, and the sheet charges the action economy off exactly that (`T80`).
+    return createCyberpunkChatMessage({
       speaker: ChatMessage.getSpeaker({ actor: this.actor }),
       content: html,
       flags : { cyberpunk2020: { fireMode: "suppressive", ...this.__suppressionFlags(zone, saveDC, dmgFormula) } }
@@ -1117,7 +1125,8 @@ export class CyberpunkItem extends Item {
 
       const defense = attackMods.targetActor
         ? await resolveDefense(attackMods.targetActor, attackRoll.total,
-            { attackerName: this.actor.name, itemName: this.name })
+            { attackerName: this.actor.name, itemName: this.name,
+              messageMode: CyberpunkItem.__targetMessageMode(targetTokens[0]) })
         : null;
       const hit = defense ? defense.hit : true;
 
@@ -1167,6 +1176,10 @@ export class CyberpunkItem extends Item {
 
       let bigRoll = new Multiroll(this.name, this.system.flavor)
         .addRoll(attackRoll, { name: localize("Attack") });
+
+      // One opposed check is one message with two rolls: the card draws the defense die from the
+      // template data either way, but only a message roll is animated and stored (`T40`).
+      if (defense) bigRoll.addRoll(defense.roll, { name: localize("Defense") });
 
       await bigRoll.execute(
         undefined,
@@ -1335,9 +1348,13 @@ export class CyberpunkItem extends Item {
 
     const defense = attackMods.targetActor
       ? await resolveDefense(attackMods.targetActor, attackRoll.total,
-          { attackerName: actor.name, itemName: this.name })
+          { attackerName: actor.name, itemName: this.name,
+            messageMode: CyberpunkItem.__targetMessageMode(targetTokens[0]) })
       : null;
     const hit = defense ? defense.hit : true;
+
+    // One opposed check is one message with two rolls (`T40`).
+    if (defense) results.addRoll(defense.roll, { name: localize("Defense") });
 
     const areaDamages = {};
     if (hit) {

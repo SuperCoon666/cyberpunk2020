@@ -1097,49 +1097,19 @@ export class CyberpunkActor extends Actor {
     return combat.rollInitiative([combatant.id]);
   }  
 
-  rollStunDeath(modificator) {
-    let rolls = new Multiroll(localize("StunDeathSave"), localize("UnderThresholdMessage"));
-    
-    const integerRegex = /^-?\d+$/;
-    if(modificator && !integerRegex.test(modificator)){
-      return
-    }
-
-    const fromImplants = Number(this.system?._cwChecks?.saveStun || 0);
-
-    const userMod = modificator ? parseInt(modificator, 10) : 0;
-    // The roll has to come in at or under the threshold, so an implant that helps the save has to
-    // come off it. The situational modifier keeps its own sign, which is whatever the roller meant.
-    const totalMod = userMod - fromImplants;
-
-    const rollType = "1d10";
-    const formula = totalMod ? `${rollType} + ${totalMod}` : rollType;
-
-    rolls.addRoll(new Roll(formula), {
-      name: localize("Save")
-    });
-    rolls.addRoll(new Roll(`${this.stunThreshold()}`), {
-      name: localize("SaveStunThreshold")
-    });
-    rolls.addRoll(new Roll(`${this.deathThreshold()}`), {
-      name: localize("SaveDeathThreshold")
-    });
-    return rolls.defaultExecute();
-  }
-
   /**
    * Roll one Stun or Death save and post its card.
    *
-   * The implant bonus is subtracted and the situational modifier added, matching rollStunDeath:
-   * both are compared against a threshold the roll must stay at or under, so the two must not
-   * disagree on the sign.
+   * The roll has to come in at or **under** the threshold, so an implant that helps the save comes
+   * off it; the situational modifier keeps its own sign, which is whatever the roller meant.
    *
    * @param {"stun"|"death"} kind
    * @param {object} [options]
    * @param {number} [options.mod] Situational modifier chosen by whoever rolls
+   * @param {string} [options.messageMode] Visibility of the card, for a hidden token
    * @returns {Promise<{total: number, threshold: number, success: boolean}>}
    */
-  async rollSave(kind, { mod = 0 } = {}) {
+  async rollSave(kind, { mod = 0, messageMode } = {}) {
     const death = kind === "death";
     const threshold = death ? this.deathThreshold() : this.stunThreshold();
 
@@ -1149,7 +1119,8 @@ export class CyberpunkActor extends Actor {
 
     const rolls = new Multiroll(
       localize(death ? "SaveDeath" : "SaveStun"),
-      localize("UnderThresholdMessage")
+      localize("UnderThresholdMessage"),
+      { messageMode }
     );
     rolls.addRoll(new Roll(formula), { name: localize("Save") });
     rolls.addRoll(new Roll(`${threshold}`), {

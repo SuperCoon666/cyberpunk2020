@@ -68,9 +68,17 @@ export function classifyRollDice(roll) {
  * Methods can be chained, e.g bigRoll.addRoll(...).addRoll(...)
  */
  export class Multiroll {
-    constructor(title, flavor="") {
+    /**
+     * @param {string} title
+     * @param {string} [flavor]
+     * @param {object} [options]
+     * @param {string} [options.messageMode] Visibility of the card. Undefined leaves the poster's
+     *   own chat mode alone, which is what every card did before hidden tokens were whispered.
+     */
+    constructor(title, flavor="", { messageMode } = {}) {
         this.title = title;
         this.flavor = flavor;
+        this.messageMode = messageMode;
         this.rolls = [];
         this.rollMetaData = [];
     }
@@ -146,7 +154,8 @@ export function classifyRollDice(roll) {
             rolls: this.rolls,
             speaker,
             content: await renderCyberpunkTemplate(templatePath, fullTemplateData),
-            flags
+            flags,
+            messageMode: this.messageMode
         });
         return this;
     }
