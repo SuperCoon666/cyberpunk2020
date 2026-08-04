@@ -24,6 +24,9 @@ export const MELEE_DEFENSE_SKILL_IDS = new Set([
 /** Choosing this one as a defense is what declares a dodge for the house rule. */
 export const DODGE_SKILL_ID = "IWAr3E5vpS8qFzZS";
 
+/** Ch. 07:731 — the skill a suppressive-fire save is rolled on. */
+export const ATHLETICS_SKILL_ID = "gULme1P5CR8rXXIh";
+
 export const INTERFACE_SKILL_IDS = new Set([
   "sqHlfxm32pNENNFZ", // Interface
   "Nc1zY8vB6qWt4pXj"  // Интерфейс

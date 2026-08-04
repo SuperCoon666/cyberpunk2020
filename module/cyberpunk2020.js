@@ -19,9 +19,10 @@ import { registerHandlebarsHelpers } from "./handlebars-helpers.js"
 import * as migrations from "./migrate.js";
 import { registerSystemSettings } from "./settings.js"
 import { getHtmlElement } from "./compat.js";
-import { ATTACK_FLAG_VERSION, SAVE_PROMPT_DEADLINE_MS, applyAttackFromMessage, applyBlastFromMessage } from "./damage.js";
-import { CyberpunkCombat, announceTurn, DEFENSE_PROMPT_DEADLINE_MS } from "./combat.js";
+import { ATTACK_FLAG_VERSION, SAVE_PROMPT_DEADLINE_MS, applyAttackFromMessage, rollZoneSave } from "./damage.js";
+import { CyberpunkCombat, announceTurn, clearSuppressionZones, DEFENSE_PROMPT_DEADLINE_MS } from "./combat.js";
 import { CyberpunkTokenRuler, vetoOverspentMovement } from "./movement.js";
+import { applyBlastFromMessage, createSuppressionZone, SuppressiveFireBehavior } from "./zones.js";
 import { localize, localizeParam } from "./utils.js";
 
 /**
@@ -93,6 +94,10 @@ Hooks.once('init', async function () {
     CONFIG.Item.dataModels.vehicle = CyberpunkVehicleData;
     CONFIG.Item.dataModels.misc = CyberpunkMiscData;
 
+    // The subtype is only usable if `system.json` declares it too: valid subtypes are assembled by
+    // the server from the manifest's documentTypes, and registering the model alone is not enough.
+    CONFIG.RegionBehavior.dataModels.suppressiveFire = SuppressiveFireBehavior;
+
     // v14 registers no core sheet for Actor or Item, so there is nothing to unregister.
     // themes: null — the sheets are a fixed dark palette; core substitutes {dark, light}
     // and enables the picker when the option is omitted.
@@ -128,9 +133,11 @@ Hooks.once('init', async function () {
 
     // The owner of a player character rolls their own save when the world asks for it. The reply
     // has to beat the sender's timeout, so the dialog is closed here rather than waited on forever.
-    CONFIG.queries["cyberpunk2020.savePrompt"] = async ({ actorUuid, kind }) => {
+    CONFIG.queries["cyberpunk2020.savePrompt"] = async ({ actorUuid, kind, dc }) => {
       const actor = await fromUuid(actorUuid);
       if (!actor) throw new Error(`No actor for save prompt: ${actorUuid}`);
+
+      const titles = { death: "CYBERPUNK.SaveDeath", zone: "CYBERPUNK.SaveZone" };
 
       let dialog = null;
       const deadline = new Promise(resolve => setTimeout(() => {
@@ -140,7 +147,7 @@ Hooks.once('init', async function () {
 
       const answer = await Promise.race([
         foundry.applications.api.DialogV2.input({
-          window: { title: kind === "death" ? "CYBERPUNK.SaveDeath" : "CYBERPUNK.SaveStun" },
+          window: { title: titles[kind] ?? "CYBERPUNK.SaveStun" },
           content: `<p>${localizeParam("SavePrompt", { name: actor.name })}</p>
             <input type="number" name="mod" value="0" step="1" autofocus>`,
           ok: { label: "CYBERPUNK.SaveRollButton" },
@@ -149,7 +156,8 @@ Hooks.once('init', async function () {
         deadline
       ]);
 
-      return actor.rollSave(kind, { mod: Number(answer?.mod) || 0 });
+      const mod = Number(answer?.mod) || 0;
+      return kind === "zone" ? rollZoneSave(actor, dc, { mod }) : actor.rollSave(kind, { mod });
     };
 
     // The defender picks the skill; the attacker's client rolls it, so this returns a choice and
@@ -404,15 +412,24 @@ Hooks.once('init', async function () {
 
     Hooks.on("combatTurnChange", announceTurn);
     Hooks.on("preMoveToken", vetoOverspentMovement);
+    Hooks.on("deleteCombat", clearSuppressionZones);
 
     // Auto mode: the active GM's client is the single writer, the way core drives Combat turn
     // events. With no GM connected nothing applies and the button above is still the way in.
     Hooks.on("createChatMessage", async (message) => {
       if (!game.user.isActiveGM) return;
-      if (game.settings.get("cyberpunk2020", "damageApplyMode") !== "auto") return;
 
       const attack = message.flags?.cyberpunk2020?.attack;
       if (attack?.version !== ATTACK_FLAG_VERSION) return;
+
+      // A fire zone is a scene document, not damage: the apply mode decides who applies damage and
+      // not whether the zone the shooter just placed exists, so this runs ahead of the setting.
+      if (attack.kind === "suppression") {
+        await createSuppressionZone(attack.zone, attack.behaviour);
+        return;
+      }
+
+      if (game.settings.get("cyberpunk2020", "damageApplyMode") !== "auto") return;
 
       if (attack.kind === "blast" || attack.kind === "spread") {
         await applyBlastFromMessage(message);

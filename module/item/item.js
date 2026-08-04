@@ -4,7 +4,7 @@ import { localize, localizeParam, rollLocation, cwHasType, cwIsEnabled, isFumble
 import { createCyberpunkChatMessage, renderCyberpunkTemplate } from "../compat.js";
 import { ATTACK_FLAG_VERSION, snapshotAmmo } from "../damage.js";
 import { declareDodge, dodgeRangedPenalty, resolveDefense } from "../combat.js";
-import { blastProfile, blastRings, isBlastAttack, isSpreadAttack, pickBlastCentre, scatterCentre, spreadProfileFor } from "../zones.js";
+import { blastProfile, blastRings, fireCorridor, isBlastAttack, isSpreadAttack, pickBlastCentre, placeSuppressionZone, scatterCentre, spreadProfileFor } from "../zones.js";
 /** @extends {Item} */
 export class CyberpunkItem extends Item {
 
@@ -606,7 +606,7 @@ export class CyberpunkItem extends Item {
       attackRoll,
       ammo,
       profile,
-      blast: centre ? { ...centre, ...profile, damage } : null,
+      blast: centre ? { ...centre, ...profile, damage, sceneId: canvas.scene.id } : null,
       damage,
       damageRoll,
       onTarget,
@@ -914,15 +914,28 @@ export class CyberpunkItem extends Item {
     const width = Math.max(2, Math.floor(Number(mods.zoneWidth ?? 2)));
     const targets = Math.max(1, Math.floor(Number(mods.targetsCount ?? 1)));
 
-    await this.__setWeaponField("shotsLeft", sys.shotsLeft - rounds);
-
     // Floor, not ceil: the book's own worked example is 64 rounds over 5 m for a DC of 12.
     const saveDC = Math.floor(rounds / width);
     const dmgFormula = sys.damage || "1d6";
-    const rollData = this.actor?.getRollData?.() ?? {};
 
+    let zone = null;
+    if (canvas.ready) {
+      // The corridor covers the band being fired at; the shooter places and rotates it. A weapon
+      // with no range falls back to a square, which is the zone the book's own examples describe.
+      const reach = Math.round(rangeResolve[mods.range]?.(Number(sys.range) || 0) || 0);
+      zone = await placeSuppressionZone(width, Math.max(width, reach),
+        localizeParam("ZoneName", { weapon: this.name }));
+      // Dismissing the placement takes the burst back: nothing has been rolled or spent yet.
+      if (!zone) return null;
+    }
+
+    await this.__setWeaponField("shotsLeft", sys.shotsLeft - rounds);
+
+    const rollData = this.actor?.getRollData?.() ?? {};
     const results = [];
-    for (let t = 0; t < targets; t++) {
+    // With a zone on the map every crossing rolls its own hits, so the abstract per-target tally is
+    // the no-canvas fallback and not a second answer to the same question.
+    for (let t = 0; !zone && t < targets; t++) {
       const hitsRoll = await new Roll("1d6").evaluate();
       const areaDamages = {};
 
@@ -944,14 +957,44 @@ export class CyberpunkItem extends Item {
 
     const html = await renderCyberpunkTemplate(
       "systems/cyberpunk2020/templates/chat/suppressive.hbs",
-      { weaponName: this.name, rounds, width, saveDC, dmgFormula, results }
+      { weaponName: this.name, rounds, width, saveDC, dmgFormula, results, placed: !!zone }
     );
 
     await createCyberpunkChatMessage({
       speaker: ChatMessage.getSpeaker({ actor: this.actor }),
       content: html,
-      flags : { cyberpunk2020: { fireMode: "suppressive" } }
+      flags : { cyberpunk2020: { fireMode: "suppressive", ...this.__suppressionFlags(zone, saveDC, dmgFormula) } }
     }, { useDefaultRollMode: true });
+  }
+
+  /**
+   * The card payload the active GM lays the fire zone from. Undefined with no canvas, which is what
+   * leaves the abstract card as the whole answer.
+   *
+   * @param {object|null} zone The placed geometry from placeSuppressionZone
+   * @param {number} saveDC
+   * @param {string} damageFormula
+   */
+  __suppressionFlags(zone, saveDC, damageFormula) {
+    if (!zone) return undefined;
+
+    return {
+      attack: {
+        version: ATTACK_FLAG_VERSION,
+        kind: "suppression",
+        itemId: this.id,
+        attackerActorUuid: this.actor?.uuid ?? "",
+        zone,
+        behaviour: {
+          name: localizeParam("ZoneName", { weapon: this.name }),
+          saveDC,
+          damageFormula,
+          ap: !!this._getWeaponSystem()?.ap,
+          ammo: snapshotAmmo(this),
+          attackerUuid: this.actor?.uuid ?? ""
+        }
+      }
+    };
   }
 
   async __semiAuto(attackMods, targetTokens = []) {
@@ -1016,12 +1059,14 @@ export class CyberpunkItem extends Item {
       }
 
       // Ch. 07:855 — a 2 m pattern caught a booster standing 1 m from the one it was aimed at, so
-      // the pattern is half its width around the target and everything in it takes the same damage.
-      const patternCentre = spread && attackHits && canvas.ready
-        ? canvas.tokens.get(targetTokens[0]?.id)?.center
+      // the pattern is half its width around the target; ch. 07:843 adds the straight path from the
+      // shooter at the same width, and everything caught takes the same damage.
+      const targetToken = spread && attackHits && canvas.ready
+        ? canvas.tokens.get(targetTokens[0]?.id)
         : null;
-      if (patternCentre) {
+      if (targetToken) {
         const profile = { radius: spread.width / 2, fullDamageWithin: spread.width / 2, multipliers: [] };
+        const patternCentre = targetToken.center;
         return this.__zoneCard({
           title: localize("SpreadTitle"),
           kind: "spread",
@@ -1029,7 +1074,16 @@ export class CyberpunkItem extends Item {
           attackRoll,
           ammo,
           profile,
-          blast: { x: patternCentre.x, y: patternCentre.y, ...profile, damage: dmg },
+          blast: {
+            x: patternCentre.x,
+            y: patternCentre.y,
+            ...profile,
+            damage: dmg,
+            sceneId: canvas.scene.id,
+            corridor: fireCorridor(this.actor.getActiveTokens()[0], patternCentre),
+            aimedTokenUuid: targetTokens[0]?.tokenUuid ?? "",
+            aimedZone: location
+          },
           damage: dmg,
           damageRoll,
           onTarget: attackHits,

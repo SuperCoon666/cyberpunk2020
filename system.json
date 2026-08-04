@@ -519,6 +519,9 @@
       "misc": {
         "htmlFields": ["notes"]
       }
+    },
+    "RegionBehavior": {
+      "suppressiveFire": {}
     }
   },
   "socket": false,

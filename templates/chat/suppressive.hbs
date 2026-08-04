@@ -13,6 +13,10 @@
 
     <p>{{CPLocal "SuppressiveHitsDesc" dmg=dmgFormula}}</p>
 
+    {{#if placed}}
+    <p>{{CPLocal "ZonePlaced"}}</p>
+    {{/if}}
+
     {{#each results as |t idx|}}
     <hr/>
     <h3>{{CPLocal "Target"}} {{math idx "+" 1}}</h3>

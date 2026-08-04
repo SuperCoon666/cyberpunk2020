@@ -1,4 +1,6 @@
 import { ranges, rangedAttackTypes } from "./lookups.js";
+import { applyHitsToActor, requestSave, ATTACK_FLAG_VERSION } from "./damage.js";
+import { localize, rollLocation } from "./utils.js";
 
 /**
  * Ch. 07's Grenade Table (`dev/rulebooks/corebook/07-friday-night-firefight.md:187-197`) as it is
@@ -96,8 +98,6 @@ export function blastMultiplierFor(distance, { radius = 0, fullDamageWithin = 0,
   if (!multipliers.length) return 1;
 
   const ringWidth = (radius - fullDamageWithin) / multipliers.length;
-  if (!(ringWidth > 0)) return 1;
-
   const index = Math.min(multipliers.length - 1,
     Math.floor((distance - fullDamageWithin) / ringWidth));
   return multipliers[index];
@@ -197,26 +197,207 @@ export async function pickBlastCentre(radius, name) {
 }
 
 /**
+ * A fire zone left on the scene by suppressive fire. Everything a crossing needs travels in the
+ * behaviour rather than in the card, because the zone outlives the message that made it.
+ *
+ * `static events` rather than a configurable `events` field: the zone always does the one thing.
+ * Core reads the same registration to decide where to split a movement path — a behaviour that
+ * subscribes to `TOKEN_MOVE_IN` gets a checkpoint inserted at the region boundary
+ * (`client/documents/token.mjs:2560-2593`, 14.365.0), which is what makes a token that crosses the
+ * zone and stops beyond it trigger at all.
+ */
+export class SuppressiveFireBehavior extends foundry.data.regionBehaviors.RegionBehaviorType {
+
+  /** @override */
+  static defineSchema() {
+    const { NumberField, StringField, BooleanField, ObjectField } = foundry.data.fields;
+    return {
+      saveDC: new NumberField({ required: true, integer: true, initial: 0, min: 0 }),
+      damageFormula: new StringField({ required: true, initial: "1d6" }),
+      ap: new BooleanField(),
+      ammo: new ObjectField({ nullable: true, initial: null }),
+      attackerUuid: new StringField({ required: true, initial: "" })
+    };
+  }
+
+  /**
+   * One token crossing the fire zone. Region events arrive on **every** client, so the behaviour
+   * gates itself rather than trusting the caller — the same single-writer rule the apply path and
+   * core's own behaviours use (`pause-game.mjs:38`, `toggle-behavior.mjs:55`).
+   *
+   * @param {object} event A tokenMoveIn or tokenMoveWithin region event
+   * @this {SuppressiveFireBehavior}
+   */
+  static async #onCrossing(event) {
+    if (!game.user.isActiveGM) return;
+    await resolveZoneCrossing(this, event.data.token);
+  }
+
+  /** @override */
+  static events = {
+    [CONST.REGION_EVENTS.TOKEN_MOVE_IN]: this.#onCrossing,
+    [CONST.REGION_EVENTS.TOKEN_MOVE_WITHIN]: this.#onCrossing
+  };
+}
+
+/** Which tokens have already saved against a zone, and when. */
+const CROSSED_FLAG = "suppressed";
+
+/** Marks the Regions this system laid, so combat cleanup leaves the GM's own alone. */
+export const SUPPRESSION_FLAG = "suppression";
+
+/**
+ * Resolve one token's crossing of a fire zone: one save, and on a failure 1D6 randomly located
+ * rounds through the damage pipeline (ch. 07:731-733).
+ *
+ * @param {SuppressiveFireBehavior} zone
+ * @param {TokenDocument} token
+ * @returns {Promise<void>}
+ */
+async function resolveZoneCrossing(zone, token) {
+  const actor = token.actor;
+  if (!actor) return;
+
+  // RAW asks for one save per target "during this attack" and this zone outlives the attack, so a
+  // combat turn is what stands in for it. Outside an encounter there is no turn to reset on and
+  // the book's own answer — one save per target per zone — is what is left.
+  const combat = game.combat;
+  const crossing = combat?.started ? `${combat.id}.${combat.round}.${combat.turn}` : "once";
+  const saved = zone.behavior.getFlag("cyberpunk2020", CROSSED_FLAG) ?? {};
+  if (saved[token.id] === crossing) return;
+  await zone.behavior.setFlag("cyberpunk2020", CROSSED_FLAG, { ...saved, [token.id]: crossing });
+
+  const save = await requestSave(actor, "zone", { dc: zone.saveDC });
+  if (save.success) return;
+
+  const hitsRoll = await new Roll("1d6").evaluate();
+  const hits = [];
+  for (let i = 0; i < hitsRoll.total; i++) {
+    const damageRoll = await new Roll(String(zone.damageFormula)).evaluate();
+    hits.push({
+      zone: (await rollLocation(actor)).areaHit,
+      damage: Math.max(0, Math.floor(damageRoll.total))
+    });
+  }
+
+  await applyHitsToActor(actor, {
+    hits, ap: zone.ap, ammo: zone.ammo, targetName: token.name
+  });
+}
+
+/**
+ * Let the shooter lay the fire corridor where they mean it, without writing anything.
+ *
+ * The rectangle's origin is the middle of its near edge (`anchorX: 0, anchorY: 0.5`), which is both
+ * where the cursor holds it and what the mouse wheel rotates it around — so the corridor swings
+ * from the muzzle end onto the line of fire instead of pivoting on a corner.
+ *
+ * @param {number} width The fire zone's width in scene units — the number the save divides by
+ * @param {number} length How far down the corridor the fire reaches, in scene units
+ * @param {string} name The region's label while it is being placed
+ * @returns {Promise<object|null>} the placed geometry, or null when the placement was dismissed
+ */
+export async function placeSuppressionZone(width, length, name) {
+  const region = await canvas.regions.placeRegion({
+    name,
+    shapes: [{
+      type: "rectangle",
+      x: 0,
+      y: 0,
+      width: metresToPixels(length),
+      height: metresToPixels(width),
+      anchorX: 0,
+      anchorY: 0.5
+    }],
+    levels: [canvas.level.id],
+    visibility: CONST.REGION_VISIBILITY.ALWAYS
+  }, { create: false });
+  if (!region) return null;
+
+  const { shapes, levels } = region.toObject();
+  return { sceneId: canvas.scene.id, shapes, levels };
+}
+
+/**
+ * Lay the fire zone the card describes on its own scene. A Region is a scene document, so only a
+ * GM can write it: the shooter previews, the active GM creates, and with no GM connected the
+ * card's own numbers are what the table plays off.
+ *
+ * @param {object} zone The card's zone payload
+ * @param {object} behaviour What a crossing needs: name, saveDC, damageFormula, ap, ammo, attackerUuid
+ * @returns {Promise<RegionDocument|null>} null when the scene is gone
+ */
+export async function createSuppressionZone(zone, behaviour) {
+  const scene = game.scenes.get(String(zone?.sceneId ?? ""));
+  if (!scene) return null;
+
+  const { name, ...system } = behaviour;
+  const [region] = await scene.createEmbeddedDocuments("Region", [{
+    name,
+    shapes: zone.shapes,
+    levels: zone.levels,
+    visibility: CONST.REGION_VISIBILITY.ALWAYS,
+    flags: { cyberpunk2020: { [SUPPRESSION_FLAG]: true } },
+    behaviors: [{ type: "suppressiveFire", name, system }]
+  }]);
+
+  return region ?? null;
+}
+
+/**
+ * The scene a zone payload was measured on.
+ *
+ * The payload carries pixel coordinates, so the scene is the only thing that makes them mean
+ * anything: reading them off `canvas` applied the zone to whichever scene the GM happened to be
+ * looking at (`T59`). A scene that has since been deleted is the one case the apply path cannot
+ * resolve and must refuse.
+ *
+ * @param {object} blast The card's blast payload
+ * @returns {Scene|null}
+ */
+export function zoneScene(blast) {
+  return game.scenes.get(String(blast?.sceneId ?? "")) ?? null;
+}
+
+/**
  * Every token the blast caught, with how much of it reached them.
  *
- * Membership and falloff are the same measurement — `canvas.grid.measurePath`, the same call the
- * range band is picked with — so a token cannot be inside the zone and in no ring.
+ * Membership and falloff are the same measurement — `Scene#grid.measurePath`, the grid-aware call
+ * the range band is picked with — so a token cannot be inside the zone and in no ring. Everything
+ * is read off the payload's own scene rather than the canvas, so the applying client does not have
+ * to be looking at it, and a GM running with the canvas disabled gets the same answer.
  *
  * @param {object} blast The card's blast payload
  * @returns {Array<{name: string, tokenUuid: string, actorUuid: string, distance: number, multiplier: number}>}
  */
 export function tokensInBlast(blast) {
+  const scene = zoneScene(blast);
+  if (!scene) return [];
+
   const centre = { x: blast.x, y: blast.y };
   const caught = [];
 
-  for (const token of canvas.tokens.placeables) {
-    const distance = canvas.grid.measurePath([centre, token.center]).distance;
-    const multiplier = blastMultiplierFor(distance, blast);
+  for (const token of scene.tokens) {
+    const point = token.getCenterPoint();
+    let distance = scene.grid.measurePath([centre, point]).distance;
+    let multiplier = blastMultiplierFor(distance, blast);
+
+    if (multiplier <= 0 && blast.corridor) {
+      const along = scene.grid.measurePath([corridorPoint(blast.corridor, point), point]).distance;
+      // Ch. 07:843 — a target in the straight path between attacker and intended target is in the
+      // area of effect too, at the pattern's own width. Full damage: the book gives the corridor
+      // no falloff of its own, and the ring table belongs to the circle.
+      if (along <= blast.radius) {
+        distance = along;
+        multiplier = 1;
+      }
+    }
+
     if (multiplier <= 0) continue;
 
     caught.push({
-      name: token.document.name,
-      tokenUuid: token.document.uuid,
+      name: token.name,
+      tokenUuid: token.uuid,
       actorUuid: token.actor?.uuid ?? "",
       distance,
       multiplier
@@ -224,4 +405,97 @@ export function tokensInBlast(blast) {
   }
 
   return caught;
+}
+
+/**
+ * The point on the fire corridor nearest a target.
+ *
+ * @param {{from: {x: number, y: number}, to: {x: number, y: number}}} corridor
+ * @param {{x: number, y: number}} point
+ * @returns {{x: number, y: number}}
+ */
+function corridorPoint({ from, to }, point) {
+  // closestPointToSegment throws on a zero-length segment, which is a shooter standing on top of
+  // their own target — reachable, and then the corridor is just the one point.
+  if (from.x === to.x && from.y === to.y) return from;
+  return foundry.utils.closestPointToSegment(point, from, to);
+}
+
+/**
+ * The fire corridor a shotgun pattern lays between the shooter and the target it was aimed at,
+ * cut short at the first obstacle.
+ *
+ * Ch. 07:843 gives the corridor and its exemption in one breath: *"Any target in a straight path
+ * between attacker and intended target is also considered to be in the area of effect. Note: if
+ * something is between the path of the shotgun and its intended target, the intervening spaces
+ * behind that object are considered to be exempt from the effects of fire."* Truncating here, on
+ * the shooter's own canvas, is what lets the apply path stay pure geometry on any scene.
+ *
+ * @param {Token|undefined} shooter The attacker's token on the current scene
+ * @param {{x: number, y: number}} target The pattern's centre, in pixels
+ * @returns {{from: {x: number, y: number}, to: {x: number, y: number}}|null} null with no shooter
+ */
+export function fireCorridor(shooter, target) {
+  if (!shooter) return null;
+
+  const from = shooter.center;
+  // "move" rather than "sight": what stops a cloud of pellets is a physical obstruction, and a
+  // window is exactly the wall that blocks one and not the other.
+  const blocked = shooter.checkCollision(target, { type: "move", mode: "closest" });
+  const to = blocked ? { x: blocked.x, y: blocked.y } : target;
+
+  return { from: { x: from.x, y: from.y }, to: { x: to.x, y: to.y } };
+}
+
+/**
+ * Apply a blast or a shotgun pattern over everyone standing in it.
+ *
+ * Occupancy is read **now**, not at roll time: a token that walked into the crater between the roll
+ * and the click is in it. Each target takes the zone's own rolled damage scaled by the ring it is
+ * standing in, on a location of its own.
+ *
+ * @param {ChatMessage} message
+ * @returns {Promise<ChatMessage[]|null>} the breakdown cards, or null when nothing was applied
+ */
+export async function applyBlastFromMessage(message) {
+  const attack = message?.flags?.cyberpunk2020?.attack;
+  if (attack?.version !== ATTACK_FLAG_VERSION) return null;
+  if (!attack.blast || attack.applied?.zone) return null;
+
+  // The payload's coordinates are pixels on one scene and mean nothing without it.
+  if (!zoneScene(attack.blast)) {
+    ui.notifications.warn(localize("ZoneSceneGone"));
+    return null;
+  }
+
+  const caught = tokensInBlast(attack.blast);
+  if (!caught.length) {
+    ui.notifications.warn(localize("BlastNoTargets"));
+    return null;
+  }
+
+  await message.update({ "flags.cyberpunk2020.attack.applied.zone": true });
+
+  const cards = [];
+  for (const entry of caught) {
+    const tokenDoc = await fromUuid(entry.tokenUuid);
+    // An unlinked token owns its own delta actor; writing to the base actor would wound every copy.
+    const actor = tokenDoc?.actor ?? await fromUuid(entry.actorUuid);
+    if (!actor) continue;
+
+    const damage = blastDamageFor(attack.blast.damage, entry.multiplier);
+    if (damage <= 0) continue;
+
+    // D17: the shot's designated target takes the location it was aimed at — the -4 was paid at
+    // the roll. Everyone else the pattern caught rolls their own, and a blast has no aim at all.
+    const zone = entry.tokenUuid === attack.blast.aimedTokenUuid && attack.blast.aimedZone
+      ? attack.blast.aimedZone
+      : (await rollLocation(actor)).areaHit;
+
+    cards.push(await applyHitsToActor(actor, {
+      hits: [{ zone, damage }], ap: attack.ap, ammo: attack.ammo, targetName: entry.name
+    }));
+  }
+
+  return cards;
 }

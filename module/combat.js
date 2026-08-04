@@ -3,6 +3,7 @@ import { localizeParam } from "./utils.js";
 import { createCyberpunkChatMessage } from "./compat.js";
 import { BaseDie } from "./dice.js";
 import { DODGE_SKILL_ID } from "./lookups.js";
+import { SUPPRESSION_FLAG } from "./zones.js";
 
 /** Cumulative penalty per extra action taken in the same turn (optional rule). */
 const ACTION_PENALTY_STEP = -3;
@@ -249,6 +250,26 @@ export function dodgeRangedPenalty(targetActor) {
   if (!targetActor) return 0;
   if (!game.settings.get("cyberpunk2020", "dodgeVsRanged")) return 0;
   return targetActor.getFlag("cyberpunk2020", DODGING_FLAG) ? DODGE_VS_RANGED_PENALTY : 0;
+}
+
+/**
+ * Sweep the fire zones an encounter left behind. RAW's zone lasts one attack; this system's lasts
+ * until the encounter ends or the GM deletes it, so the end of the encounter is where the sweep
+ * belongs. Only Regions this system laid are touched — a GM's own are left alone.
+ *
+ * @param {Combat} combat
+ * @returns {Promise<void>}
+ */
+export async function clearSuppressionZones(combat) {
+  if (!game.user.isActiveGM) return;
+
+  const scene = combat.scene;
+  if (!scene) return;
+
+  const ids = scene.regions
+    .filter(region => region.getFlag("cyberpunk2020", SUPPRESSION_FLAG))
+    .map(region => region.id);
+  if (ids.length) await scene.deleteEmbeddedDocuments("Region", ids);
 }
 
 /**

@@ -1,13 +1,16 @@
 import { createCyberpunkChatMessage, renderCyberpunkTemplate } from "./compat.js";
-import { localize, localizeParam, rollLocation } from "./utils.js";
-import { blastDamageFor, tokensInBlast } from "./zones.js";
+import { localize, localizeParam } from "./utils.js";
+import { CyberpunkActor } from "./actor/actor.js";
+import { ATHLETICS_SKILL_ID } from "./lookups.js";
+import { Multiroll } from "./dice.js";
 
 /**
  * The shape of flags.cyberpunk2020.attack. A card written by an older version is ignored rather
  * than guessed at, so the number changes whenever a field the apply path reads is added or moved.
  * 2: `kind` decides which apply path a card takes.
+ * 3: the zone payload carries `sceneId`, and a spread carries its `corridor` and aimed location.
  */
-export const ATTACK_FLAG_VERSION = 2;
+export const ATTACK_FLAG_VERSION = 3;
 
 /** The flag a damage-over-time effect burns down from, one tick per turn. */
 const DOT_FLAG = "dot";
@@ -173,29 +176,64 @@ async function ablateArmor(actor, hitsByZone, { softOnly = false } = {}) {
 }
 
 /**
+ * Roll one suppressive-fire save and post its card.
+ *
+ * Ch. 07:731 — *"rolling their Athletics Skill + REF + 1D10 and beating a save number"*. Unlike a
+ * Stun or Death save this is a skill check, so it succeeds at or **above** the number rather than
+ * under it, and the two must not be collapsed into one helper on that account.
+ *
+ * @param {CyberpunkActor} actor
+ * @param {number} threshold The zone's save number
+ * @param {object} [options]
+ * @param {number} [options.mod] Situational modifier chosen by whoever rolls
+ * @returns {Promise<{total: number, threshold: number, success: boolean}>}
+ */
+export async function rollZoneSave(actor, threshold, { mod = 0 } = {}) {
+  const athletics = actor._getSkillByStableId(ATHLETICS_SKILL_ID);
+  const bonus = (Number(actor.system.stats.ref.total) || 0)
+    + CyberpunkActor.realSkillValue(athletics)
+    + (Number(mod) || 0);
+
+  const rolls = new Multiroll(localize("SaveZone"), localize("OverThresholdMessage"));
+  rolls.addRoll(new Roll(bonus ? `1d10 + ${bonus}` : "1d10"), { name: localize("Save") });
+  rolls.addRoll(new Roll(`${threshold}`), { name: localize("SaveZoneThreshold") });
+  await rolls.defaultExecute();
+
+  const total = rolls.rolls[0].total;
+  return { total, threshold, success: total >= threshold };
+}
+
+/** The roll behind one save, whoever ends up asking for it. */
+function rollSaveOf(actor, kind, dc, mod = 0) {
+  return kind === "zone" ? rollZoneSave(actor, dc, { mod }) : actor.rollSave(kind, { mod });
+}
+
+/**
  * Roll one save for the target. The GM's own client rolls unless the world asks a player
  * character's owner to roll their own, in which case the owner is queried.
  *
  * @param {CyberpunkActor} actor
- * @param {"stun"|"death"} kind
+ * @param {"stun"|"death"|"zone"} kind
+ * @param {object} [options]
+ * @param {number} [options.dc] The save number, for a zone save only
  * @returns {Promise<{total: number, threshold: number, success: boolean}>}
  */
-export async function requestSave(actor, kind) {
+export async function requestSave(actor, kind, { dc = 0 } = {}) {
   const manual = game.settings.get("cyberpunk2020", "pcSaveMode") === "manual" && actor.type !== "npc";
   const owner = manual
     ? game.users.players.find(u => u.active && actor.testUserPermission(u, "OWNER"))
     : null;
-  if (!owner) return actor.rollSave(kind);
+  if (!owner) return rollSaveOf(actor, kind, dc);
 
   try {
     return await owner.query(
       "cyberpunk2020.savePrompt",
-      { actorUuid: actor.uuid, kind },
+      { actorUuid: actor.uuid, kind, dc },
       { timeout: SAVE_QUERY_TIMEOUT_MS }
     );
   } catch (err) {
     // The owner disconnected or the query outlived its deadline; the save still has to happen.
-    return actor.rollSave(kind);
+    return rollSaveOf(actor, kind, dc);
   }
 }
 
@@ -277,7 +315,7 @@ export async function tickDot(actor) {
  * @param {string} attack.targetName
  * @returns {Promise<ChatMessage>} the breakdown card
  */
-async function applyHitsToActor(actor, { hits = [], ap = false, ammo = null, targetName = "" }) {
+export async function applyHitsToActor(actor, { hits = [], ap = false, ammo = null, targetName = "" }) {
   const severanceThreshold = game.settings.get("cyberpunk2020", "severanceThreshold");
 
   const lines = [];
@@ -384,45 +422,4 @@ export async function applyAttackFromMessage(message, { tokenId } = {}) {
   return applyHitsToActor(actor, {
     hits: attack.hits ?? [], ap: attack.ap, ammo: attack.ammo, targetName: target.name
   });
-}
-
-/**
- * Apply a blast over everyone standing in it.
- *
- * Occupancy is read **now**, not at roll time: a token that walked into the crater between the roll
- * and the click is in it. Each target takes the blast's own rolled damage scaled by the ring it is
- * standing in, on a location of its own.
- *
- * @param {ChatMessage} message
- * @returns {Promise<ChatMessage[]|null>} the breakdown cards, or null when nothing was applied
- */
-export async function applyBlastFromMessage(message) {
-  const attack = message?.flags?.cyberpunk2020?.attack;
-  if (attack?.version !== ATTACK_FLAG_VERSION) return null;
-  if (!attack.blast || attack.applied?.zone) return null;
-
-  const caught = tokensInBlast(attack.blast);
-  if (!caught.length) {
-    ui.notifications.warn(localize("BlastNoTargets"));
-    return null;
-  }
-
-  await message.update({ "flags.cyberpunk2020.attack.applied.zone": true });
-
-  const cards = [];
-  for (const entry of caught) {
-    const tokenDoc = await fromUuid(entry.tokenUuid);
-    const actor = tokenDoc?.actor ?? await fromUuid(entry.actorUuid);
-    if (!actor) continue;
-
-    const damage = blastDamageFor(attack.blast.damage, entry.multiplier);
-    if (damage <= 0) continue;
-
-    const zone = (await rollLocation(actor)).areaHit;
-    cards.push(await applyHitsToActor(actor, {
-      hits: [{ zone, damage }], ap: attack.ap, ammo: attack.ammo, targetName: entry.name
-    }));
-  }
-
-  return cards;
 }
