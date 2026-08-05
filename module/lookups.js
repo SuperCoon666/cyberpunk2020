@@ -214,6 +214,7 @@ export const MARTIAL_ART_ID_BY_KEY = {
   "Martial Arts: Te": "v0W0oqDBHY2yqqt3",
   "Martial Arts: ThaiKickBoxing": "jgvFY5BWVsanP0md",
   "Martial Arts: Thamoc": "ZyMZ6C7r9V2TXmV9",
+  "Martial Arts: ThrashBoxing": "Iw1fJPfME3uXQ48D",
   "Martial Arts: WingChung": "WsPa5ZiNIjLhCIxH",
   "Martial Arts: Wrestling": "GZtVOGgtxv8CCuuz"
 };
@@ -235,6 +236,7 @@ export const FNFF2_ONLY_MARTIAL_ART_KEYS = new Set([
   "Martial Arts: TaiChiChuan",
   "Martial Arts: Te",
   "Martial Arts: Thamoc",
+  "Martial Arts: ThrashBoxing",
   "Martial Arts: WingChung"
 ]);
 
@@ -268,23 +270,26 @@ export function isCombatAutomationEnabled() {
   return Boolean(game?.settings?.get("cyberpunk2020", "combatAutomation"));
 }
 
-// CORE set rules martial action bonuses
+// CORE set rules martial action bonuses. The authority is the corebook's *Martial Arts Forms &
+// Specialization Bonuses* table (`07-friday-night-firefight.md:313-325`), transcribed at
+// `dev/docs/RULES-MARTIAL-TABLES.md` — code against that file, not memory (`T145`, D42).
 export const martialActionBonusesCore = {
   "Martial Arts: Karate": { Strike: 2, Kick: 2, BlockParry: 2 },
-  "Martial Arts: Judo": { Throw: 3, Hold: 3, Escape: 3 },
-  "Martial Arts: Boxing": { Strike: 3, BlockParry: 3, Dodge: 1, Grapple: 2 },
-  "Martial Arts: ThaiKickBoxing": { Strike: 3, Kick: 3, BlockParry: 2, Dodge: 1, Grapple: 1 },
-  "Martial Arts: ChoiLiFut": { Strike: 2, Kick: 2, BlockParry: 2, Dodge: 1, Throw: 1 },
-  "Martial Arts: Aikido": { BlockParry: 4, Dodge: 3, Throw: 3, Hold: 3, Escape: 3 },
+  "Martial Arts: Judo": { Dodge: 1, Throw: 3, Hold: 2, Escape: 2, SweepTrip: 2, Grapple: 2 },
+  "Martial Arts: Boxing": { Strike: 3, BlockParry: 3, Dodge: 1 },
+  "Martial Arts: ThaiKickBoxing": { Strike: 3, Kick: 3, BlockParry: 2, Grapple: 1 },
+  "Martial Arts: ChoiLiFut": { Strike: 2, Kick: 2, BlockParry: 2, Dodge: 1, Throw: 1, SweepTrip: 2 },
+  "Martial Arts: Aikido": { BlockParry: 4, Dodge: 3, Throw: 3, Hold: 3, Escape: 3, Choke: 1, SweepTrip: 3, Grapple: 2 },
   "Martial Arts: AnimalKungFu": { Strike: 2, Kick: 2, BlockParry: 2, SweepTrip: 1 },
   "Martial Arts: TaeKwonDo": { Strike: 3, Kick: 3, BlockParry: 2, Dodge: 1, SweepTrip: 2 },
   "Martial Arts: Savate": { Kick: 4, BlockParry: 1, Dodge: 1 },
   "Martial Arts: Wrestling": { Throw: 3, Hold: 4, Escape: 4, Choke: 2, SweepTrip: 2, Grapple: 4 },
-  "Martial Arts: Capoeira": { Strike: 1, Kick: 2, Dodge: 2, SweepTrip: 3 },
+  "Martial Arts: Capoeira": { Strike: 1, Kick: 2, BlockParry: 2, Dodge: 2, SweepTrip: 3 },
   "Brawling": {}
 };
 
-// FNFF2 set rules martial action bonuses
+// FNFF2 set rules martial action bonuses. Its authority is the owner's FNFF2 screen, transcribed
+// in the same file — FNFF2 is optional material with no corebook table behind it (D28/D42).
 export const martialActionBonusesFNFF2 = {
   "Martial Arts: Aikido": {
     Disarm: 3, SweepTrip: 3, BlockParry: 4, Dodge: 3, Grapple: 2, Throw: 3, Hold: 2, Choke: 1, Escape: 2
@@ -296,7 +301,7 @@ export const martialActionBonusesFNFF2 = {
     Strike: 1, Punch: 1, Kick: 1, BlockParry: 1, Dodge: 1, Grapple: 1, Throw: 1, Hold: 1, Choke: 2, Escape: 1
   },
   "Martial Arts: Boxing": {
-    Strike: 1, Punch: 2, Kick: 3, SweepTrip: 3, Dodge: 1, Throw: 1, Escape: 2
+    Punch: 3, SweepTrip: 3, BlockParry: 1
   },
   "Martial Arts: Capoeira": {
     Punch: 1, Kick: 2, SweepTrip: 3, BlockParry: 2, Dodge: 2
@@ -351,6 +356,9 @@ export const martialActionBonusesFNFF2 = {
   },
   "Martial Arts: Thamoc": {
     Strike: 1, Disarm: 4, SweepTrip: 1, BlockParry: 1, Dodge: 2, Grapple: 1, Escape: 2
+  },
+  "Martial Arts: ThrashBoxing": {
+    Strike: 1, Punch: 2, Kick: 3, SweepTrip: 3, Dodge: 1, Throw: 1, Escape: 2
   },
   "Martial Arts: WingChung": {
     Punch: 4, Kick: 2, SweepTrip: 1, BlockParry: 3, Dodge: 1, Hold: 2
@@ -432,10 +440,10 @@ export let defaultAreaLookup = {
     4: "Torso",
     5: "rArm",
     6: "lArm",
-    7: "lLeg",
-    8: "lLeg",
-    9: "rLeg",
-    10: "rLeg"
+    7: "rLeg",
+    8: "rLeg",
+    9: "lLeg",
+    10: "lLeg"
 }
 
 export function defaultHitLocations() {
@@ -528,7 +536,10 @@ export function rangedModifiers(weapon, targetTokens = [], savedOptions = {}, me
             dataPath: "roundsFired",
             dtype: "Number",
             defaultValue: suppressiveRoundsMax,
-            min: 1,
+            // A weapon with nothing to fire — a cyberweapon left at the schema's default ROF 0 is
+            // the shipped route there — rendered `min: 1, max: 0`, a range no value satisfies
+            // (`T113`). The row still shows, because the mode is still offered.
+            min: suppressiveRoundsMax > 0 ? 1 : 0,
             max: suppressiveRoundsMax,
             step: 1,
             extraClasses: "suppressive-field suppressive-rounds-fired"

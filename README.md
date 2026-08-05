@@ -26,7 +26,9 @@ R. Talsorian Games’ [Cyberpunk 2020](https://talsorianstore.com/products/cyber
 * **Combat frame**: initiative ties broken deterministically, the sheet's initiative modifier finally reaching the roll, a Death Save at the start of a mortally wounded character's turn, and a turn announcement for the player whose turn it is.
 * **Movement allowance on the ruler**: metres spent and remaining against MA walking and MA x 3 running, with an overspent move highlighted.
 * **Explosions and blast zones**: a grenade or an RPG centres on the target it was thrown at and scatters off the Grenade Table when the throw misses. The GM applies the whole crater in one click — everyone caught takes the blast on a hit location of their own, scaled by the falloff ring they are standing in, through the same damage chain as any other hit. Incendiary rounds keep burning at the start of each of the victim's turns, and a shotgun's spread catches everyone inside its pattern.
-* **Sixteen settings** covering optional rules, house rules and client preferences — among them Staged Penetration (armour ablation), the action economy's -3 for every action after the first, one initiative die per side, Friday Night Fistfight 2, a movement allowance that refuses a player's overspend, and a **house rule** (off by default, and marked as one) letting a declared dodge hinder gunfire.
+* **Seventeen settings** covering optional rules, house rules and client preferences — among them Staged Penetration (armour ablation), the action economy's -3 for every action after the first, one initiative die per side, Friday Night Fistfight 2, a movement allowance that refuses a player's overspend, and a **house rule** (off by default, and marked as one) letting a declared dodge hinder gunfire.
+* **Suppressive-fire zones**: the fire corridor becomes a real area on the canvas — the shooter places and rotates it, and any token entering or crossing it rolls Athletics + REF against a save number the burst's own rounds and width set. A failed save is 1D6 hits through the same damage chain as any other, and the zone is swept away when its encounter ends.
+* **One switch turns all of it off.** *Combat automation* is a single world setting, on by default: with it off the system still rolls dice, posts cards, and runs initiative, the movement allowance and the turn announcements — and applies nothing on its own. No statuses, no damage, no zones, no defence prompts. That is the 1.1.x way of playing, one click away, and a submenu underneath it carries the individual optional rules.
 * **Solo professional ability** is factored into initiative and awareness rolls.
 * **Ammo tracking & quick reloads** directly from chat.
 * **Netrunning**: major core functionality — deck builder with configuration, purchased program list, active program panel, automatic RAM usage & total cost, and one-click *Interface* rolls from the Netrunning tab.
@@ -37,7 +39,6 @@ R. Talsorian Games’ [Cyberpunk 2020](https://talsorianstore.com/products/cyber
 
 ## Planned features
 
-* **Suppressive-fire zones** — the fire corridor becomes a real area on the canvas, and a token crossing it saves against being hit. *(In progress for this release.)*
 * Shopping workflow with automatic money deduction.
 * Automatic generation of cinematic finishing moves.
 * **Mech sheet**.

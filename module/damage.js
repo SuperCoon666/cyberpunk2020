@@ -1,5 +1,5 @@
 import { createCyberpunkChatMessage, renderCyberpunkTemplate } from "./compat.js";
-import { localize, localizeParam } from "./utils.js";
+import { localize, localizeParam, rollLocation, isRollableFormula } from "./utils.js";
 import { CyberpunkActor } from "./actor/actor.js";
 import { ATHLETICS_SKILL_ID, isCombatAutomationEnabled } from "./lookups.js";
 import { Multiroll } from "./dice.js";
@@ -28,11 +28,29 @@ const LIMB_ZONES = new Set(["lArm", "rArm", "lLeg", "rLeg"]);
 const LIMB_USELESS_AT = 20;
 const LIMB_DESTROYED_AT = 30;
 
+/** How many times a hit into a zone that no longer exists re-rolls its location (D38). */
+const REDERIVE_ATTEMPTS = 6;
+
 /** Ch. 07: a limb over the threshold in one hit is severed, the head kills outright. */
 const SEVERABLE_ZONES = new Set(["Head", "lArm", "rArm", "lLeg", "rLeg"]);
 
 /** woundState() counts wound slots four wide, so Mortal is the fourth. */
 export const MORTAL_WOUND_STATE = 4;
+
+/**
+ * Whether this attacker is an ambusher — every token they have on the viewed scene is hidden.
+ * An actor with no token there is not hidden: there is nothing on the map to give away.
+ *
+ * Here rather than on `CyberpunkItem`, because `zones.js` needs it too and importing `item.js`
+ * there would close a cycle.
+ *
+ * @param {CyberpunkActor} [actor]
+ * @returns {boolean}
+ */
+export function attackerIsHidden(actor) {
+  const tokens = actor?.getActiveTokens?.(false, true) ?? [];
+  return tokens.length > 0 && tokens.every(token => token.hidden);
+}
 
 /**
  * The querying side gives up at 30 s, so the owner's dialog closes at 25 and rolls itself: the
@@ -138,8 +156,10 @@ export function resolveHit({ damage = 0, zone = "Torso", ap = false, ammo = null
   const btm = numberOr(targetActor?.system?.stats?.bt?.modifier, 0);
 
   // A cyberlimb takes the whole penetrating hit into its own SDP: no BTM, no wound track and, per
-  // ch. 06, "no saving roll against shock and stun".
-  const toCyberlimb = LIMB_ZONES.has(zone) && numberOr(targetActor?.system?.sdp?.sum?.[zone], 0) > 0;
+  // ch. 06, "no saving roll against shock and stun". The pool that absorbs is the pool that is
+  // **left** — `sum` is what was installed, and reading it made a shot-off limb a permanent
+  // shield (`T159`).
+  const toCyberlimb = LIMB_ZONES.has(zone) && numberOr(targetActor?.system?.sdp?.current?.[zone], 0) > 0;
   const final = toCyberlimb || penetrating <= 0 ? 0 : Math.max(1, penetrating - btm);
 
   return {
@@ -222,7 +242,9 @@ export async function rollZoneSave(actor, threshold, { mod = 0, messageMode } = 
 export function rollSaveOf(actor, kind, dc, mod = 0, messageMode = undefined) {
   return kind === "zone"
     ? rollZoneSave(actor, dc, { mod, messageMode })
-    : actor.rollSave(kind, { mod, messageMode });
+    // A Stun or Death save derives its own threshold; `dc` overrides it for the one rule that
+    // names a threshold of its own, the severance save at Mortal 0 (`T144`).
+    : actor.rollSave(kind, { mod, messageMode, threshold: dc || undefined });
 }
 
 /**
@@ -280,6 +302,9 @@ function formulaCeiling(formula) {
  */
 async function startDot(actor, ammo, zone) {
   if (!ammo?.dotEnabled || !(ammo.dotTurns > 0) || !ammo.dotDamageFormula) return;
+  // Refused at the write, so a formula nobody can roll never becomes a burn that ticks for ever
+  // (`T119`, D33). `tickDot` guards the roll as well: a world can already be carrying one.
+  if (!isRollableFormula(ammo.dotDamageFormula)) return;
 
   const turns = Math.floor(ammo.dotTurns);
   const formula = ammo.dotDamageFormula;
@@ -325,6 +350,9 @@ export async function tickDot(actor, { messageMode } = {}) {
   const dot = actor.getFlag("cyberpunk2020", DOT_FLAG);
   // User-authored flag data: a hand-edited or half-written one must not throw inside a turn change.
   if (!dot?.formula || !(dot.turns > 0)) return;
+  // The throw this replaces took the whole turn start with it — no tick, no stun-recovery save and
+  // no Death Save, every turn, for ever, because the flag was never decremented (`T119`).
+  if (!isRollableFormula(dot.formula)) return;
 
   const roll = await new Roll(String(dot.formula)).evaluate();
   const zone = String(dot.zone || "Torso");
@@ -390,23 +418,38 @@ export async function applyHitsToActor(actor,
   let killed = false;
   let ignitionZone = null;
 
+  // D38 — a hit into a zone that is no longer there still hits; its location is determined among
+  // the zones that are. A cyberlimb with nothing left of its SDP is that case, and the running
+  // `sdp` tally is what makes a limb shot away *earlier in the same attack* count as gone too.
+  const zoneIsGone = zone => LIMB_ZONES.has(zone)
+    && numberOr(actor.system.sdp?.sum?.[zone], 0) > 0
+    && numberOr(actor.system.sdp?.current?.[zone], 0) - (sdp[zone] ?? 0) <= 0;
+
   for (const hit of hits) {
+    let zone = hit.zone;
+    // Bounded because the loop is a re-roll, not a search: Head and Torso are never cyberlimbs, so
+    // in practice it ends on the first or second throw. Exhausting it leaves the hit where it was
+    // rolled, where it now reaches the wound track rather than a limb that cannot absorb it.
+    for (let attempt = 0; attempt < REDERIVE_ATTEMPTS && zoneIsGone(zone); attempt++) {
+      zone = (await rollLocation(actor)).areaHit;
+    }
+
     const resolved = resolveHit(
-      { damage: hit.damage, zone: hit.zone, ap, ammo },
+      { damage: hit.damage, zone, ap, ammo },
       actor,
       { severanceThreshold }
     );
     wound += resolved.final;
     // The first hit that actually got *in* is where a burn catches (D26.2): a burst across five
     // zones whose first hit the armour stopped ignites at the one that wounded, not at that one.
-    if (ignitionZone === null && (resolved.final > 0 || resolved.toSdp > 0)) ignitionZone = hit.zone;
-    if (resolved.toSdp > 0) sdp[hit.zone] = (sdp[hit.zone] ?? 0) + resolved.toSdp;
-    if (resolved.penetrating > 0) penetratedZones[hit.zone] = (penetratedZones[hit.zone] ?? 0) + 1;
+    if (ignitionZone === null && (resolved.final > 0 || resolved.toSdp > 0)) ignitionZone = zone;
+    if (resolved.toSdp > 0) sdp[zone] = (sdp[zone] ?? 0) + resolved.toSdp;
+    if (resolved.penetrating > 0) penetratedZones[zone] = (penetratedZones[zone] ?? 0) + 1;
     if (resolved.severed) {
-      if (hit.zone === "Head") killed = true;
-      else severedLimbs.push({ zone: localize(hit.zone) });
+      if (zone === "Head") killed = true;
+      else severedLimbs.push({ zone: localize(zone) });
     }
-    lines.push({ ...resolved, zone: hit.zone, damage: hit.damage });
+    lines.push({ ...resolved, zone, damage: hit.damage });
   }
 
   await actor.applyDamage({ wound, sdp });
@@ -444,6 +487,16 @@ export async function applyHitsToActor(actor,
   // metal arm burns. Only a hit the armour stopped leaves nothing to catch.
   if (ignitionZone !== null) {
     await startDot(actor, ammo, overallBody ? "Torso" : ignitionZone);
+  }
+
+  // Ch. 07:530 — a severed limb means *"an immediate Death Save at Mortal 0"*: the Save number with
+  // no mortality penalty, which is `stunThreshold() + 3` evaluated at wound state 4, i.e. BT — not
+  // the victim's own current, harsher threshold (`T144`). The head case never reaches here; it
+  // killed outright above.
+  if (severedLimbs.length) {
+    const death = await requestSave(actor, "death",
+      { dc: actor.system.stats.bt.total, messageMode });
+    if (!death.success) await actor.toggleStatusEffect("dead", { active: true, overlay: true });
   }
 
   if (wound > 0) {

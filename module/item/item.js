@@ -1,8 +1,8 @@
 import { weaponTypes, rangedAttackTypes, meleeAttackTypes, fireModes, ranges, rangeDCs, rangeResolve, strengthDamageBonus, getMartialActionBonus, martialActions, isCombatAutomationEnabled, isFnff2Enabled, getFnff2DamageBonusSymbol, FNFF2_ONLY_MARTIAL_ART_IDS } from "../lookups.js"
 import { Multiroll, makeD10Roll } from "../dice.js"
-import { localize, localizeParam, rollLocation, cwHasType, cwIsEnabled, isFumbleRoll, buildRangedCombatFumbleData, buildSkillFumbleData, clamp } from "../utils.js";
+import { localize, localizeParam, rollLocation, cwHasType, cwIsEnabled, isFumbleRoll, buildRangedCombatFumbleData, buildSkillFumbleData, clamp, isRollableFormula } from "../utils.js";
 import { createCyberpunkChatMessage, renderCyberpunkTemplate } from "../compat.js";
-import { ATTACK_FLAG_VERSION, hiddenMessageMode, snapshotAmmo } from "../damage.js";
+import { ATTACK_FLAG_VERSION, attackerIsHidden, hiddenMessageMode, snapshotAmmo } from "../damage.js";
 import { declareDodge, dodgeRangedPenalty, resolveDefense } from "../combat.js";
 import { blastProfile, blastRings, fireCorridor, isBlastAttack, isSpreadAttack, pickBlastCentre, placeSuppressionZone, scatterCentre, spreadProfileFor } from "../zones.js";
 /** @extends {Item} */
@@ -397,6 +397,15 @@ export class CyberpunkItem extends Item {
       return false;
     }
 
+    // Damage strings are typed on item sheets, so both of these are user-authored data at a real
+    // boundary and only D/d notation is valid (D33). Refused here rather than at the roll: this is
+    // ahead of every fire mode, so no round is spent and no card is posted for an attack that
+    // would throw halfway through (`T120`). A blank formula is not a typo — several paths fall
+    // back to their own default — so only a non-empty one is checked.
+    const ammoDamage = snapshotAmmo(this)?.bonusDamageFormula;
+    if (system?.damage && !isRollableFormula(system.damage)) return false;
+    if (ammoDamage && !isRollableFormula(ammoDamage)) return false;
+
     const targets = Array.isArray(targetTokens) ? targetTokens : [];
     // Hit locations come from the target's own table, so the first target rides along with the
     // modifiers every branch already receives.
@@ -447,15 +456,14 @@ export class CyberpunkItem extends Item {
   }
 
   /**
-   * Whether this attacker is an ambusher — every token they have on the viewed scene is hidden.
-   * An actor with no token there is not hidden: there is nothing on the map to give away.
+   * Whether this attacker is an ambusher. The implementation moved to `damage.js` when `zones.js`
+   * needed it too; this stays as the name every call site and check already uses.
    *
    * @param {CyberpunkActor} [actor]
    * @returns {boolean}
    */
   static __attackerIsHidden(actor) {
-    const tokens = actor?.getActiveTokens?.(false, true) ?? [];
-    return tokens.length > 0 && tokens.every(token => token.hidden);
+    return attackerIsHidden(actor);
   }
 
   /**
@@ -559,6 +567,11 @@ export class CyberpunkItem extends Item {
         onTarget,
         scatter,
         placed: !!blast,
+        // A shotgun pattern shares this template with a grenade but is not one: it has a width
+        // rather than a radius, and the corridor `tokensInBlast` collects went unmentioned
+        // entirely, so *Apply over zone* damaged victims the card never described (`T162`).
+        isSpread: kind === "spread",
+        spreadWidth: profile.radius * 2,
         radius: profile.radius,
         fullDamageWithin: profile.fullDamageWithin,
         rings: blastRings(profile),
@@ -744,10 +757,12 @@ export class CyberpunkItem extends Item {
       let rolls = [];
       let shotsLeft = Number(system.shotsLeft) || 0;
       let roundsToAllocate = Math.min(totalRounds, shotsLeft);
+      // Ch. 07:712 — *"divide the ROF of the weapon by the total number of targets (round down)"*.
+      // The remainder is left unfired, so every target gets the same share and a 20-round burst
+      // over three targets spends 18 (`T147`).
+      const plannedRoundsForTarget = Math.floor(roundsToAllocate / targetCount);
 
       for (let i = 0; i < targetCount && roundsToAllocate > 0; i++) {
-          const remainingTargets = targetCount - i;
-          const plannedRoundsForTarget = Math.ceil(roundsToAllocate / remainingTargets);
           const attackModsForTarget = {
             ...attackMods,
             fullAutoRoundsFired: plannedRoundsForTarget,
@@ -867,7 +882,9 @@ export class CyberpunkItem extends Item {
       let areaDamages = {};
       let roundsHit;
       if (attackHits) {
-          // In RAW this is 1d6/2, but this is functionally the same
+          // Ch. 07:704 is `1D6/2`, which the book never says how to round. `1d3` is that roll
+          // rounded **up** — the reading D36 adopted; rounding down would be {0,1,1,2,2,3} and
+          // would let a successful burst land no rounds at all (`T150`).
           roundsHit = await new Roll("1d3").evaluate();
           for (let i = 0; i < roundsHit.total; i++) {
               let location = (await rollLocation(attackMods.targetActor, attackMods.targetArea)).areaHit;
@@ -941,9 +958,12 @@ export class CyberpunkItem extends Item {
     const dmgFormula = sys.damage || "1d6";
 
     let zone = null;
+    // A burst that can spend no round lays no zone and rolls no hits: it posts a card saying so.
+    // Display over veto, per the no-hard-limits rule — the fire mode is still offered, and a
+    // cyberweapon left at the schema's default ROF 0 is how a GM reaches this (`T113`).
     // With automation off the burst takes the existing no-canvas branch: the abstract per-target
     // tally and `placed: false`, which is the v1.1.x card.
-    if (canvas.ready && isCombatAutomationEnabled()) {
+    if (rounds > 0 && canvas.ready && isCombatAutomationEnabled()) {
       // The corridor covers the band being fired at; the shooter places and rotates it. A weapon
       // with no range falls back to a square, which is the zone the book's own examples describe.
       const reach = Math.round(rangeResolve[mods.range]?.(Number(sys.range) || 0) || 0);
@@ -959,7 +979,7 @@ export class CyberpunkItem extends Item {
     const results = [];
     // With a zone on the map every crossing rolls its own hits, so the abstract per-target tally is
     // the no-canvas fallback and not a second answer to the same question.
-    for (let t = 0; !zone && t < targets; t++) {
+    for (let t = 0; rounds > 0 && !zone && t < targets; t++) {
       const hitsRoll = await new Roll("1d6").evaluate();
       const areaDamages = {};
 
@@ -981,7 +1001,8 @@ export class CyberpunkItem extends Item {
 
     const html = await renderCyberpunkTemplate(
       "systems/cyberpunk2020/templates/chat/suppressive.hbs",
-      { weaponName: this.name, rounds, width, saveDC, dmgFormula, results, placed: !!zone }
+      { weaponName: this.name, rounds, width, saveDC, dmgFormula, results, placed: !!zone,
+        noRounds: rounds <= 0 }
     );
 
     // Returned, not merely posted: `null` is how a dismissed placement is told apart from a burst
@@ -1280,8 +1301,13 @@ export class CyberpunkItem extends Item {
     const sysForAcc = this._getWeaponSystem ? this._getWeaponSystem() : this.system;
     const weaponAccuracy = Number(sysForAcc?.accuracy ?? 0) || 0;
 
+    // The dialog shows this row for every weapon and `chargeAction` charges after every attack, so
+    // the martial path takes the term the ranged and plain-melee paths take in `attackRoll` — this
+    // one builds its own Roll and used to skip it (`T146`).
+    const actionPenalty = Number(attackMods?.actionPenalty) || 0;
+
     let attackRoll = new Roll(
-            `1d10x10 + @stats.ref.total + @attackBonus + @keyTechniqueBonus + @actionBonus + @extraMod + @targetAreaMod${weaponAccuracy !== 0 ? " + @weaponAccuracy" : ""}`,
+            `1d10x10 + @stats.ref.total + @attackBonus + @keyTechniqueBonus + @actionBonus + @extraMod + @targetAreaMod${weaponAccuracy !== 0 ? " + @weaponAccuracy" : ""}${actionPenalty !== 0 ? " + @actionPenalty" : ""}`,
       {
         stats: system.stats,
         attackBonus: martialSkillLevel,
@@ -1289,7 +1315,8 @@ export class CyberpunkItem extends Item {
         actionBonus: actionBonus,
         extraMod: extraMod,
         targetAreaMod,
-        weaponAccuracy
+        weaponAccuracy,
+        actionPenalty
       }
     );
 

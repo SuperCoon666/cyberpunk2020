@@ -1,4 +1,4 @@
-import { martialOptions, meleeAttackTypes, meleeBonkOptions, rangedModifiers, weaponTypes, FNFF2_ONLY_MARTIAL_ART_IDS, isFnff2Enabled, COMBAT_SENSE_SKILL_IDS, INTERFACE_SKILL_IDS, programTypes } from "../lookups.js";
+import { martialOptions, meleeAttackTypes, meleeBonkOptions, rangedModifiers, weaponTypes, FNFF2_ONLY_MARTIAL_ART_IDS, isCombatAutomationEnabled, isFnff2Enabled, COMBAT_SENSE_SKILL_IDS, INTERFACE_SKILL_IDS, programTypes } from "../lookups.js";
 import { deleteFieldUpdate, localize, localizeParam, cwHasType, cwIsEnabled, refusedWhilePaused, withCompendiumSource } from "../utils.js"
 import { ModifiersDialog } from "../dialog/modifiers.js"
 import { SortOrders, sortSkills } from "./skill-sort.js";
@@ -662,13 +662,21 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
    * @param {number} mod Situational modifier typed beside the button
    */
   async _cpRollStunDeath(mod) {
+    // D34 — the roll and its card are what the user asked for and stay in either state; the two
+    // statuses are a resolution outcome, so with the master off they are the table's to set. This
+    // is D22's turn-start split applied to the button (`T140`), and it was the one ungated writer
+    // of `cpStunned`/`dead` left.
+    const automated = isCombatAutomationEnabled();
+
     const stun = await this.actor.rollSave("stun", { mod });
-    if (!stun.success) await this.actor.toggleStatusEffect("cpStunned", { active: true });
+    if (!stun.success && automated) await this.actor.toggleStatusEffect("cpStunned", { active: true });
 
     if (this.actor.woundState() < MORTAL_WOUND_STATE) return;
 
     const death = await this.actor.rollSave("death", { mod });
-    if (!death.success) await this.actor.toggleStatusEffect("dead", { active: true, overlay: true });
+    if (!death.success && automated) {
+      await this.actor.toggleStatusEffect("dead", { active: true, overlay: true });
+    }
   }
 
   /**

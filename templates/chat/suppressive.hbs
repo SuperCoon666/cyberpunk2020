@@ -2,19 +2,23 @@
     <h2>{{CPLocal 'SuppressiveFire'}} – {{weaponName}}</h2>
 
     <ul class="condensed">
-    <li><b>{{CPLocal "RoundsFiredLbl"}}:</b> {{rounds}}</li>
-    <li><b>{{CPLocal "FireZoneWidth"}}:</b> {{width}} {{CPLocal "UnitMetres"}}</li>
+    <li><b>{{CPLocal "SuppressiveRoundsLine"}}:</b> {{rounds}}</li>
+    <li><b>{{CPLocal "SuppressiveWidthLine"}}:</b> {{width}} {{CPLocal "UnitMetres"}}</li>
     <li><b>{{CPLocal "DifficultyClassShort"}}</b> {{saveDC}}</li>
     </ul>
 
     <hr/>
 
+    {{#if noRounds}}
+    <p>{{CPLocal "SuppressiveNoRounds"}}</p>
+    {{else}}
     <p>{{CPLocal "SuppressiveDesc" save=saveDC rounds=rounds width=width}}</p>
 
     <p>{{CPLocal "SuppressiveHitsDesc" dmg=dmgFormula}}</p>
 
     {{#if placed}}
     <p>{{CPLocal "ZonePlaced"}}</p>
+    {{/if}}
     {{/if}}
 
     {{#each results as |t idx|}}

@@ -56,6 +56,13 @@
             <span>{{CPLocal "Damage"}}: </span>
             <span class="flex-pad">{{{damageHtml}}}</span>
         </div>
+        {{#if isSpread}}
+        {{!-- A shotgun pattern is a width, not a radius, and it takes the line of fire with it. --}}
+        <div class="field">
+            <span>{{CPLocal "SpreadWidth"}}: </span>
+            <span class="flex-pad">{{spreadWidth}} {{CPLocal "UnitMetres"}}</span>
+        </div>
+        {{else}}
         <div class="field">
             <span>{{CPLocal "BlastRadius"}}: </span>
             <span class="flex-pad">{{radius}} {{CPLocal "UnitMetres"}}</span>
@@ -64,7 +71,12 @@
             <span>{{CPLocal "BlastFullDamage"}}: </span>
             <span class="flex-pad">{{fullDamageWithin}} {{CPLocal "UnitMetres"}}</span>
         </div>
+        {{/if}}
     </div>
+
+    {{#if isSpread}}
+    <p><em>{{CPLocal "SpreadCorridor"}}</em></p>
+    {{/if}}
 
     {{#if rings}}
     <div class="damage-tally">

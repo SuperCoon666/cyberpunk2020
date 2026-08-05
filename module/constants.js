@@ -25,8 +25,8 @@ export const DEFAULT_HIT_LOCATIONS = {
   Torso: { location: [2, 4] },
   lArm: { location: [6] },
   rArm: { location: [5] },
-  lLeg: { location: [7, 8] },
-  rLeg: { location: [9, 10] }
+  lLeg: { location: [9, 10] },
+  rLeg: { location: [7, 8] }
 };
 
 export const HIT_LOCATION_KEYS = Object.freeze(Object.keys(DEFAULT_HIT_LOCATIONS));

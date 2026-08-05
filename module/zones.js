@@ -1,7 +1,7 @@
 import { isCombatAutomationEnabled, ranges, rangedAttackTypes } from "./lookups.js";
-import { applyHitsToActor, hiddenMessageMode, requestSave, ATTACK_FLAG_VERSION } from "./damage.js";
+import { applyHitsToActor, attackerIsHidden, hiddenMessageMode, requestSave, ATTACK_FLAG_VERSION } from "./damage.js";
 import { createCyberpunkChatMessage } from "./compat.js";
-import { localize, localizeParam, rollLocation } from "./utils.js";
+import { localize, localizeParam, rollLocation, isRollableFormula } from "./utils.js";
 
 /**
  * Ch. 07's Grenade Table (`dev/rulebooks/corebook/07-friday-night-firefight.md:187-197`) as it is
@@ -269,16 +269,25 @@ async function resolveZoneCrossing(zone, token) {
   const crossing = combat?.started ? `${combat.id}.${combat.round}.${combat.turn}` : "once";
   const saved = zone.behavior.getFlag("cyberpunk2020", CROSSED_FLAG) ?? {};
   if (saved[token.id] === crossing) return;
+
+  // The zone's damage formula is user-authored and outlives the weapon it was laid from, so it is
+  // checked here rather than only at the sheet (`T120`, D33) — and before the flag below, so a
+  // zone nobody can roll costs the token nothing.
+  if (!isRollableFormula(zone.damageFormula)) return;
+
   await zone.behavior.setFlag("cyberpunk2020", CROSSED_FLAG, { ...saved, [token.id]: crossing });
 
   // The save card that follows says nothing about why it is being rolled, so this is what makes the
   // crossing legible — and it is the reader `attackerUuid` was stored for (`T70`). The uuid is
   // persisted on a Region that outlives the actor it names, so an unresolvable shooter drops the
   // clause rather than the notice.
+  // D31 — and an ambusher who laid the zone is not named either, which is the same nameless
+  // sentence an unresolvable shooter already gets (`T103`).
   const attacker = zone.attackerUuid ? await fromUuid(zone.attackerUuid) : null;
+  const named = attacker && !attackerIsHidden(attacker);
   await createCyberpunkChatMessage({
     speaker: ChatMessage.getSpeaker({ actor }),
-    content: attacker
+    content: named
       ? localizeParam("ZoneCrossing", { target: token.name, attacker: attacker.name })
       : localizeParam("ZoneCrossingUnknown", { target: token.name })
   }, { messageMode: hiddenMessageMode(token.hidden) });
@@ -401,7 +410,14 @@ export function tokensInBlast(blast) {
     let distance = scene.grid.measurePath([centre, point]).distance;
     let multiplier = blastMultiplierFor(distance, blast);
 
-    if (multiplier <= 0 && blast.corridor) {
+    // Ch. 07:843 is *"in the straight path **between** attacker and intended target"*, and the
+    // attacker is an endpoint of that path rather than a point between its ends — so the shooter is
+    // out of their own corridor, and out of it alone: a bystander standing on the muzzle is still
+    // caught, and the disc still reaches whoever is in it (`T110`).
+    const isShooter = !!blast.corridor?.shooterTokenUuid
+      && token.uuid === blast.corridor.shooterTokenUuid;
+
+    if (multiplier <= 0 && blast.corridor && !isShooter) {
       const along = scene.grid.measurePath([corridorPoint(blast.corridor, point), point]).distance;
       // Ch. 07:843 — a target in the straight path between attacker and intended target is in the
       // area of effect too, at the pattern's own width. Full damage: the book gives the corridor
@@ -463,7 +479,15 @@ export function fireCorridor(shooter, target) {
   const blocked = shooter.checkCollision(target, { type: "move", mode: "closest" });
   const to = blocked ? { x: blocked.x, y: blocked.y } : target;
 
-  return { from: { x: from.x, y: from.y }, to: { x: to.x, y: to.y } };
+  // The shooter travels with the corridor so the apply path can leave them out of it: they stand
+  // at distance 0 from their own line of fire and were caught by every shot (`T110`). Carried
+  // here rather than matched by position, because the corridor is the only part of the payload
+  // that knows whose it is.
+  return {
+    from: { x: from.x, y: from.y },
+    to: { x: to.x, y: to.y },
+    shooterTokenUuid: shooter.document?.uuid ?? ""
+  };
 }
 
 /**

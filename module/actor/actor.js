@@ -663,13 +663,19 @@ export class CyberpunkActor extends Actor {
         : this._getCustomMartialSkill(martialKey);
       if (!skill) continue;
 
-      const bonus = Math.max(...DEFENSIVE_MARTIAL_ACTIONS
-        .map(action => getMartialActionBonus(martialKey, action)));
+      const bonuses = Object.fromEntries(DEFENSIVE_MARTIAL_ACTIONS
+        .map(action => [action, getMartialActionBonus(martialKey, action)]));
+      const bonus = Math.max(...Object.values(bonuses));
 
       options.push({
         skillId: stableId ?? skill.id,
         label: this.getSkillDisplayName(skill),
-        total: ref + CyberpunkActor.realSkillValue(skill) + bonus
+        total: ref + CyberpunkActor.realSkillValue(skill) + bonus,
+        // Which maneuver built the total, so a defence made of dodging earns the `dodgeVsRanged`
+        // -2 the plain Dodge skill earns (`T161`, D39). **Strictly** greater: D39 rules on a
+        // defence built *out of* the Dodge maneuver, and an art whose two are equal says only
+        // that either would serve (`AA-Q4`).
+        dodging: bonuses.Dodge > bonuses.BlockParry
       });
     }
 
@@ -1138,11 +1144,14 @@ export class CyberpunkActor extends Actor {
    * @param {object} [options]
    * @param {number} [options.mod] Situational modifier chosen by whoever rolls
    * @param {string} [options.messageMode] Visibility of the card, for a hidden token
+   * @param {number} [options.threshold] Save number to use instead of this actor's own
    * @returns {Promise<{total: number, threshold: number, success: boolean}>}
    */
-  async rollSave(kind, { mod = 0, messageMode } = {}) {
+  async rollSave(kind, { mod = 0, messageMode, threshold: override } = {}) {
     const death = kind === "death";
-    const threshold = death ? this.deathThreshold() : this.stunThreshold();
+    const threshold = Number.isFinite(override)
+      ? override
+      : (death ? this.deathThreshold() : this.stunThreshold());
 
     const fromImplants = Number(this.system?._cwChecks?.saveStun || 0);
     const totalMod = (Number(mod) || 0) - fromImplants;

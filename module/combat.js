@@ -58,7 +58,15 @@ export class CyberpunkCombat extends Combat {
       // tracker is not viewing throws in core — `renderData.find(...)` is undefined and
       // `"turn" in data` follows it (`client/applications/sidebar/tabs/combat-tracker.mjs:186-188`,
       // 14.365.0). Suppressing the render this write does not need keeps the system out of it.
-      await this.update({ "flags.cyberpunk2020.partyInitiative": next }, { render: false });
+      //
+      // ForcedReplacement, because a flag write otherwise **merges**: the previous round's other
+      // side survived into the new round's object and the reader's own round test then accepted
+      // it, so whichever side rolled second kept its first die for the rest of the fight (`T86`).
+      // Scoped to this one flag rather than `recursive: false`, which would replace every other
+      // module's flags with it.
+      await this.update({
+        "flags.cyberpunk2020.partyInitiative": new foundry.data.operators.ForcedReplacement(next)
+      }, { render: false });
     }
 
     return roll.total;
@@ -134,6 +142,13 @@ export class CyberpunkCombat extends Combat {
     }
 
     await tickDot(actor, { messageMode });
+
+    // A corpse is asked for nothing: the Death Save at the bottom of this function is what writes
+    // `dead`, and without this gate it kept asking every turn for ever — a success against the
+    // threshold changed nothing, because no code reads the result of a save by an actor that is
+    // already dead (`T116`). `resolveDefense` reads the same status list for the same reason
+    // (`T43`). The burn above is deliberately outside the gate: a body still burns.
+    if (actor.statuses.has("dead")) return;
 
     // Both turn-start saves split the same way with the master switch off, which is D22's own
     // worked example: the notice is management and stays, the roll and the status it writes are
@@ -275,7 +290,11 @@ export async function resolveDefense(defender, attackTotal,
     // watch a blank screen for up to 30 s while the defender is the only one who can see why.
     await createCyberpunkChatMessage({
       speaker: ChatMessage.getSpeaker({ actor: defender }),
-      content: localizeParam("DefensePending", { attacker: attackerName, defender: defender.name })
+      // D31 — the notice is public, so an ambusher is not named on it either. `hideAttacker` is
+      // the same flag the prompt takes, so the three surfaces move together (`T103`).
+      content: hideAttacker
+        ? localizeParam("DefensePendingHidden", { defender: defender.name })
+        : localizeParam("DefensePending", { attacker: attackerName, defender: defender.name })
     }, { messageMode });
 
     try {
@@ -302,7 +321,10 @@ export async function resolveDefense(defender, attackTotal,
 
   const roll = await new Roll(`${BaseDie} + @defense + @extraMod`, { defense: base, extraMod }).evaluate();
 
-  if (picked?.skillId === DODGE_SKILL_ID) await declareDodge(defender);
+  // The plain Dodge skill by id, or a martial art whose defence total was built out of its own
+  // Dodge maneuver — `defenseOptions` says which, because the option carries only a skill id and
+  // the maneuver behind the number is otherwise discarded (`T161`, D39).
+  if (picked?.skillId === DODGE_SKILL_ID || picked?.dodging) await declareDodge(defender);
 
   return {
     total: roll.total,

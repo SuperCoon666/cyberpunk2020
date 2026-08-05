@@ -51,6 +51,29 @@ export function shortLocalize(str) {
 export function deleteFieldUpdate(path) {
   return { [path]: new foundry.data.operators.ForcedDeletion() };
 }
+
+/**
+ * Is this hand-typed dice string one the system will roll?
+ *
+ * Damage and burn formulas are typed on item sheets, so they are user-authored data at a real
+ * boundary. Only **D/d** notation is valid (D33): «2к6» — the ordinary Russian spelling of 2d6, in
+ * a maintained locale — is rejected rather than transliterated, and so is a half-typed `2d6+`.
+ * Core's own parser is the authority rather than a regex of ours.
+ *
+ * Reports as well as answering, because every failure this prevents was otherwise silent: a burn
+ * that took the whole turn start with it (`T119`) and a fire zone that ate a token's one save
+ * (`T120`).
+ *
+ * @param {string} formula
+ * @returns {boolean}
+ */
+export function isRollableFormula(formula) {
+  const text = String(formula ?? "");
+  if (Roll.validate(text)) return true;
+
+  ui.notifications?.warn(localizeParam("FormulaInvalid", { formula: text }));
+  return false;
+}
 /**
  * 
  * @param {CyberpunkActor} The actor you're targeting a location on

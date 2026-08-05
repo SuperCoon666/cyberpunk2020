@@ -638,23 +638,28 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
         clear(zoneWidthInput);
         formData.zoneWidth = zoneWidth;
 
-        const targetsRaw = String(targetsInput?.value ?? formData.targetsCount ?? "").trim();
-        const targetsCount = Number(targetsRaw);
+        // `T69` made this row conditional in `rangedModifiers` — it exists only for the abstract
+        // per-target tally. Validating it when it was never rendered rejected every suppressive
+        // burst in the shipped default state, silently (`T158`).
+        if (targetsInput) {
+          const targetsRaw = String(targetsInput.value ?? "").trim();
+          const targetsCount = Number(targetsRaw);
 
-        const targetsInvalid = targetsRaw === ""
-          || !Number.isFinite(targetsCount)
-          || !Number.isInteger(targetsCount)
-          || targetsCount < 1;
+          const targetsInvalid = targetsRaw === ""
+            || !Number.isFinite(targetsCount)
+            || !Number.isInteger(targetsCount)
+            || targetsCount < 1;
 
-        if (targetsInvalid) {
-          return invalidate(
-            targetsInput,
-            localizeParam("IntegerMinInvalid", { min: 1 })
-          );
+          if (targetsInvalid) {
+            return invalidate(
+              targetsInput,
+              localizeParam("IntegerMinInvalid", { min: 1 })
+            );
+          }
+
+          clear(targetsInput);
+          formData.targetsCount = targetsCount;
         }
-
-        clear(targetsInput);
-        formData.targetsCount = targetsCount;
       }
 
       const fired = await this.options.onConfirm(formData);
