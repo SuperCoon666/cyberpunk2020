@@ -15,7 +15,7 @@
                     {{#if ammoFx.typeLabels.length}}
                         {{#each ammoFx.typeLabels}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}
                     {{else}}
-                        {{CPLocal "AmmoEffect_None"}}
+                        {{CPLocal "AmmoEffect_Standard"}}
                     {{/if}}
                 </span>
                 <i class="fa-solid fa-caret-down ammo-ms-caret"></i>
@@ -23,33 +23,33 @@
 
             <div class="ammo-ms-menu">
                 <label class="ammo-ms-opt">
-                    <input type="checkbox" value="None" {{#if (ammoHasEffect system "None")}}checked{{/if}}>
-                    {{CPLocal "AmmoEffect_None"}}
+                    <input type="checkbox" value="Standard" {{#if (ammoHasEffect system "Standard")}}checked{{/if}}>
+                    {{CPLocal "AmmoEffect_Standard"}}
                 </label>
 
                 <label class="ammo-ms-opt">
-                    <input type="checkbox" value="CoreMods" {{#if (ammoHasEffect system "CoreMods")}}checked{{/if}}>
-                    {{CPLocal "AmmoEffect_CoreMods"}}
+                    <input type="checkbox" value="AP" {{#if (ammoHasEffect system "AP")}}checked{{/if}}>
+                    {{CPLocal "AmmoEffect_AP"}}
                 </label>
 
                 <label class="ammo-ms-opt">
-                    <input type="checkbox" value="Stun" {{#if (ammoHasEffect system "Stun")}}checked{{/if}}>
-                    {{CPLocal "AmmoEffect_Stun"}}
+                    <input type="checkbox" value="Electroshock" {{#if (ammoHasEffect system "Electroshock")}}checked{{/if}}>
+                    {{CPLocal "AmmoEffect_Electroshock"}}
                 </label>
 
                 <label class="ammo-ms-opt">
-                    <input type="checkbox" value="DoT" {{#if (ammoHasEffect system "DoT")}}checked{{/if}}>
-                    {{CPLocal "AmmoEffect_DoT"}}
+                    <input type="checkbox" value="Poison" {{#if (ammoHasEffect system "Poison")}}checked{{/if}}>
+                    {{CPLocal "AmmoEffect_Poison"}}
+                </label>
+
+                <label class="ammo-ms-opt">
+                    <input type="checkbox" value="Buckshot" {{#if (ammoHasEffect system "Buckshot")}}checked{{/if}}>
+                    {{CPLocal "AmmoEffect_Buckshot"}}
                 </label>
 
                 <label class="ammo-ms-opt">
                     <input type="checkbox" value="Blast" {{#if (ammoHasEffect system "Blast")}}checked{{/if}}>
                     {{CPLocal "AmmoEffect_Blast"}}
-                </label>
-
-                <label class="ammo-ms-opt">
-                    <input type="checkbox" value="Spread" {{#if (ammoHasEffect system "Spread")}}checked{{/if}}>
-                    {{CPLocal "AmmoEffect_Spread"}}
                 </label>
             </div>
         </div>
@@ -97,27 +97,37 @@
         />
     </div>
 
-    {{!-- ===== Core modifiers ===== --}}
-    {{#if (ammoHasEffect system "CoreMods")}}
-        <div class="field span-two-cells">
-            <label class="larger">{{CPLocal "AmmoSectionCoreMods"}}</label>
+    {{!-- ===== The round's own damage and accuracy — no effect has to be picked to reach them ===== --}}
+    <div class="field span-two-cells">
+        <label class="larger">{{CPLocal "AmmoSectionRound"}}</label>
+        <span class="flex-pad"></span>
+    </div>
+
+    {{> (template "fields/number") label="AmmoRawDamageMult" edit="system.rawDamageMult"}}
+    {{> (template "fields/number") label="AmmoAccuracyMod" edit="system.accuracyMod"}}
+    {{> (template "fields/string") label="AmmoBonusDamage" edit="system.bonusDamageFormula"}}
+
+    {{!-- ===== Armour piercing ===== --}}
+    {{#if (ammoHasEffect system "AP")}}
+        <div class="field span-two-cells" data-tooltip="{{CPLocal 'AmmoPenHalvesHint'}}">
+            <label class="larger">{{CPLocal "AmmoSectionAP"}}</label>
             <span class="flex-pad"></span>
         </div>
 
         {{> (template "fields/number") label="AmmoArmorMultSoft" edit="system.armorMultSoft"}}
         {{> (template "fields/number") label="AmmoArmorMultHard" edit="system.armorMultHard"}}
 
-        {{> (template "fields/number") label="AmmoRawDamageMult" edit="system.rawDamageMult"}}
         {{> (template "fields/number") label="AmmoPenDamageMult" edit="system.penDamageMult"}}
+        <div class="field"><span class="flex-pad"></span></div>
 
-        {{> (template "fields/string") label="AmmoBonusDamage" edit="system.bonusDamageFormula"}}
-        {{> (template "fields/number") label="AmmoAccuracyMod" edit="system.accuracyMod"}}
+        {{> (template "fields/boolean") label="AmmoPenHalvesSoft" edit="system.penHalvesSoft"}}
+        {{> (template "fields/boolean") label="AmmoPenHalvesHard" edit="system.penHalvesHard"}}
     {{/if}}
 
-    {{!-- ===== STUN ===== --}}
-    {{#if (ammoHasEffect system "Stun")}}
-        <div class="field span-two-cells">
-            <label class="larger">{{CPLocal "AmmoSectionStun"}}</label>
+    {{!-- ===== Electroshock ===== --}}
+    {{#if (ammoHasEffect system "Electroshock")}}
+        <div class="field span-two-cells" data-tooltip="{{CPLocal 'AmmoStunOnHitHint'}}">
+            <label class="larger">{{CPLocal "AmmoSectionElectroshock"}}</label>
             <span class="flex-pad"></span>
         </div>
 
@@ -125,10 +135,10 @@
         {{> (template "fields/number") label="AmmoStunMod" edit="system.stunSaveMod"}}
     {{/if}}
 
-    {{!-- ===== DoT ===== --}}
-    {{#if (ammoHasEffect system "DoT")}}
+    {{!-- ===== Poison / burn ===== --}}
+    {{#if (ammoHasEffect system "Poison")}}
         <div class="field span-two-cells" data-tooltip="{{CPLocal 'AmmoDoTDamageHint'}}">
-            <label class="larger">{{CPLocal "AmmoSectionDoT"}}</label>
+            <label class="larger">{{CPLocal "AmmoSectionPoison"}}</label>
             <span class="flex-pad"></span>
         </div>
 
@@ -173,10 +183,10 @@
         {{/each}}
     {{/if}}
 
-    {{!-- Spread  --}}
-    {{#if (ammoHasEffect system "Spread")}}
+    {{!-- Buckshot — the spread pattern a shell throws --}}
+    {{#if (ammoHasEffect system "Buckshot")}}
         <div class="field span-two-cells">
-            <label class="larger">{{CPLocal "AmmoSectionSpread"}}</label>
+            <label class="larger">{{CPLocal "AmmoSectionBuckshot"}}</label>
             <span class="flex-pad"></span>
         </div>
         {{> (template "fields/select")

@@ -262,6 +262,19 @@ export class CyberpunkWeaponData extends CyberpunkBaseItemData {
   }
 }
 
+/**
+ * D52 renamed the ammunition effect list from the mechanisms it configures to the stock rounds a
+ * GM actually builds. The fields behind each block are unchanged, so a world's ammunition keeps
+ * every value it had and only the label it was filed under moves.
+ */
+const LEGACY_AMMO_EFFECTS = {
+  None: "Standard",
+  CoreMods: "AP",
+  Stun: "Electroshock",
+  DoT: "Poison",
+  Spread: "Buckshot"
+};
+
 export class CyberpunkAmmoData extends CyberpunkBaseItemData {
   static defineSchema() {
     return {
@@ -276,6 +289,11 @@ export class CyberpunkAmmoData extends CyberpunkBaseItemData {
       armorMultHard: numberField(1),
       rawDamageMult: numberField(1),
       penDamageMult: numberField(1),
+      // Ch. 07:865-873 — a finned slug has "normal AP ability vs. all armors" but the damage that
+      // penetrates hard armour is not halved. Both default true, which is the flat AP rule every
+      // existing world already behaves by, so no document changes meaning (`T95`, D53 У3).
+      penHalvesSoft: booleanField(true),
+      penHalvesHard: booleanField(true),
       bonusDamageFormula: stringField(""),
       accuracyMod: numberField(0),
       stunSaveOnHit: booleanField(false),
@@ -296,17 +314,22 @@ export class CyberpunkAmmoData extends CyberpunkBaseItemData {
       spreadWidthShort: numberField(1),
       spreadWidthMedium: numberField(2),
       spreadWidthLong: numberField(3),
-      effectTypes: arrayField(null, ["None"])
+      effectTypes: arrayField(null, ["Standard"])
     };
   }
 
   static migrateData(source) {
     source ??= {};
-    normalizeArrayIfPresent(source, "effectTypes", ["None"]);
+    normalizeArrayIfPresent(source, "effectTypes", ["Standard"]);
+    if (hasOwn(source, "effectTypes")) {
+      source.effectTypes = source.effectTypes.map(t => LEGACY_AMMO_EFFECTS[t] ?? t);
+    }
     normalizeArrayIfPresent(source, "blastMultipliers", [0.5, 0.25, 0.125, 0.0625]);
     normalizeBooleanIfPresent(source, "stunSaveOnHit", false);
     normalizeBooleanIfPresent(source, "dotEnabled", false);
     normalizeBooleanIfPresent(source, "blastShrapnel", false);
+    normalizeBooleanIfPresent(source, "penHalvesSoft", true);
+    normalizeBooleanIfPresent(source, "penHalvesHard", true);
     return super.migrateData(source);
   }
 }

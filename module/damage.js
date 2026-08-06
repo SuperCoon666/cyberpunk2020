@@ -9,11 +9,20 @@ import { Multiroll } from "./dice.js";
  * than guessed at, so the number changes whenever a field the apply path reads is added or moved.
  * 2: `kind` decides which apply path a card takes.
  * 3: the zone payload carries `sceneId`, and a spread carries its `corridor` and aimed location.
+ * 4: the spread's `corridor.shooterTokenUuid` (`T235` — added at `T110` without a bump), and the
+ *    ammunition snapshot carries `penHalvesSoft`/`penHalvesHard` and the electroshock save.
  */
-export const ATTACK_FLAG_VERSION = 3;
+export const ATTACK_FLAG_VERSION = 4;
 
 /** The flag a damage-over-time effect burns down from, one tick per turn. */
 const DOT_FLAG = "dot";
+
+/** The victim's own record of how many electroshock hits they have taken, and when (`T98`). */
+const SHOCK_FLAG = "shock";
+
+/** Ch. 07:781 — *"reduced by -2 for every successive shot in a three-turn time period"*. */
+const SHOCK_LADDER_STEP = -2;
+const SHOCK_WINDOW_ROUNDS = 3;
 
 /** Ch. 07:910 — soft armour at or under this stops nothing at all against a burn. */
 const BURN_SOFT_SP_MINIMUM = 15;
@@ -100,6 +109,11 @@ export function snapshotAmmo(item) {
     armorMultSoft: numberOr(a.armorMultSoft, 1),
     armorMultHard: numberOr(a.armorMultHard, 1),
     penDamageMult: numberOr(a.penDamageMult, 1),
+    // A field absent from an older document defaults to the flat AP rule, not to the slug's.
+    penHalvesSoft: a.penHalvesSoft !== false,
+    penHalvesHard: a.penHalvesHard !== false,
+    stunSaveOnHit: !!a.stunSaveOnHit,
+    stunSaveMod: numberOr(a.stunSaveMod, 0),
     dotEnabled: !!a.dotEnabled,
     dotTurns: numberOr(a.dotTurns, 0),
     dotDamageFormula: String(a.dotDamageFormula ?? ""),
@@ -142,12 +156,17 @@ export function resolveHit({ damage = 0, zone = "Torso", ap = false, ammo = null
     : numberOr(ammo?.armorMultSoft, 1);
 
   let effSp = Math.floor(sp * armorMult);
-  // RAW armour-piercing halves the armour and then halves what gets through it, whatever the
-  // armour is made of. Hardness is consumed by the ammunition multipliers above and nowhere else.
+  // RAW armour-piercing halves the armour whatever it is made of — ch. 07:865's *"normal AP ability
+  // vs. all armors"* is stated of the slug too, so this half never branches on hardness.
   if (ap) effSp = Math.floor(effSp / 2);
 
   let penetrating = Math.max(0, Math.floor(damage) - effSp);
-  if (ap) penetrating = Math.floor(penetrating / 2);
+  // The second half does branch: a finned slug's penetrating damage survives hard armour whole
+  // (ch. 07:865-873). Both flags default true, which is the flat AP rule (`T95`, D53 У3).
+  const penHalves = location.hard
+    ? (ammo?.penHalvesHard !== false)
+    : (ammo?.penHalvesSoft !== false);
+  if (ap && penHalves) penetrating = Math.floor(penetrating / 2);
   penetrating = Math.floor(penetrating * numberOr(ammo?.penDamageMult, 1));
 
   const headDoubled = doubleHead && zone === "Head" && penetrating > 0;
@@ -242,9 +261,11 @@ export async function rollZoneSave(actor, threshold, { mod = 0, messageMode } = 
 export function rollSaveOf(actor, kind, dc, mod = 0, messageMode = undefined) {
   return kind === "zone"
     ? rollZoneSave(actor, dc, { mod, messageMode })
-    // A Stun or Death save derives its own threshold; `dc` overrides it for the one rule that
-    // names a threshold of its own, the severance save at Mortal 0 (`T144`).
-    : actor.rollSave(kind, { mod, messageMode, threshold: dc || undefined });
+    // A Stun or Death save derives its own threshold; `dc` overrides it for the rules that name a
+    // threshold of their own — the severance save at Mortal 0 (`T144`) and the electroshock ladder
+    // (`T98`). Tested for finiteness rather than truth: an electroshock threshold can reach exactly
+    // 0, and `dc || undefined` would silently hand that save the victim's own number back.
+    : actor.rollSave(kind, { mod, messageMode, threshold: Number.isFinite(dc) ? dc : undefined });
 }
 
 /**
@@ -258,7 +279,7 @@ export function rollSaveOf(actor, kind, dc, mod = 0, messageMode = undefined) {
  * @param {string} [options.messageMode] Visibility of the card, for a hidden token
  * @returns {Promise<{total: number, threshold: number, success: boolean}>}
  */
-export async function requestSave(actor, kind, { dc = 0, messageMode } = {}) {
+export async function requestSave(actor, kind, { dc = null, messageMode } = {}) {
   const manual = game.settings.get("cyberpunk2020", "pcSaveMode") === "manual" && actor.type !== "npc";
   const owner = manual
     ? game.users.players.find(u => u.active && actor.testUserPermission(u, "OWNER"))
@@ -275,6 +296,38 @@ export async function requestSave(actor, kind, { dc = 0, messageMode } = {}) {
     // The owner disconnected or the query outlived its deadline; the save still has to happen.
     return rollSaveOf(actor, kind, dc, 0, messageMode);
   }
+}
+
+/**
+ * Arm the Stun Save an electroshock round forces, and count it into RAW's ladder.
+ *
+ * Ch. 07:780-782 — *"Tasers require the victim to make a save against stun… The save number is
+ * reduced by -2 for every successive shot in a three-turn time period."* The count lives on the
+ * **victim**, because the save is theirs: two shooters with tasers stack against one target. The
+ * window is combat rounds (D52); outside an encounter there is no round counter, so nothing stacks
+ * and nothing is written — a later fight must not inherit a ladder from a corridor ambush. The
+ * ladder is uncapped on the owner's word, and the number it reaches is printed on the card.
+ *
+ * @param {CyberpunkActor} actor The victim
+ * @param {object} ammo Snapshot from snapshotAmmo
+ * @returns {Promise<{threshold: number, shot: number, stacked: boolean}>}
+ */
+async function armShockSave(actor, ammo) {
+  const base = actor.stunThreshold() + numberOr(ammo.stunSaveMod, 0);
+  const round = Number(game.combat?.round);
+  if (!Number.isFinite(round)) return { threshold: base, shot: 1, stacked: false };
+
+  const previous = actor.getFlag("cyberpunk2020", SHOCK_FLAG);
+  // The shot and the two rounds before it, so a hit on round 5 stacks with round 3 and not with 2.
+  const inWindow = Number.isFinite(previous?.round) && round - previous.round < SHOCK_WINDOW_ROUNDS;
+  const priorShots = inWindow ? (Number(previous.shots) || 0) : 0;
+
+  await actor.setFlag("cyberpunk2020", SHOCK_FLAG, { round, shots: priorShots + 1 });
+  return {
+    threshold: base + SHOCK_LADDER_STEP * priorShots,
+    shot: priorShots + 1,
+    stacked: true
+  };
 }
 
 /** The largest a formula can roll, for comparing two fires without rolling either. */
@@ -466,9 +519,14 @@ export async function applyHitsToActor(actor,
     };
   });
 
+  // `T218`/D52 — an electroshock round asks for its Stun Save on the hit itself, at the round's own
+  // number, whether or not anything reached the wound track. Armed before the card so the ladder's
+  // state is printed rather than only felt; the roll itself is below, with the other saves.
+  const shock = ammo?.stunSaveOnHit ? await armShockSave(actor, ammo) : null;
+
   const content = await renderCyberpunkTemplate(
     "systems/cyberpunk2020/templates/chat/damage-applied.hbs",
-    { targetName, lines, wound, limbs, severedLimbs, killed,
+    { targetName, lines, wound, limbs, severedLimbs, killed, shock,
       totalDamage: actor.system.damage }
   );
 
@@ -499,16 +557,19 @@ export async function applyHitsToActor(actor,
     if (!death.success) await actor.toggleStatusEffect("dead", { active: true, overlay: true });
   }
 
-  if (wound > 0) {
-    // One save for the whole attack, and none at all when every hit went into a cyberlimb:
-    // ch. 06, "no saving roll against shock and stun".
-    const stun = await requestSave(actor, "stun", { messageMode });
+  // One save for the whole attack, and — for the wound path — none at all when every hit went into
+  // a cyberlimb: ch. 06, "no saving roll against shock and stun". An electroshock round is asked
+  // for regardless, at its own threshold: RAW conditions that save on being hit, not on wounding.
+  if (wound > 0 || shock) {
+    const stun = await requestSave(actor, "stun", { dc: shock?.threshold ?? null, messageMode });
     if (!stun.success) await actor.toggleStatusEffect("cpStunned", { active: true });
+  }
 
-    if (actor.woundState() >= MORTAL_WOUND_STATE) {
-      const death = await requestSave(actor, "death", { messageMode });
-      if (!death.success) await actor.toggleStatusEffect("dead", { active: true, overlay: true });
-    }
+  // The mortality check reads a state rather than a delta, so it stays under the wound: an
+  // electroshock hit that changed nothing must not ask a Mortal character to die again.
+  if (wound > 0 && actor.woundState() >= MORTAL_WOUND_STATE) {
+    const death = await requestSave(actor, "death", { messageMode });
+    if (!death.success) await actor.toggleStatusEffect("dead", { active: true, overlay: true });
   }
 
   return card;

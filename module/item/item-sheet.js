@@ -234,20 +234,22 @@ export class CyberpunkItemSheet extends HandlebarsApplicationMixin(ItemSheetV2) 
 
     const effectTypes = Array.isArray(sys.effectTypes)
       ? sys.effectTypes
-      : (sys.effectTypes ? [sys.effectTypes] : ["None"]);
+      : (sys.effectTypes ? [sys.effectTypes] : ["Standard"]);
 
+    // The stock rounds a GM builds (D52), not the mechanisms behind them. `migrateData` renames a
+    // world's existing values into these, so nothing here has to answer for the old spellings.
     const effectKeyMap = {
-      None: "AmmoEffect_None",
-      CoreMods: "AmmoEffect_CoreMods",
-      Stun: "AmmoEffect_Stun",
-      DoT: "AmmoEffect_DoT",
-      Blast: "AmmoEffect_Blast",
-      Spread: "AmmoEffect_Spread"
+      Standard: "AmmoEffect_Standard",
+      AP: "AmmoEffect_AP",
+      Electroshock: "AmmoEffect_Electroshock",
+      Poison: "AmmoEffect_Poison",
+      Buckshot: "AmmoEffect_Buckshot",
+      Blast: "AmmoEffect_Blast"
     };
 
     sheet.ammoFx = {
-      typeLabels: (effectTypes.length ? effectTypes : ["None"])
-        .map(t => localize(effectKeyMap[t] ?? "AmmoEffect_None"))
+      typeLabels: (effectTypes.length ? effectTypes : ["Standard"])
+        .map(t => localize(effectKeyMap[t] ?? "AmmoEffect_Standard"))
     };
   }
 
@@ -1803,21 +1805,21 @@ async _prepareCyberware(sheet) {
 
     const boxes = Array.from(menu.querySelectorAll("input[type='checkbox']"));
 
-    // "None" excludes every real effect, in both directions.
-    if (checkbox.value === "None" && checkbox.checked) {
-      for (const box of boxes) box.checked = box.value === "None";
+    // A plain round excludes every real effect, in both directions.
+    if (checkbox.value === "Standard" && checkbox.checked) {
+      for (const box of boxes) box.checked = box.value === "Standard";
     } else if (checkbox.checked) {
-      const none = boxes.find((box) => box.value === "None");
-      if (none) none.checked = false;
+      const plain = boxes.find((box) => box.value === "Standard");
+      if (plain) plain.checked = false;
     }
 
     let next = boxes.filter((box) => box.checked).map((box) => box.value);
 
-    // The schema default and every template guard expect at least ["None"].
+    // The schema default and every template guard expect at least ["Standard"].
     if (!next.length) {
-      next = ["None"];
-      const none = boxes.find((box) => box.value === "None");
-      if (none) none.checked = true;
+      next = ["Standard"];
+      const plain = boxes.find((box) => box.value === "Standard");
+      if (plain) plain.checked = true;
     }
 
     // Re-renders on purpose: every substantive section of the template is gated on

@@ -36,7 +36,7 @@ export function registerHandlebarsHelpers() {
     });
     // Ammo effect selector (multi-select)
     Handlebars.registerHelper('ammoHasEffect', function(sys, effect) {
-    const list = Array.isArray(sys?.effectTypes) ? sys.effectTypes : (sys?.effectTypes ? [sys.effectTypes] : ["None"]);
+    const list = Array.isArray(sys?.effectTypes) ? sys.effectTypes : (sys?.effectTypes ? [sys.effectTypes] : ["Standard"]);
     return list.includes(effect);
     });
     Handlebars.registerHelper('compare', function(x, operator, y) {

@@ -32,6 +32,10 @@
         </p>
     {{/each}}
 
+    {{#if shock}}
+        <p><b>{{#if shock.stacked}}{{CPLocalParam "ShockSaveLine" shock}}{{else}}{{CPLocalParam "ShockSaveNoCombat" shock}}{{/if}}</b></p>
+    {{/if}}
+
     {{#each severedLimbs as |limb|}}
         <p><b>{{CPLocalParam "SeveranceLimb" limb}}</b></p>
     {{/each}}
