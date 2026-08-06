@@ -762,6 +762,18 @@ export class CyberpunkItem extends Item {
       // over three targets spends 18 (`T147`).
       const plannedRoundsForTarget = Math.floor(roundsToAllocate / targetCount);
 
+      // D59: a target whose share rounds to zero is not attacked at all. The share is the same for
+      // every target, so a zero share means the whole burst is refused rather than skipped inside
+      // the loop — otherwise it posts a card and rewrites the magazine for an attack that spent
+      // nothing (`T233`). `false` is the refusal shape the caller reads to charge no action.
+      if (plannedRoundsForTarget < 1) {
+        ui.notifications.warn(localize("FullAutoShareEmpty", {
+          rounds: roundsToAllocate,
+          targets: targetCount
+        }));
+        return false;
+      }
+
       for (let i = 0; i < targetCount && roundsToAllocate > 0; i++) {
           const attackModsForTarget = {
             ...attackMods,
