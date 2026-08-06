@@ -181,6 +181,7 @@
     "CYBERPUNK.Shots": "Боезапас: вместимость",
     "CYBERPUNK.ShotsLeft": "Боезапас: осталось",
     "CYBERPUNK.AP": "БП",
+    "CYBERPUNK.WeaponMono": "Моно-лезвие",
     "CYBERPUNK.RoF": "Скорострельность",
     "CYBERPUNK.Reliability": "Надёжность",
     "CYBERPUNK.Range": "Дальность",
@@ -365,6 +366,7 @@
     "CYBERPUNK.LimbUseless": "конечность бесполезна (20 очков урона по SDP)",
     "CYBERPUNK.LimbDestroyed": "конечность уничтожена (30 очков урона по SDP)",
     "CYBERPUNK.ArmorHard": "Жёсткая броня",
+    "CYBERPUNK.ArmorBladeVulnerable": "Клинки делят SP пополам (√)",
     "CYBERPUNK.AblationCurrent": "Износ: {ablation}",
 
     "CYBERPUNK.SaveStun": "Спасбросок от оглушения",

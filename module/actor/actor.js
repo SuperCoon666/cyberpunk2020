@@ -227,6 +227,7 @@ export class CyberpunkActor extends Actor {
     }
 
     const armorLayersByArea = {};
+    const edgedLayersByArea = {};
     const hardArmorAreas = new Set();
 
     // Sort through this now so we don't have to later
@@ -330,6 +331,11 @@ export class CyberpunkActor extends Actor {
 
         if (!armorLayersByArea[armorArea]) armorLayersByArea[armorArea] = [];
         armorLayersByArea[armorArea].push(addSP);
+        // Ch. 07:462 halves the SP of the marked armour, not of the stack, so each √ layer is
+        // halved before the layers are combined (`AB-Q2` (a), D52). Doing it to the total would
+        // let a Kevlar T-shirt halve the plate over it.
+        if (!edgedLayersByArea[armorArea]) edgedLayersByArea[armorArea] = [];
+        edgedLayersByArea[armorArea].push(armorData.bladeVulnerable ? Math.floor(addSP / 2) : addSP);
         if (armorData.hard) hardArmorAreas.add(armorArea);
       }
     });
@@ -344,7 +350,10 @@ export class CyberpunkActor extends Actor {
 
         if (!armorLayersByArea[areaKey]) armorLayersByArea[areaKey] = [];
         armorLayersByArea[areaKey].push(addSP);
-        // Cyber-armour is hard armour.
+        // Cyber-armour is hard armour, and nothing hard is on the book's √ list, so a blade meets
+        // it whole.
+        if (!edgedLayersByArea[areaKey]) edgedLayersByArea[areaKey] = [];
+        edgedLayersByArea[areaKey].push(addSP);
         hardArmorAreas.add(areaKey);
       }
     }
@@ -353,6 +362,10 @@ export class CyberpunkActor extends Actor {
     for (const [areaKey, area] of Object.entries(system.hitLocations)) {
       const layers = armorLayersByArea[areaKey] || [];
       area.stoppingPower = maxLayeredSP(layers);
+      // The same stack combined again with every √ layer already halved. Derived here because the
+      // stack is collapsed to one number before `resolveHit` ever sees it, so a per-armour flag
+      // cannot be applied at hit time.
+      area.edgedSp = maxLayeredSP(edgedLayersByArea[areaKey] || []);
       // A zone counts as hard if any layer covering it is; the ammunition's hard/soft multipliers
       // are the only consumer.
       area.hard = hardArmorAreas.has(areaKey);

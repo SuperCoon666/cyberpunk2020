@@ -52,6 +52,10 @@
 
     {{#if isMelee}}
         {{> (template "fields/boolean") label="AP" edit="system.ap"}}
+        {{!-- A mono edge is a kind of edge, so it only means anything on a weapon that has one. --}}
+        {{#if system.ap}}
+            {{> (template "fields/boolean") label="WeaponMono" edit="system.mono"}}
+        {{/if}}
     {{else}}
         {{> (template "fields/string") label="AmmoType" edit="system.ammoType"}}
     {{/if}}

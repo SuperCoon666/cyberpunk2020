@@ -497,6 +497,10 @@ export class CyberpunkItem extends Item {
           fireMode: fireMode ?? "",
           range: range ?? "",
           ap: !!this._getWeaponSystem()?.ap,
+          // A blade meets armour by its own rules, and the ammunition channel cannot carry them:
+          // melee always snapshots `ammo: null`, so these ride the payload instead (`T94`).
+          melee: !this.isRanged(),
+          mono: !!this._getWeaponSystem()?.mono,
           ammo,
           targets: [{
             name: target.name,
@@ -532,6 +536,10 @@ export class CyberpunkItem extends Item {
           fireMode: fireMode ?? "",
           range: range ?? "",
           ap: !!this._getWeaponSystem()?.ap,
+          // A blade meets armour by its own rules, and the ammunition channel cannot carry them:
+          // melee always snapshots `ammo: null`, so these ride the payload instead (`T94`).
+          melee: !this.isRanged(),
+          mono: !!this._getWeaponSystem()?.mono,
           ammo,
           blast,
           targets: [],

@@ -126,9 +126,10 @@ export let rangedAttackTypes = {
     explosiveCharge: "Explocharge"
 }
 
+// `Mono` was here until the feature wave: a mono edge is a property of the blade, so it became
+// `system.mono` and a martial weapon can carry one. `migrateData` converts the old value.
 export let meleeAttackTypes = {
     melee: "Melee", // Regular melee bonk
-    mono: "Mono", // Monokatanas, etc
     martial: "Martial", // Martial arts! Here, the chosen attack skill does not matter
     cyberbeast: "Beast"
 }

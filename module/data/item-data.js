@@ -239,6 +239,9 @@ export class CyberpunkWeaponData extends CyberpunkBaseItemData {
       damage: stringField(DEFAULT_WEAPON.damage),
       rangeDamages: objectField(DEFAULT_RANGE_DAMAGES),
       ap: booleanField(DEFAULT_WEAPON.ap),
+      // Ch. 07:1065 — a mono edge is a property of the blade, not a kind of attack, so a martial
+      // weapon can carry one too. Only meaningful with `ap`, which is what the sheet gates it on.
+      mono: booleanField(false),
       shotsLeft: numberField(DEFAULT_WEAPON.shotsLeft),
       shots: numberField(DEFAULT_WEAPON.shots),
       rof: numberField(DEFAULT_WEAPON.rof),
@@ -258,6 +261,14 @@ export class CyberpunkWeaponData extends CyberpunkBaseItemData {
     }
     if (hasOwn(source, "rangeDamages")) source.rangeDamages = normalizeRangeDamages(source.rangeDamages);
     normalizeBooleanIfPresent(source, "ap", false);
+    normalizeBooleanIfPresent(source, "mono", false);
+    // `Mono` was an attack type before it was a property, which made a mono weapon unable to be a
+    // martial one. A blade the book calls mono-edge is also an edged weapon, so `ap` comes with it.
+    if (source.attackType === "Mono") {
+      source.attackType = "Melee";
+      source.mono = true;
+      source.ap = true;
+    }
     return super.migrateData(source);
   }
 }
@@ -340,13 +351,18 @@ export class CyberpunkArmorData extends CyberpunkBaseItemData {
       ...commonSchema(),
       coverage: objectField(DEFAULT_COVERAGE),
       encumbrance: numberField(0),
-      hard: booleanField(false)
+      hard: booleanField(false),
+      // Ch. 07:281 — *"√=Edged weapons treat SP as half"*. A separate axis from hardness, not the
+      // other end of it: the Flak vest and pants are both √ **and** Hard (`07:273-274`, `:369`).
+      // Default false, and unrecognized armour stays soft and un-√ (D54).
+      bladeVulnerable: booleanField(false)
     };
   }
 
   static migrateData(source) {
     source ??= {};
     normalizeBooleanIfPresent(source, "hard", false);
+    normalizeBooleanIfPresent(source, "bladeVulnerable", false);
     // Pre-object worlds stored coverage as a covers/doesn't boolean, which carried no SP.
     // Only zones the diff already names are rewritten, so this stays safe on a partial update.
     if (hasOwn(source, "coverage") && source.coverage && typeof source.coverage === "object") {

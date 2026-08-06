@@ -181,6 +181,7 @@
     "CYBERPUNK.Shots": "Shots",
     "CYBERPUNK.ShotsLeft": "Shots Left",
     "CYBERPUNK.AP": "AP",
+    "CYBERPUNK.WeaponMono": "Mono edge",
     "CYBERPUNK.RoF": "Rate of Fire",
     "CYBERPUNK.Reliability": "Reliability",
     "CYBERPUNK.Range": "Range",
@@ -365,6 +366,7 @@
     "CYBERPUNK.LimbUseless": "the limb is useless (20 points of SDP damage)",
     "CYBERPUNK.LimbDestroyed": "the limb is destroyed (30 points of SDP damage)",
     "CYBERPUNK.ArmorHard": "Hard armor",
+    "CYBERPUNK.ArmorBladeVulnerable": "Edged weapons halve SP (√)",
     "CYBERPUNK.AblationCurrent": "Ablation: {ablation}",
 
     "CYBERPUNK.SaveStun": "Stun Save",

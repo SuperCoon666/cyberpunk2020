@@ -137,7 +137,9 @@ export function snapshotAmmo(item) {
  * @param {object} hit
  * @param {number} hit.damage Rolled damage, ammunition raw multiplier already applied
  * @param {string} hit.zone Hit location key, e.g. "Torso"
- * @param {boolean} hit.ap Armour-piercing round
+ * @param {boolean} hit.ap Armour-piercing round, or — for a melee hit — an edged weapon
+ * @param {boolean} hit.mono A mono edge. Only read together with `ap` and `melee`
+ * @param {boolean} hit.melee The hit came from a melee weapon, which meets armour by its own rules
  * @param {object|null} hit.ammo Snapshot from snapshotAmmo
  * @param {CyberpunkActor} targetActor
  * @param {object} [options]
@@ -146,8 +148,8 @@ export function snapshotAmmo(item) {
  * @returns {{sp: number, effSp: number, penetrating: number, headDoubled: boolean, btm: number,
  *            final: number, toSdp: number, severed: boolean}}
  */
-export function resolveHit({ damage = 0, zone = "Torso", ap = false, ammo = null }, targetActor,
-  { severanceThreshold = 0, doubleHead = true } = {}) {
+export function resolveHit({ damage = 0, zone = "Torso", ap = false, mono = false, melee = false,
+  ammo = null }, targetActor, { severanceThreshold = 0, doubleHead = true } = {}) {
   const location = targetActor?.system?.hitLocations?.[zone] ?? {};
   const sp = numberOr(location.stoppingPower, 0);
 
@@ -156,17 +158,33 @@ export function resolveHit({ damage = 0, zone = "Torso", ap = false, ammo = null
     : numberOr(ammo?.armorMultSoft, 1);
 
   let effSp = Math.floor(sp * armorMult);
-  // RAW armour-piercing halves the armour whatever it is made of — ch. 07:865's *"normal AP ability
-  // vs. all armors"* is stated of the slug too, so this half never branches on hardness.
-  if (ap) effSp = Math.floor(effSp / 2);
+
+  if (melee && ap && mono) {
+    // Ch. 07:1065 — *"all mono-edge weapons are at 1/3xSP vs. soft armors, 2/3xSP vs. hard armors"*.
+    // Stated unconditionally and already accounting for hardness, so it **replaces** the √ halving
+    // rather than stacking with it (`AB-Q3`, D52) — stacking would give a mono knife 1/6 SP against
+    // a flak vest, which no line in the book asks for.
+    effSp = Math.floor(sp * (location.hard ? 2 / 3 : 1 / 3));
+  } else if (melee && ap) {
+    // Ch. 07:462 — an edged weapon meets half SP from armour the table marks √, and full SP from
+    // everything else. `edgedSp` is that stack, derived on the actor because the layers are
+    // collapsed to one number long before this runs.
+    effSp = Math.floor(numberOr(location.edgedSp, sp) * armorMult);
+  } else if (ap) {
+    // RAW armour-piercing halves the armour whatever it is made of — ch. 07:865's *"normal AP
+    // ability vs. all armors"* is stated of the slug too, so this half never branches on hardness.
+    effSp = Math.floor(effSp / 2);
+  }
 
   let penetrating = Math.max(0, Math.floor(damage) - effSp);
   // The second half does branch: a finned slug's penetrating damage survives hard armour whole
-  // (ch. 07:865-873). Both flags default true, which is the flat AP rule (`T95`, D53 У3).
+  // (ch. 07:865-873). Both flags default true, which is the flat AP rule (`T95`, D53 У3). A blade
+  // never halves its damage at all: ch. 07:462 limits itself to SP effectiveness, and the AP
+  // round's halving is justified by its "lower damage capacity" (`AB-Q1a`, D53 У2).
   const penHalves = location.hard
     ? (ammo?.penHalvesHard !== false)
     : (ammo?.penHalvesSoft !== false);
-  if (ap && penHalves) penetrating = Math.floor(penetrating / 2);
+  if (ap && !melee && penHalves) penetrating = Math.floor(penetrating / 2);
   penetrating = Math.floor(penetrating * numberOr(ammo?.penDamageMult, 1));
 
   const headDoubled = doubleHead && zone === "Head" && penetrating > 0;
@@ -451,6 +469,8 @@ export async function tickDot(actor, { messageMode } = {}) {
  * @param {object} attack
  * @param {Array<{zone: string, damage: number}>} attack.hits
  * @param {boolean} attack.ap
+ * @param {boolean} [attack.melee] The hits came from a melee weapon (`T94`)
+ * @param {boolean} [attack.mono] A mono edge, read only with `ap` and `melee`
  * @param {object|null} attack.ammo
  * @param {string} attack.targetName
  * @param {string} [attack.messageMode] Visibility of the breakdown and of the saves behind it
@@ -460,7 +480,8 @@ export async function tickDot(actor, { messageMode } = {}) {
  * @returns {Promise<ChatMessage>} the breakdown card
  */
 export async function applyHitsToActor(actor,
-  { hits = [], ap = false, ammo = null, targetName = "", messageMode, overallBody = false } = {}) {
+  { hits = [], ap = false, mono = false, melee = false, ammo = null, targetName = "", messageMode,
+    overallBody = false } = {}) {
   const severanceThreshold = game.settings.get("cyberpunk2020", "severanceThreshold");
 
   const lines = [];
@@ -488,7 +509,7 @@ export async function applyHitsToActor(actor,
     }
 
     const resolved = resolveHit(
-      { damage: hit.damage, zone, ap, ammo },
+      { damage: hit.damage, zone, ap, mono, melee, ammo },
       actor,
       { severanceThreshold }
     );
@@ -614,7 +635,8 @@ export async function applyAttackFromMessage(message, { tokenId } = {}) {
   await message.update({ [`flags.cyberpunk2020.attack.applied.${tokenId}`]: true });
 
   return applyHitsToActor(actor, {
-    hits: attack.hits ?? [], ap: attack.ap, ammo: attack.ammo, targetName: target.name,
+    hits: attack.hits ?? [], ap: attack.ap, mono: attack.mono, melee: attack.melee,
+    ammo: attack.ammo, targetName: target.name,
     messageMode: hiddenMessageMode(tokenDoc?.hidden)
   });
 }
