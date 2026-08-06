@@ -309,6 +309,10 @@ export class CyberpunkAmmoData extends CyberpunkBaseItemData {
       accuracyMod: numberField(0),
       stunSaveOnHit: booleanField(false),
       stunSaveMod: numberField(0),
+      // Ch. 07:780-782 conditions the save on being hit, but only a taser charge reaches its victim
+      // through armour at all. Default off, so an electroshock bullet keeps asking only where it
+      // got in (D62).
+      stunIgnoresArmor: booleanField(false),
       dotEnabled: booleanField(false),
       dotTurns: numberField(0),
       dotDamageFormula: stringField(""),
@@ -337,6 +341,7 @@ export class CyberpunkAmmoData extends CyberpunkBaseItemData {
     }
     normalizeArrayIfPresent(source, "blastMultipliers", [0.5, 0.25, 0.125, 0.0625]);
     normalizeBooleanIfPresent(source, "stunSaveOnHit", false);
+    normalizeBooleanIfPresent(source, "stunIgnoresArmor", false);
     normalizeBooleanIfPresent(source, "dotEnabled", false);
     normalizeBooleanIfPresent(source, "blastShrapnel", false);
     normalizeBooleanIfPresent(source, "penHalvesSoft", true);

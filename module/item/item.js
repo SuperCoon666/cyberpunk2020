@@ -1,4 +1,4 @@
-import { weaponTypes, rangedAttackTypes, meleeAttackTypes, fireModes, ranges, rangeDCs, rangeResolve, strengthDamageBonus, getMartialActionBonus, martialActions, isCombatAutomationEnabled, isFnff2Enabled, getFnff2DamageBonusSymbol, FNFF2_ONLY_MARTIAL_ART_IDS } from "../lookups.js"
+import { weaponTypes, rangedAttackTypes, meleeAttackTypes, fireModes, ranges, rangeDCs, rangeResolve, effectiveRange, strengthDamageBonus, getMartialActionBonus, martialActions, isCombatAutomationEnabled, isFnff2Enabled, getFnff2DamageBonusSymbol, FNFF2_ONLY_MARTIAL_ART_IDS } from "../lookups.js"
 import { Multiroll, makeD10Roll } from "../dice.js"
 import { localize, localizeParam, rollLocation, cwHasType, cwIsEnabled, isFumbleRoll, buildRangedCombatFumbleData, buildSkillFumbleData, clamp, isRollableFormula } from "../utils.js";
 import { createCyberpunkChatMessage, renderCyberpunkTemplate } from "../compat.js";
@@ -586,7 +586,7 @@ export class CyberpunkItem extends Item {
         damage,
         damageHtml: CyberpunkItem._inlineRollHtml(damage, damageRoll, "damage"),
         fumble: fumble ?? null,
-        locals: { range: { range: rangeResolve[attackMods.range](system.range) } }
+        locals: { range: { range: rangeResolve[attackMods.range](effectiveRange(this)) } }
       },
       this.__zoneFlags({ kind, ammo, fireMode: attackMods.fireMode, range: attackMods.range, blast })
     );
@@ -746,7 +746,7 @@ export class CyberpunkItem extends Item {
   async __fullAuto(attackMods, targetTokens) {
       const system = this._getWeaponSystem();
       // The kind of distance we're attacking at, so we can display Close: <50m or something like that
-      let actualRangeBracket = rangeResolve[attackMods.range](system.range);
+      let actualRangeBracket = rangeResolve[attackMods.range](effectiveRange(this));
       let DC = rangeDCs[attackMods.range];
       let targetCount = Math.max(1, targetTokens.length || Number(attackMods.targetsCount) || 1);
       const rollData = this.actor?.getRollData?.() ?? {};
@@ -876,7 +876,7 @@ export class CyberpunkItem extends Item {
   async __threeRoundBurst(attackMods, targetTokens = []) {
       const system = this._getWeaponSystem();
       // The kind of distance we're attacking at, so we can display Close: <50m or something like that
-      let actualRangeBracket = rangeResolve[attackMods.range](system.range);
+      let actualRangeBracket = rangeResolve[attackMods.range](effectiveRange(this));
       let DC = rangeDCs[attackMods.range];
       let attackRoll = await this.attackRoll(attackMods);
       const rangedFumble = await this._maybeApplyRangedFumble(attackRoll);
@@ -986,7 +986,7 @@ export class CyberpunkItem extends Item {
     if (rounds > 0 && canvas.ready && isCombatAutomationEnabled()) {
       // The corridor covers the band being fired at; the shooter places and rotates it. A weapon
       // with no range falls back to a square, which is the zone the book's own examples describe.
-      const reach = Math.round(rangeResolve[mods.range]?.(Number(sys.range) || 0) || 0);
+      const reach = Math.round(rangeResolve[mods.range]?.(effectiveRange(this)) || 0);
       zone = await placeSuppressionZone(width, Math.max(width, reach),
         localizeParam("ZoneName", { weapon: this.name }));
       // Dismissing the placement takes the burst back: nothing has been rolled or spent yet.
@@ -1084,7 +1084,7 @@ export class CyberpunkItem extends Item {
         .evaluate({ maximize: maximizeDamage });
       const dmg = CyberpunkItem._floorDamageTotal(damageRoll.total);
       let locationRoll = await rollLocation(attackMods.targetActor, attackMods.targetArea);
-      let actualRangeBracket = rangeResolve[attackMods.range](system.range);
+      let actualRangeBracket = rangeResolve[attackMods.range](effectiveRange(this));
       let attackHits = attackRoll.total >= DC;
       if (rangedFumble?.forceMiss) {
         attackHits = false;

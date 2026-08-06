@@ -11,8 +11,10 @@ import { Multiroll } from "./dice.js";
  * 3: the zone payload carries `sceneId`, and a spread carries its `corridor` and aimed location.
  * 4: the spread's `corridor.shooterTokenUuid` (`T235` — added at `T110` without a bump), and the
  *    ammunition snapshot carries `penHalvesSoft`/`penHalvesHard` and the electroshock save.
+ * 5: the payload carries `melee`/`mono` (shipped at `1f66757` without a bump, corrected here), and
+ *    the ammunition snapshot carries `stunIgnoresArmor` (D62).
  */
-export const ATTACK_FLAG_VERSION = 4;
+export const ATTACK_FLAG_VERSION = 5;
 
 /** The flag a damage-over-time effect burns down from, one tick per turn. */
 const DOT_FLAG = "dot";
@@ -114,6 +116,7 @@ export function snapshotAmmo(item) {
     penHalvesHard: a.penHalvesHard !== false,
     stunSaveOnHit: !!a.stunSaveOnHit,
     stunSaveMod: numberOr(a.stunSaveMod, 0),
+    stunIgnoresArmor: !!a.stunIgnoresArmor,
     dotEnabled: !!a.dotEnabled,
     dotTurns: numberOr(a.dotTurns, 0),
     dotDamageFormula: String(a.dotDamageFormula ?? ""),
@@ -543,7 +546,13 @@ export async function applyHitsToActor(actor,
   // `T218`/D52 — an electroshock round asks for its Stun Save on the hit itself, at the round's own
   // number, whether or not anything reached the wound track. Armed before the card so the ladder's
   // state is printed rather than only felt; the roll itself is below, with the other saves.
-  const shock = ammo?.stunSaveOnHit ? await armShockSave(actor, ammo) : null;
+  //
+  // D62 — but a bullet has to get in first: only a round whose charge reaches through armour asks
+  // on a hit the armour stopped. `penetratedZones` is damage past SP, which is the intended reading
+  // — a hit that landed entirely in a cyberlimb penetrated, even though `wound` stayed 0.
+  const asksForShock = ammo?.stunSaveOnHit
+    && (ammo.stunIgnoresArmor || Object.keys(penetratedZones).length > 0);
+  const shock = asksForShock ? await armShockSave(actor, ammo) : null;
 
   const content = await renderCyberpunkTemplate(
     "systems/cyberpunk2020/templates/chat/damage-applied.hbs",

@@ -208,6 +208,10 @@
     "CYBERPUNK.Rifle": "Rifle",
     "CYBERPUNK.Heavy": "Heavy",
     "CYBERPUNK.Melee": "Melee",
+    "CYBERPUNK.Thrown": "Thrown",
+    "CYBERPUNK.ThrownRangeValue": "{range} m (10 × B.T {body})",
+    "CYBERPUNK.ThrownRangeNoThrower": "10 m per point of the thrower's Body Type",
+    "CYBERPUNK.ThrownRangeHint": "A thrown weapon reaches ten metres for every point of the thrower's Body Type. The range stored on the item is not used.",
     "CYBERPUNK.Exotic": "Exotic",
     "CYBERPUNK.Gun": "Gun",
     "CYBERPUNK.Auto": "Auto",
@@ -787,7 +791,7 @@
     "CYBERPUNK.AmmoPenHalvesSoft": "Halve penetrating damage (soft)",
     "CYBERPUNK.AmmoPenHalvesHard": "Halve penetrating damage (hard)",
     "CYBERPUNK.AmmoPenHalvesHint": "An AP round halves the armor's SP and then halves what gets through it. A finned slug keeps both against soft armor but does full penetrating damage through hard armor — clear the hard box for one.",
-    "CYBERPUNK.AmmoStunOnHitHint": "A hit demands a Stun Save whether or not any damage got through. The save number drops 2 for every successive shot within three combat rounds.",
+    "CYBERPUNK.AmmoStunOnHitHint": "A hit demands a Stun Save, and the save number drops 2 for every successive shot within three combat rounds. Unless the charge ignores armor, only a hit that got past the armor asks for one.",
     "CYBERPUNK.ShockSaveLine": "Electroshock: Stun Save at {threshold} — shot {shot} inside the three-round window.",
     "CYBERPUNK.ShockSaveNoCombat": "Electroshock: Stun Save at {threshold}. There is no encounter running, so successive shots do not stack.",
 
@@ -800,6 +804,7 @@
 
     "CYBERPUNK.AmmoStunOnHit": "STUN on hit",
     "CYBERPUNK.AmmoStunMod": "STUN modifier",
+    "CYBERPUNK.AmmoStunIgnoresArmor": "Charge ignores armor",
 
     "CYBERPUNK.AmmoDoTEnabled": "DoT enabled",
     "CYBERPUNK.AmmoDoTTurns": "DoT: turns",

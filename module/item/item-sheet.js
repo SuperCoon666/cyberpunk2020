@@ -1,4 +1,4 @@
-import { weaponTypes, meleeAttackTypes, rangedAttackTypes, attackSkills, concealability, availability, reliability, getStatNames, programTypes, AMMO_ROUNDS_PER_BOX } from "../lookups.js";
+import { weaponTypes, meleeAttackTypes, rangedAttackTypes, attackSkills, concealability, availability, reliability, getStatNames, programTypes, effectiveRange, AMMO_ROUNDS_PER_BOX } from "../lookups.js";
 import { formulaHasDice } from "../dice.js";
 import { deleteFieldUpdate, localize, cwHasType, getSkillIndex } from "../utils.js";
 import { createCyberpunkChatMessage, getHtmlElement, getPublicMessageMode, getRichEditorHTML, saveRichEditorHTML, rollToCyberpunkChatMessage } from "../compat.js";
@@ -107,6 +107,7 @@ export class CyberpunkItemSheet extends HandlebarsApplicationMixin(ItemSheetV2) 
 
     setIfMissing("stunSaveOnHit", false);
     setIfMissing("stunSaveMod", 0);
+    setIfMissing("stunIgnoresArmor", false);
 
     setIfMissing("dotEnabled", false);
     setIfMissing("dotTurns", 0);
@@ -283,6 +284,14 @@ export class CyberpunkItemSheet extends HandlebarsApplicationMixin(ItemSheetV2) 
 
     const actor = this.item?.parent;
     const wType = this.item.system.weaponType || weaponTypes.pistol;
+
+    // D37/D52 — a thrown weapon's range is the thrower's, so the sheet shows it derived rather
+    // than offering the stored number no read site consults (`AB-Q26`).
+    sheet.isThrown = wType === weaponTypes.thrown;
+    sheet.thrownRange = (sheet.isThrown && actor)
+      ? { range: effectiveRange(this.item), body: actor.system.stats.bt.total }
+      : null;
+
     const baseKeys = attackSkills[wType] || [];
     const includeMartials = (wType === weaponTypes.melee) && (this.item.system.attackType === meleeAttackTypes.martial);
     const martialKeys = includeMartials ? (actor?.trainedMartials?.() || []) : [];

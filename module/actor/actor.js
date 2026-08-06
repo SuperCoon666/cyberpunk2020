@@ -1,7 +1,7 @@
 import { makeD10Roll, Multiroll } from "../dice.js";
 import { isFumbleRoll, buildSkillFumbleData } from "../utils.js";
 import { SortOrders, sortSkills } from "./skill-sort.js";
-import { btmFromBT, MARTIAL_ART_KEY_BY_ID, MARTIAL_ART_ID_BY_KEY, DEFENSIVE_MARTIAL_ACTIONS, FNFF2_ONLY_MARTIAL_ART_IDS, getMartialActionBonus, isCombatAutomationEnabled, isFnff2Enabled, AWARENESS_NOTICE_SKILL_ID, MELEE_DEFENSE_SKILL_IDS } from "../lookups.js";
+import { btmFromBT, MARTIAL_ART_KEY_BY_ID, MARTIAL_ART_ID_BY_KEY, DEFENSIVE_MARTIAL_ACTIONS, FNFF2_ONLY_MARTIAL_ART_IDS, getMartialActionBonus, isCombatAutomationEnabled, isFnff2Enabled, AWARENESS_NOTICE_SKILL_ID, ATHLETICS_SKILL_ID, MELEE_DEFENSE_SKILL_IDS } from "../lookups.js";
 import { properCase, localize, getDefaultSkills, cwHasType, cwIsEnabled, withCompendiumSource } from "../utils.js"
 
 export function combineSP(curr, add) {
@@ -944,6 +944,13 @@ export class CyberpunkActor extends Actor {
 
     const martialByDisplayName = this._getMartialSkillByDisplayName(skillName);
     if (martialByDisplayName) return CyberpunkActor.realSkillValue(martialByDisplayName);
+
+    // D52 named Athletics for a throw **by `_id`**, and the id survives what the name lookup below
+    // does not: a renamed skill, or one whose language pack the client is not running.
+    if (skillName === "Athletics") {
+      const byId = this._getSkillByStableId(ATHLETICS_SKILL_ID);
+      if (byId) return CyberpunkActor.realSkillValue(byId);
+    }
 
     const nameLoc = localize("Skill" + skillName);
     const prefixLoc = localize("SkillMartialArts");

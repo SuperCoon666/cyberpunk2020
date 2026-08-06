@@ -2,7 +2,21 @@
 <div class="field-list">
     {{> (template "fields/string") label="Damage" edit="system.damage"}}
     {{> (template "fields/number") label="Accuracy" edit="system.accuracy"}}
-    {{> (template "fields/number") label="Range" edit="system.range"}}
+    {{#if isThrown}}
+        {{!-- D37/D52 — a throw reaches 10m × BOD of the thrower, so the item's own number is not
+              read at all for a thrown weapon and showing it editable would be a lie. --}}
+        <div class="field" data-tooltip="{{CPLocal 'ThrownRangeHint'}}">
+            <label>{{CPLocal "Range"}}</label>
+            <div class="flex-pad"></div>
+            {{#if thrownRange}}
+                <span>{{CPLocalParam "ThrownRangeValue" thrownRange}}</span>
+            {{else}}
+                <span>{{CPLocal "ThrownRangeNoThrower"}}</span>
+            {{/if}}
+        </div>
+    {{else}}
+        {{> (template "fields/number") label="Range" edit="system.range"}}
+    {{/if}}
 
     {{> (template "fields/select") label="Reliability" edit="system.reliability" choices=reliabilities}}
 </div>

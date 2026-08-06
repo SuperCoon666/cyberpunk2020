@@ -24,7 +24,7 @@ export const MELEE_DEFENSE_SKILL_IDS = new Set([
 /** Choosing this one as a defense is what declares a dodge for the house rule. */
 export const DODGE_SKILL_ID = "IWAr3E5vpS8qFzZS";
 
-/** Ch. 07:731 — the skill a suppressive-fire save is rolled on. */
+/** Ch. 07:731 — the skill a suppressive-fire save is rolled on, and ch. 04:654 a throw (D52). */
 export const ATHLETICS_SKILL_ID = "gULme1P5CR8rXXIh";
 
 export const INTERFACE_SKILL_IDS = new Set([
@@ -77,8 +77,12 @@ export let weaponTypes = {
     rifle: "Rifle",
     heavy: "Heavy",
     melee: "Melee",
+    thrown: "Thrown",
     exotic: "Exotic"
 }
+
+/** Ch. 07:123 / 07:887 — a throw reaches `10m × BOD` of the thrower (D37; D46 declined the kg term). */
+export const THROWN_RANGE_PER_BODY = 10;
 export let attackSkills = {
     "Pistol": ["Handgun"],
     "SMG": ["Submachinegun"],
@@ -88,6 +92,9 @@ export let attackSkills = {
     "Heavy": ["HeavyWeapons"],
     // Trained martial arts get added in item-sheet for now
     "Melee": ["Fencing", "Melee", "Brawling"],
+    // Ch. 07:804's "Throwing Skill" is in no skill list of its own; 04:654 gives the job to
+    // Athletics, which is also what a suppressive-fire save is rolled on (D52).
+    "Thrown": ["Athletics"],
     // No limitations for exotic, go nuts
     "Exotic": []
 }
@@ -464,9 +471,26 @@ export function rangeBandFor(distance, weaponRange) {
     return "RangeExtreme";
 }
 
+/**
+ * How far this weapon reaches, in metres. A thrown weapon's range is the thrower's rather than the
+ * item's — `10m × BOD` (`07:123`, `07:887`) — and the number stored on the item is **ignored** for
+ * it, because every shipped grenade carries a flat 50 that would otherwise win (D37/D52, `AB-Q26`).
+ * Every read site calls this rather than `system.range`.
+ *
+ * @param {CyberpunkItem} weapon The weapon or cyberweapon; its `actor` is the thrower
+ * @returns {number} 0 when there is no range to read — an unowned thrown weapon has no thrower
+ */
+export function effectiveRange(weapon) {
+    const sys = weapon?._getWeaponSystem?.() ?? weapon?.system ?? {};
+    if (sys.weaponType !== weaponTypes.thrown) return Number(sys.range) || 0;
+    // BODY total, not base: cyberware that raises it is part of the arm doing the throwing. Wound
+    // penalties never reach `bt`, so a hurt thrower still throws as far.
+    return THROWN_RANGE_PER_BODY * (Number(weapon?.actor?.system?.stats?.bt?.total) || 0);
+}
+
 export function rangedModifiers(weapon, targetTokens = [], savedOptions = {}, measuredDistance = null) {
     const sys = weapon._getWeaponSystem?.() ?? weapon.system ?? {};
-    let range = sys.range || 50;
+    let range = effectiveRange(weapon) || 50;
     let fireModes = weapon.__getFireModes() || [];
     const rof = Math.max(0, Math.floor(Number(sys.rof) || 0));
     const shotsLeft = Math.max(0, Math.floor(Number(sys.shotsLeft) || 0));
