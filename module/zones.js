@@ -1,4 +1,4 @@
-import { isCombatAutomationEnabled, ranges, rangedAttackTypes } from "./lookups.js";
+import { isCombatAutomationEnabled, ranges } from "./lookups.js";
 import { applyHitsToActor, attackerIsHidden, hiddenMessageMode, requestSave, ATTACK_FLAG_VERSION } from "./damage.js";
 import { createCyberpunkChatMessage } from "./compat.js";
 import { localize, localizeParam, rollLocation, isRollableFormula } from "./utils.js";
@@ -26,9 +26,6 @@ const SPREAD_BANDS = {
   [ranges.long]: "Long",
   [ranges.extreme]: "Long"
 };
-
-/** The attack types that throw or launch an area-effect charge (ch. 07 "Area Effect Weapons"). */
-const BLAST_ATTACK_TYPES = new Set([rangedAttackTypes.grenade, rangedAttackTypes.rpg]);
 
 /**
  * Scene units to pixels. `distancePixels` is `grid.size / grid.distance`, so this converts the
@@ -135,14 +132,15 @@ export function blastDamageFor(damage, multiplier) {
 }
 
 /**
- * Whether this weapon and its loaded ammunition throw an area-effect charge.
+ * Whether the loaded ammunition throws an area-effect charge. The round decides, not the weapon
+ * (D77): a splash happens because the round carries a blast, which is what lets any weapon fire a
+ * charge the way `isSpreadAttack` already lets any weapon fire shot.
  *
- * @param {object} system The weapon system data from _getWeaponSystem
  * @param {object|null} ammo A snapshot from snapshotAmmo
  * @returns {boolean}
  */
-export function isBlastAttack(system, ammo) {
-  return BLAST_ATTACK_TYPES.has(system?.attackType) && Number(ammo?.blastRadius) > 0;
+export function isBlastAttack(ammo) {
+  return Number(ammo?.blastRadius) > 0;
 }
 
 /**

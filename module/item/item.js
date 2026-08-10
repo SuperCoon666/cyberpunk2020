@@ -412,7 +412,7 @@ export class CyberpunkItem extends Item {
     // An area-effect charge is aimed and rolled like any other ranged weapon (ch. 07:837), but it
     // lands on a point rather than a body, so it never reaches the fire modes below. With
     // automation off it falls through to its fire mode, which is the plain shot v1.1.x rolled.
-    if (isCombatAutomationEnabled() && isBlastAttack(system, snapshotAmmo(this))) {
+    if (isCombatAutomationEnabled() && isBlastAttack(snapshotAmmo(this))) {
       return this.__blastAttack(mods, targets);
     }
 
