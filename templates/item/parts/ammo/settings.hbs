@@ -150,13 +150,16 @@
 
     {{!-- ===== Blast (AoE) ===== --}}
     {{#if (ammoHasEffect system "Blast")}}
-        <div class="field span-two-cells">
+        <div class="field span-two-cells" data-tooltip="{{CPLocal 'AmmoOverallBodyHint'}}">
             <label class="larger">{{CPLocal "AmmoSectionBlast"}}</label>
             <span class="flex-pad"></span>
         </div>
 
         {{> (template "fields/number") label="AmmoBlastRadius" edit="system.blastRadius"}}
         {{> (template "fields/number") label="AmmoBlastFullDamageWithin" edit="system.blastFullDamageWithin"}}
+
+        {{> (template "fields/boolean") label="AmmoOverallBody" edit="system.overallBody"}}
+        <div class="field"><span class="flex-pad"></span></div>
 
         {{!-- Zones count selector --}}
         <div class="field">

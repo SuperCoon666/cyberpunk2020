@@ -1,4 +1,6 @@
 import { deleteFieldUpdate, getDefaultSkills, localize, tryLocalize, cwHasType, withCompendiumSource } from "./utils.js";
+import { UNARMED_WEAPON_IDS } from "./lookups.js";
+import { CyberpunkActor } from "./actor/actor.js";
 
 /**
  * Migration entrypoint.
@@ -12,6 +14,8 @@ export const migrateWorld = async function (targetVersion = game.system.version)
   // Actors (world)
   for (const actor of game.actors.contents) {
     try {
+      await removeInjectedUnarmedWeapons(actor);
+
       const actorUpdate = await migrateActor(actor);
       await defaultDataUse(actor, actorUpdate);
 
@@ -45,6 +49,8 @@ export const migrateWorld = async function (targetVersion = game.system.version)
       if (!token.actor.isOwner) continue;
 
       try {
+        await removeInjectedUnarmedWeapons(token.actor);
+
         const actorUpdate = await migrateActor(token.actor);
         await defaultDataUse(token.actor, actorUpdate);
 
@@ -77,6 +83,30 @@ export const migrateWorld = async function (targetVersion = game.system.version)
 /* -------------------------------------------- */
 /*  Actor Migration                              */
 /* -------------------------------------------- */
+
+/**
+ * Delete the Strike and Kick weapons `_preCreate` used to inject into every new actor (D53,
+ * `T222`). The combat tab's fixed unarmed button replaces them, so the copies on existing actors
+ * are what is left of a mechanism that no longer exists.
+ *
+ * Matched by **stable base id**, never by name: `cyberpunk2020.melee` carries the same weapon under
+ * a translated name in a Russian world, and a name match would find nothing there and delete a
+ * player's hand-made "Strike" in an English one. `_getItemIdCandidates` is the same id set
+ * `_hasItemWithBaseId` used to dedupe the injection, so exactly what was injected is what goes.
+ *
+ * @param {Actor} actor
+ * @returns {Promise<string[]>} the ids removed
+ */
+export async function removeInjectedUnarmedWeapons(actor) {
+  const ids = actor.items.contents
+    .filter(item => item.type === "weapon")
+    .filter(item => CyberpunkActor._getItemIdCandidates(item)
+      .some(candidate => UNARMED_WEAPON_IDS.includes(candidate)))
+    .map(item => item.id);
+
+  if (ids.length) await actor.deleteEmbeddedDocuments("Item", ids);
+  return ids;
+}
 
 export async function migrateActor(actor) {
   const actorUpdates = {};

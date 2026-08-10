@@ -317,18 +317,29 @@ export async function resolveDefense(defender, attackTotal,
 
   const picked = options.find(o => o.skillId === choice?.skillId) ?? options[0] ?? null;
   const extraMod = Number(choice?.extraMod) || 0;
-  const base = picked?.total ?? (Number(defender.system.stats.ref.total) || 0);
+
+  // Two levels since `T232`/D58: the skill, then the maneuver. A skill the book gives no maneuver
+  // list to (Melee, Fencing, Dodge & Escape, Athletics — `07:982`) carries no `actions`, and its
+  // own total is the answer. An unanswered prompt falls through to `options[0]`'s best action,
+  // which is the auto-defence an NPC gets — silence must never cost the player anything.
+  // `DEFENSIVE_MARTIAL_ACTIONS` leads with Dodge and `find` takes the first match, so a Dodge/Block
+  // tie resolves to Dodge — D57's ruling, and the same order `defenseOptions` builds `dodging` from.
+  const maneuver = picked?.actions?.find(row => row.action === choice?.action)
+    ?? picked?.actions?.find(row => row.total === picked.total)
+    ?? null;
+  const base = maneuver?.total ?? picked?.total ?? (Number(defender.system.stats.ref.total) || 0);
 
   const roll = await new Roll(`${BaseDie} + @defense + @extraMod`, { defense: base, extraMod }).evaluate();
 
-  // The plain Dodge skill by id, or a martial art whose defence total was built out of its own
-  // Dodge maneuver — `defenseOptions` says which, because the option carries only a skill id and
-  // the maneuver behind the number is otherwise discarded (`T161`, D39).
-  if (picked?.skillId === DODGE_SKILL_ID || picked?.dodging) await declareDodge(defender);
+  // A defence built out of the Dodge maneuver takes the house rule's -2, whatever skill carried it
+  // (`T161`, D39). Where there is no maneuver to pick, the plain Dodge skill is that defence.
+  const dodged = maneuver ? maneuver.action === "Dodge" : picked?.skillId === DODGE_SKILL_ID;
+  if (dodged) await declareDodge(defender);
 
   return {
     total: roll.total,
     label: picked?.label ?? "",
+    action: maneuver?.action ?? null,
     roll,
     hit: attackTotal > roll.total
   };

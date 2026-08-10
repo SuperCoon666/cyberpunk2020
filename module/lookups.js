@@ -24,6 +24,9 @@ export const MELEE_DEFENSE_SKILL_IDS = new Set([
 /** Choosing this one as a defense is what declares a dodge for the house rule. */
 export const DODGE_SKILL_ID = "IWAr3E5vpS8qFzZS";
 
+/** Ch. `07:982` gives the maneuver list to Brawling and the martial arts, and to nothing else. */
+export const BRAWLING_SKILL_ID = "i8qoUwZ5jI9KAZeK";
+
 /** Ch. 07:731 — the skill a suppressive-fire save is rolled on, and ch. 04:654 a throw (D52). */
 export const ATHLETICS_SKILL_ID = "gULme1P5CR8rXXIh";
 
@@ -31,6 +34,31 @@ export const INTERFACE_SKILL_IDS = new Set([
   "sqHlfxm32pNENNFZ", // Interface
   "Nc1zY8vB6qWt4pXj"  // Интерфейс
 ]);
+
+// Ch. 07:614 — "any Medical Skill" added to a stabilization roll. Medical Tech is a *role* skill and
+// the two role packs share no ids at all, so it needs one per language; First Aid is a default skill
+// and the two default packs share every id, so one covers both.
+export const MEDICAL_TECH_SKILL_IDS = new Set([
+  "f1OKKB0bc1RaGdrM", // Medical Tech
+  "Mk0pH2nR8cVt5yJq"  // Медицинский техник
+]);
+
+export const FIRST_AID_SKILL_ID = "IU0oTzMUQdKFEhBS";
+
+// The `cyberpunk2020.melee` documents `_preCreate` used to inject into every new character (D53,
+// `T222`). Strike is what the combat tab's fixed unarmed button borrows — icon and weapon data —
+// and both are what the migration removes from existing actors, matched by **id**: the packs carry
+// the same weapon under a translated name.
+export const UNARMED_STRIKE_ID = "TZoiQuE8fUzJ8Jta";
+export const UNARMED_KICK_ID = "TF0nBrjofPX2RiuG";
+export const UNARMED_WEAPON_IDS = [UNARMED_STRIKE_ID, UNARMED_KICK_ID];
+
+/** Ch. 07:620-624 — the three advantages the book adds to the stabilization die roll. */
+export const STABILIZATION_ADVANTAGES = [
+  { localKey: "StabilizeFullHospital", dataPath: "fullHospital", bonus: 5 },
+  { localKey: "StabilizeTraumaTeam", dataPath: "traumaTeam", bonus: 3 },
+  { localKey: "StabilizeSuspensionTank", dataPath: "suspensionTank", bonus: 3 }
+];
 
 // Stored value paired with its localization key: the item sheet's dropdown and the netrunning
 // tab's program list both need the same mapping.
@@ -682,6 +710,15 @@ export function martialOptions(actor, savedOptions = {}) {
             choices: cyberTerminusChoices
         }
     ]]
+}
+
+/** The stabilization dialog's own fields: the book's three advantages, plus the dialog's own extra mod. */
+export function stabilizationOptions() {
+    return [STABILIZATION_ADVANTAGES.map(({ localKey, dataPath }) => ({
+        localKey,
+        dataPath,
+        defaultValue: false
+    }))];
 }
 
 // Needs to be a function, or every time the modifiers dialog is launched, it'll add "extra mods" on

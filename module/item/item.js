@@ -1,4 +1,4 @@
-import { weaponTypes, rangedAttackTypes, meleeAttackTypes, fireModes, ranges, rangeDCs, rangeResolve, effectiveRange, strengthDamageBonus, getMartialActionBonus, martialActions, isCombatAutomationEnabled, isFnff2Enabled, getFnff2DamageBonusSymbol, FNFF2_ONLY_MARTIAL_ART_IDS } from "../lookups.js"
+import { weaponTypes, rangedAttackTypes, meleeAttackTypes, fireModes, ranges, rangeDCs, rangeResolve, effectiveRange, strengthDamageBonus, getMartialActionBonus, martialActions, isCombatAutomationEnabled, isFnff2Enabled, getFnff2DamageBonusSymbol } from "../lookups.js"
 import { Multiroll, makeD10Roll } from "../dice.js"
 import { localize, localizeParam, rollLocation, cwHasType, cwIsEnabled, isFumbleRoll, buildRangedCombatFumbleData, buildSkillFumbleData, clamp, isRollableFormula } from "../utils.js";
 import { createCyberpunkChatMessage, renderCyberpunkTemplate } from "../compat.js";
@@ -66,16 +66,6 @@ export class CyberpunkItem extends Item {
   async _preCreate(data, options, user) {
     const allowed = await super._preCreate(data, options, user);
     if (allowed === false) return false;
-
-    if (this.type === "skill") {
-      const id = data?._id || this._id;
-      if (id && FNFF2_ONLY_MARTIAL_ART_IDS.has(id) && !isFnff2Enabled()) {
-        ui?.notifications?.warn(game.i18n.localize("CYBERPUNK.FNFF2SkillDisabledWarn"));
-        // _preCreate must return false to reject only this document.
-        // Throwing here also aborts sibling documents in batch creation.
-        return false;
-      }
-    }
 
     if (this.type === "armor" && this.actor) {
       const system = foundry.utils.deepClone(this._source.system);

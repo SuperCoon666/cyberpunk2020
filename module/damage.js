@@ -13,8 +13,9 @@ import { Multiroll } from "./dice.js";
  *    ammunition snapshot carries `penHalvesSoft`/`penHalvesHard` and the electroshock save.
  * 5: the payload carries `melee`/`mono` (shipped at `1f66757` without a bump, corrected here), and
  *    the ammunition snapshot carries `stunIgnoresArmor` (D62).
+ * 6: the ammunition snapshot carries `overallBody`, which decides where a blast resolves (`T96`).
  */
-export const ATTACK_FLAG_VERSION = 5;
+export const ATTACK_FLAG_VERSION = 6;
 
 /** The flag a damage-over-time effect burns down from, one tick per turn. */
 const DOT_FLAG = "dot";
@@ -121,6 +122,7 @@ export function snapshotAmmo(item) {
     dotTurns: numberOr(a.dotTurns, 0),
     dotDamageFormula: String(a.dotDamageFormula ?? ""),
     blastRadius: numberOr(a.blastRadius, 0),
+    overallBody: !!a.overallBody,
     blastFullDamageWithin: numberOr(a.blastFullDamageWithin, 0),
     blastMultipliers: Array.isArray(a.blastMultipliers) ? [...a.blastMultipliers] : [],
     spreadMode: String(a.spreadMode ?? "single"),
@@ -141,7 +143,8 @@ export function snapshotAmmo(item) {
  * @param {number} hit.damage Rolled damage, ammunition raw multiplier already applied
  * @param {string} hit.zone Hit location key, e.g. "Torso"
  * @param {boolean} hit.ap Armour-piercing round, or — for a melee hit — an edged weapon
- * @param {boolean} hit.mono A mono edge. Only read together with `ap` and `melee`
+ * @param {boolean} hit.mono A mono edge. Only read together with `ap`, and deliberately not with
+ *   `melee`: ch. 07:1065 is stated of *all* mono-edge weapons, thrown ones included (`T242`, D67)
  * @param {boolean} hit.melee The hit came from a melee weapon, which meets armour by its own rules
  * @param {object|null} hit.ammo Snapshot from snapshotAmmo
  * @param {CyberpunkActor} targetActor
@@ -162,11 +165,13 @@ export function resolveHit({ damage = 0, zone = "Torso", ap = false, mono = fals
 
   let effSp = Math.floor(sp * armorMult);
 
-  if (melee && ap && mono) {
+  if (ap && mono) {
     // Ch. 07:1065 — *"all mono-edge weapons are at 1/3xSP vs. soft armors, 2/3xSP vs. hard armors"*.
     // Stated unconditionally and already accounting for hardness, so it **replaces** the √ halving
     // rather than stacking with it (`AB-Q3`, D52) — stacking would give a mono knife 1/6 SP against
-    // a flak vest, which no line in the book asks for.
+    // a flak vest, which no line in the book asks for. *"All mono-edge weapons"* is also why this
+    // does not ask how the blade arrived: a thrown one is still a mono edge (`T242`, D67), and the
+    // branch stays first so a mono blade never falls through to the plain edged rule below.
     effSp = Math.floor(sp * (location.hard ? 2 / 3 : 1 / 3));
   } else if (melee && ap) {
     // Ch. 07:462 — an edged weapon meets half SP from armour the table marks √, and full SP from
@@ -183,11 +188,13 @@ export function resolveHit({ damage = 0, zone = "Torso", ap = false, mono = fals
   // The second half does branch: a finned slug's penetrating damage survives hard armour whole
   // (ch. 07:865-873). Both flags default true, which is the flat AP rule (`T95`, D53 У3). A blade
   // never halves its damage at all: ch. 07:462 limits itself to SP effectiveness, and the AP
-  // round's halving is justified by its "lower damage capacity" (`AB-Q1a`, D53 У2).
+  // round's halving is justified by its "lower damage capacity" (`AB-Q1a`, D53 У2) — which is a
+  // property of the round and not of the delivery, so a thrown mono blade is out of it too
+  // (`T242`, D67). Leaving it in would hand that blade 1/3 SP and then halve what got through.
   const penHalves = location.hard
     ? (ammo?.penHalvesHard !== false)
     : (ammo?.penHalvesSoft !== false);
-  if (ap && !melee && penHalves) penetrating = Math.floor(penetrating / 2);
+  if (ap && !melee && !mono && penHalves) penetrating = Math.floor(penetrating / 2);
   penetrating = Math.floor(penetrating * numberOr(ammo?.penDamageMult, 1));
 
   const headDoubled = doubleHead && zone === "Head" && penetrating > 0;
@@ -477,9 +484,9 @@ export async function tickDot(actor, { messageMode } = {}) {
  * @param {object|null} attack.ammo
  * @param {string} attack.targetName
  * @param {string} [attack.messageMode] Visibility of the breakdown and of the saves behind it
- * @param {boolean} [attack.overallBody] An area effect, which damages the body rather than a
- *   location (`07:960`/`:966`) — so a burn it starts catches at the Torso rather than at the
- *   location this victim's share happened to roll
+ * @param {boolean} [attack.overallBody] An area effect that damages the body rather than a location
+ *   (`07:960`/`:966`): every hit resolves at the Torso, so head doubling, severance and cyberlimb
+ *   absorption are all out of reach and a burn it starts catches there too
  * @returns {Promise<ChatMessage>} the breakdown card
  */
 export async function applyHitsToActor(actor,
@@ -503,7 +510,11 @@ export async function applyHitsToActor(actor,
     && numberOr(actor.system.sdp?.current?.[zone], 0) - (sdp[zone] ?? 0) <= 0;
 
   for (const hit of hits) {
-    let zone = hit.zone;
+    // D52/`T96` — an overall-body hit resolves against the body as a whole, and the Torso is what
+    // the book leaves meeting it. The three location rules fall out with the zone rather than being
+    // switched off one by one: the Torso is not the Head, is not severable and is not a cyberlimb.
+    // Forced here rather than at each caller, so the rule cannot arrive half applied.
+    let zone = overallBody ? "Torso" : hit.zone;
     // Bounded because the loop is a re-roll, not a search: Head and Torso are never cyberlimbs, so
     // in practice it ends on the first or second throw. Exhausting it leaves the hit where it was
     // rolled, where it now reaches the wound track rather than a limb that cannot absorb it.
@@ -526,10 +537,16 @@ export async function applyHitsToActor(actor,
       if (zone === "Head") killed = true;
       else severedLimbs.push({ zone: localize(zone) });
     }
-    lines.push({ ...resolved, zone, damage: hit.damage });
+    // The card names the rule, not the location it was resolved at: "Torso" would read as a rolled
+    // location and is exactly what an overall-body hit did not do.
+    lines.push({ ...resolved, zone: overallBody ? "OverallBody" : zone, damage: hit.damage });
   }
 
   await actor.applyDamage({ wound, sdp });
+
+  // Ch. 07:614 — stabilization holds *"unless another wound is taken"*, and nothing else in the
+  // system ever clears the flag (`T219`, D52).
+  if (wound > 0 && actor.system.stabilized) await actor.update({ "system.stabilized": false });
 
   if (game.settings.get("cyberpunk2020", "armorAblation")) await ablateArmor(actor, penetratedZones);
 
@@ -574,7 +591,7 @@ export async function applyHitsToActor(actor,
   // on nothing — *"Anything caught in the sweep between the two points is ignited"* — and a burning
   // metal arm burns. Only a hit the armour stopped leaves nothing to catch.
   if (ignitionZone !== null) {
-    await startDot(actor, ammo, overallBody ? "Torso" : ignitionZone);
+    await startDot(actor, ammo, ignitionZone);
   }
 
   // Ch. 07:530 — a severed limb means *"an immediate Death Save at Mortal 0"*: the Save number with

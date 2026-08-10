@@ -1,5 +1,5 @@
 import { deepSet, localize, localizeParam, refusedWhilePaused } from "../utils.js"
-import { fireModes } from "../lookups.js"
+import { fireModes, getMartialActionBonus } from "../lookups.js"
 import { createCyberpunkChatMessage, getGMUserIds, getHtmlElement } from "../compat.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
@@ -138,6 +138,32 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
       this._cpActivateReload(root);
       this._cpActivateAdvantageToggles(root);
       this._cpActivateFireModeFields(root);
+      this._cpActivateMartialBonuses(root);
+    }
+
+    /**
+     * Show the chosen art's bonus against every maneuver, and follow the art when it changes
+     * (`T232`, D58). `+0` is printed rather than hidden: `07:1004` makes key attacks a bonus list
+     * and not a permission list — *"A Karate Master would be able to do any other type of move,
+     * but would be better at these three"* — so an unkeyed action is offered, at no bonus.
+     */
+    _cpActivateMartialBonuses(root) {
+      const martialArt = root.querySelector('select[name="martialArt"]');
+      const action = root.querySelector('select[name="action"]');
+      if (!martialArt || !action) return;
+
+      const paint = () => {
+        for (const option of action.options) {
+          // The label the template localized, kept aside on the first pass: repainting from the
+          // rendered text would append a second bonus to the first.
+          option.dataset.cpLabel ??= option.textContent;
+          const bonus = getMartialActionBonus(martialArt.value, option.value);
+          option.textContent = `${option.dataset.cpLabel} (${bonus >= 0 ? "+" : ""}${bonus})`;
+        }
+      };
+
+      paint();
+      martialArt.addEventListener("change", paint);
     }
 
     _cpActivateReload(root) {

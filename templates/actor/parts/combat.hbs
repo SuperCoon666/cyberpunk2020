@@ -1,21 +1,49 @@
 {{!-- Actor sheet's combat tab --}}
 <div class="combat-tab">
     <section class="combat-rolls">
-    <div class="field-list no-wrap">
-    <div class="field roll-initiative">
-        <label class="action">{{CPLocal "Initiative"}}</label>
-        <span class="flex-pad"></span>
-        <input class="roll-initiative-modificator number" type="number" {{#unless (eq initiativeMod 0)}}value="{{initiativeMod}}"{{/unless}} placeholder="0">
-    </div>
+        <header>
+            <h2>{{CPLocal "CombatActions"}}</h2>
+        </header>
 
-    <div class="field stun-death-save">
-        <label class="action">{{CPLocal "StunDeathSave"}}</label>
-        <span class="flex-pad"></span>
-        <input class="roll-stun-death-modificator number" type="number" {{#unless (eq StunDeathMod 0)}}value="{{StunDeathMod}}"{{/unless}} placeholder="0">
-    </div>
-</div>
+        {{!-- The two fixed actions every character has, whatever they are carrying: the unarmed
+              attack that replaced the injected Strike/Kick items, and the stabilization roll. --}}
+        <div class="field-list combat-actions">
+            {{#if unarmed}}
+            <div class="field action unarmed-attack" data-tooltip="{{CPLocal 'UnarmedAttackHint'}}">
+                <div class="no-action field-image" style="background-image: url({{unarmed.img}})"></div>
+                <label class="name">{{CPLocal "UnarmedAttack"}}</label>
+                <span class="flex-pad"></span>
+            </div>
+            {{/if}}
+
+            <div class="field action stabilize-roll" data-tooltip="{{CPLocal 'StabilizeHint'}}">
+                <div class="no-action field-image" style="background-image: url(systems/cyberpunk2020/img/pulse-icon.svg)"></div>
+                <label class="name">{{CPLocal "Stabilization"}}</label>
+                <span class="flex-pad"></span>
+            </div>
+        </div>
+
+        <div class="field-list combat-saves">
+            <div class="field roll-initiative">
+                <label class="action">{{CPLocal "Initiative"}}</label>
+                <span class="flex-pad"></span>
+                <input class="roll-initiative-modificator number" type="number" {{#unless (eq initiativeMod 0)}}value="{{initiativeMod}}"{{/unless}} placeholder="0">
+            </div>
+
+            <div class="field stun-death-save">
+                <label class="action">{{CPLocal "StunDeathSave"}}</label>
+                <span class="flex-pad"></span>
+                <input class="roll-stun-death-modificator number" type="number" {{#unless (eq StunDeathMod 0)}}value="{{StunDeathMod}}"{{/unless}} placeholder="0">
+            </div>
+        </div>
+
+        {{!-- Moved off the wound tracker (T222): the flag the stabilization roll sets belongs
+              beside the button that sets it, not beside the boxes a GM clicks. --}}
+        <div class="field-list combat-state">
+            {{> (template "fields/boolean") label="Stabilized" edit="system.stabilized"}}
+        </div>
     </section>
-    
+
     <section class="armor-section">
         <header>
             <h2>{{CPLocal "Armor"}}</h2>
@@ -27,7 +55,7 @@
             <span class="flex-pad"></span>
             <input type="number" value="{{system.stats.ref.armorMod}}" class="number nogrow" readonly>
         </div>
-        
+
         <div class="field-list one-col">
             {{#each gear.armor}}
             <div class="field item-edit" data-item-id="{{id}}">
@@ -40,7 +68,7 @@
             </div>
             {{/each}}
         </div>
-        
+
     </section>
     <section class="weapons-list">
         <header>

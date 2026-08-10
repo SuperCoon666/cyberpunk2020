@@ -522,6 +522,11 @@ export async function applyBlastFromMessage(message) {
 
   await message.update({ "flags.cyberpunk2020.attack.applied.zone": true });
 
+  // `T96`/D52 — the round decides, not the card's kind: a shotgun pattern is located pellets, and a
+  // grenade is location-silent in the book (`07:839`), so only a charge authored as an explosive
+  // resolves against the body as a whole.
+  const overallBody = !!attack.ammo?.overallBody;
+
   const cards = [];
   for (const entry of caught) {
     const tokenDoc = await fromUuid(entry.tokenUuid);
@@ -534,16 +539,17 @@ export async function applyBlastFromMessage(message) {
 
     // D17: the shot's designated target takes the location it was aimed at — the -4 was paid at
     // the roll. Everyone else the pattern caught rolls their own, and a blast has no aim at all.
-    const zone = entry.tokenUuid === attack.blast.aimedTokenUuid && attack.blast.aimedZone
-      ? attack.blast.aimedZone
-      : (await rollLocation(actor)).areaHit;
+    // An overall-body hit rolls nothing: `applyHitsToActor` resolves it at the Torso either way,
+    // and a die thrown for a location nobody reads is one a dice module would still animate.
+    const zone = overallBody ? "Torso"
+      : entry.tokenUuid === attack.blast.aimedTokenUuid && attack.blast.aimedZone
+        ? attack.blast.aimedZone
+        : (await rollLocation(actor)).areaHit;
 
     cards.push(await applyHitsToActor(actor, {
       hits: [{ zone, damage }], ap: attack.ap, ammo: attack.ammo, targetName: entry.name,
       messageMode: hiddenMessageMode(tokenDoc?.hidden),
-      // A blast damages the overall body (`07:960`/`:966`), so a burn it starts catches at the
-      // Torso; a shotgun pattern is located pellets and keeps the zone it rolled (D26.2).
-      overallBody: attack.kind === "blast"
+      overallBody
     }));
   }
 

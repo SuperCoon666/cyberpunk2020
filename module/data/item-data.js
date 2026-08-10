@@ -317,6 +317,10 @@ export class CyberpunkAmmoData extends CyberpunkBaseItemData {
       dotTurns: numberField(0),
       dotDamageFormula: stringField(""),
       blastRadius: numberField(0),
+      // Ch. 07:960 / 07:966 — an explosive's and a molotov's damage is applied *"to the overall
+      // body, rather than to a location"*. Opt-in per round because 07:839 leaves a grenade
+      // location-silent, so the located pipeline stays defensible there (`T96`, D52).
+      overallBody: booleanField(false),
       blastFullDamageWithin: numberField(1),
       blastZones: numberField(4),
       blastShrapnel: booleanField(false),
@@ -343,6 +347,7 @@ export class CyberpunkAmmoData extends CyberpunkBaseItemData {
     normalizeBooleanIfPresent(source, "stunSaveOnHit", false);
     normalizeBooleanIfPresent(source, "stunIgnoresArmor", false);
     normalizeBooleanIfPresent(source, "dotEnabled", false);
+    normalizeBooleanIfPresent(source, "overallBody", false);
     normalizeBooleanIfPresent(source, "blastShrapnel", false);
     normalizeBooleanIfPresent(source, "penHalvesSoft", true);
     normalizeBooleanIfPresent(source, "penHalvesHard", true);

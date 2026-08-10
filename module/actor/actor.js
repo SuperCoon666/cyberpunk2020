@@ -1,8 +1,11 @@
 import { makeD10Roll, Multiroll } from "../dice.js";
 import { isFumbleRoll, buildSkillFumbleData } from "../utils.js";
 import { SortOrders, sortSkills } from "./skill-sort.js";
-import { btmFromBT, MARTIAL_ART_KEY_BY_ID, MARTIAL_ART_ID_BY_KEY, DEFENSIVE_MARTIAL_ACTIONS, FNFF2_ONLY_MARTIAL_ART_IDS, getMartialActionBonus, isCombatAutomationEnabled, isFnff2Enabled, AWARENESS_NOTICE_SKILL_ID, ATHLETICS_SKILL_ID, MELEE_DEFENSE_SKILL_IDS } from "../lookups.js";
-import { properCase, localize, getDefaultSkills, cwHasType, cwIsEnabled, withCompendiumSource } from "../utils.js"
+import { btmFromBT, MARTIAL_ART_KEY_BY_ID, MARTIAL_ART_ID_BY_KEY, DEFENSIVE_MARTIAL_ACTIONS, FNFF2_ONLY_MARTIAL_ART_IDS, getMartialActionBonus, isCombatAutomationEnabled, isFnff2Enabled, AWARENESS_NOTICE_SKILL_ID, ATHLETICS_SKILL_ID, MELEE_DEFENSE_SKILL_IDS, BRAWLING_SKILL_ID, DODGE_SKILL_ID, MEDICAL_TECH_SKILL_IDS, FIRST_AID_SKILL_ID, STABILIZATION_ADVANTAGES } from "../lookups.js";
+import { properCase, localize, localizeParam, getDefaultSkills, cwHasType, cwIsEnabled, withCompendiumSource } from "../utils.js"
+
+/** The stabilization hand-off has no human in the loop — it is one flag write on the GM's client. */
+const STABILIZE_QUERY_TIMEOUT_MS = 5000;
 
 export function combineSP(curr, add) {
   const a = Number(curr) || 0;
@@ -123,31 +126,6 @@ export class CyberpunkActor extends Actor {
       updates["system.skillsSortedBy"] = "Name";
     }
 
-    // Default unarmed melee weapons: Kick + Strike
-    if (actorType === "character" || actorType === "npc") {
-      const UNARMED_WEAPON_IDS = [
-        "TF0nBrjofPX2RiuG", // Kick
-        "TZoiQuE8fUzJ8Jta"  // Strike
-      ];
-
-      const meleePack = game.packs.get("cyberpunk2020.melee");
-
-      if (meleePack) {
-        for (const wid of UNARMED_WEAPON_IDS) {
-          if (CyberpunkActor._hasItemWithBaseId(items, wid)) continue;
-
-          const doc = await meleePack.getDocument(wid);
-          if (!doc) continue;
-
-          const obj = withCompendiumSource(doc);
-          obj.system = obj.system ?? {};
-          obj.system.equipped = true;
-
-          items.push(obj);
-        }
-      }
-    }
-
     updates.items = items;
     this.updateSource(updates);
   }
@@ -163,19 +141,6 @@ export class CyberpunkActor extends Actor {
   _getInitialItemsSource(data) {
     const sourceItems = this._source?.items ?? data?.items ?? [];
     return Array.isArray(sourceItems) ? foundry.utils.deepClone(sourceItems) : [];
-  }
-
-  /**
-   * @param {object[]} items
-   * @param {string} baseId
-   * @returns {boolean}
-   * @private
-   */
-  static _hasItemWithBaseId(items, baseId) {
-    // Among the candidates, not equal to the first: during creation an item's own `_id` is
-    // freshly assigned and sorts first, so a copy that carries the compendium original only in
-    // its source id was never recognised and got a duplicate injected (T-18).
-    return items.some((item) => CyberpunkActor._getItemIdCandidates(item).includes(baseId));
   }
 
   /**
@@ -647,23 +612,49 @@ export class CyberpunkActor extends Actor {
    * untrained, which `M.7.2` records as a contract.
    *
    * A trained art's total carries its own maneuver bonus the way the attack side already does
-   * (`T93`): the better of its two defensive maneuvers, because the prompt offers a *skill* rather
-   * than a maneuver and a defender would answer with whichever their style is best at.
+   * (`T93`), and since `T232` the option also carries the **maneuvers themselves**, so the prompt
+   * can be two-level: the skill first, then the action (D58). `total` stays the best of them —
+   * it is the sort key and what an NPC's auto-defence rolls.
    *
-   * @returns {Array<{skillId: string, label: string, total: number}>}
+   * **Only Brawling and the martial arts carry `actions`.** Ch. `07:982` gives the maneuver list to
+   * exactly those two — *"Brawling and Martial Arts attacks are different from other melee attacks
+   * in that an attack can be made in a number of ways"* — so Melee, Fencing, Dodge & Escape and
+   * Athletics stay single-level, and their defence is what the skill is.
+   *
+   * @returns {Array<{skillId: string, label: string, total: number,
+   *   actions: Array<{action: string, bonus: number, total: number}>, dodging: boolean}>}
    */
   defenseOptions() {
     const ref = Number(this.system.stats.ref.total) || 0;
     const options = [];
 
+    // A maneuver row per defensive action, with the art's own bonus on it — +0 where the style has
+    // no key attack there, which `07:1004` makes a bonus list rather than a permission list.
+    const maneuvers = (martialKey, base) => DEFENSIVE_MARTIAL_ACTIONS.map(action => {
+      const bonus = martialKey ? getMartialActionBonus(martialKey, action) : 0;
+      return { action, bonus, total: base + bonus };
+    });
+
+    // D57/D58: an NPC's Dodge/Block tie goes to **Dodge** — the same number with a strictly
+    // no-worse side effect, the -2 a declared dodge costs later ranged attackers. That supersedes
+    // `AA-Q4`'s strictly-greater reading, which was decided before the tie itself was ruled.
+    const bestOf = actions => actions.reduce((best, row) =>
+      row.total > best.total ? row : best, actions[0]);
+
     for (const id of MELEE_DEFENSE_SKILL_IDS) {
       const skill = this._getSkillByStableId(id);
       if (!skill) continue;
 
+      const base = ref + CyberpunkActor.realSkillValue(skill);
+      // Brawling is the one entry in this set that `07:982` gives the maneuver list to.
+      const actions = id === BRAWLING_SKILL_ID ? maneuvers(null, base) : [];
+
       options.push({
         skillId: id,
         label: this.getSkillDisplayName(skill),
-        total: ref + CyberpunkActor.realSkillValue(skill)
+        total: base,
+        actions,
+        dodging: actions.length ? bestOf(actions).action === "Dodge" : id === DODGE_SKILL_ID
       });
     }
 
@@ -676,19 +667,17 @@ export class CyberpunkActor extends Actor {
         : this._getCustomMartialSkill(martialKey);
       if (!skill) continue;
 
-      const bonuses = Object.fromEntries(DEFENSIVE_MARTIAL_ACTIONS
-        .map(action => [action, getMartialActionBonus(martialKey, action)]));
-      const bonus = Math.max(...Object.values(bonuses));
+      const base = ref + CyberpunkActor.realSkillValue(skill);
+      const actions = maneuvers(martialKey, base);
 
       options.push({
         skillId: stableId ?? skill.id,
         label: this.getSkillDisplayName(skill),
-        total: ref + CyberpunkActor.realSkillValue(skill) + bonus,
-        // Which maneuver built the total, so a defence made of dodging earns the `dodgeVsRanged`
-        // -2 the plain Dodge skill earns (`T161`, D39). **Strictly** greater: D39 rules on a
-        // defence built *out of* the Dodge maneuver, and an art whose two are equal says only
-        // that either would serve (`AA-Q4`).
-        dodging: bonuses.Dodge > bonuses.BlockParry
+        total: bestOf(actions).total,
+        actions,
+        // Which maneuver an auto-defence would build the total out of, so a defence made of dodging
+        // earns the `dodgeVsRanged` -2 the plain Dodge skill earns (`T161`, D39).
+        dodging: bestOf(actions).action === "Dodge"
       });
     }
 
@@ -1190,6 +1179,124 @@ export class CyberpunkActor extends Actor {
 
     const total = rolls.rolls[0].total;
     return { total, threshold, success: total <= threshold };
+  }
+
+  /**
+   * The medical skill this actor would stabilize with, or null when they carry neither.
+   *
+   * Ch. 07:614's "any Medical Skill" is read as Medical Tech when the medic carries the document at
+   * all, else First Aid (D53). The *document* decides, not its level: a level 0 still rolls, so the
+   * medic gets their TECH and the die.
+   *
+   * @returns {Item|null}
+   * @private
+   */
+  _getMedicalSkill() {
+    for (const id of MEDICAL_TECH_SKILL_IDS) {
+      const skill = this._getSkillByStableId(id);
+      if (skill) return skill;
+    }
+    return this._getSkillByStableId(FIRST_AID_SKILL_ID);
+  }
+
+  /**
+   * Ch. 07:614 — TECH + a medical skill + 1d10, at or over the total damage the patient has taken.
+   *
+   * With neither medical skill the attempt is refused rather than rolled at TECH alone (D54): the
+   * one approved hard restriction on this path, reusing the netrunning Interface pattern.
+   * Self-treatment is deliberately allowed (D52) even though the book excludes the patient.
+   *
+   * @param {CyberpunkActor} patient The actor being stabilized
+   * @param {object} [options] The stabilization dialog's own fields
+   * @returns {Promise<{total: number, target: number, success: boolean}|false>} false when refused
+   */
+  async rollStabilization(patient, options = {}) {
+    if (!patient) {
+      ui.notifications.warn(localize("StabilizeNoPatient"));
+      return false;
+    }
+
+    const skill = this._getMedicalSkill();
+    if (!skill) {
+      ui.notifications.warn(localize("StabilizeNoMedicalSkill"));
+      return false;
+    }
+
+    const target = Number(patient.system.damage) || 0;
+    const advantages = STABILIZATION_ADVANTAGES
+      .reduce((sum, adv) => sum + (options[adv.dataPath] ? adv.bonus : 0), 0);
+    const mod = advantages + (Number(options.extraMod) || 0);
+
+    const roll = makeD10Roll([
+      "@stats.tech.total",
+      CyberpunkActor.realSkillValue(skill) || null,
+      mod || null
+    ].filter(Boolean), this.system);
+    await roll.evaluate();
+
+    const success = roll.total >= target;
+
+    const results = new Multiroll(
+      localize("Stabilization"),
+      localizeParam(success ? "StabilizeSuccess" : "StabilizeFailure", { patient: patient.name })
+    );
+    results.addRoll(roll, { name: skill.name });
+    results.addRoll(new Roll(`${target}`), { name: localize("StabilizeTarget") });
+    await results.defaultExecute();
+
+    // D34's split, as the sheet's own Stun/Death button already applies it (`T140`): the roll and
+    // its card are what the user asked for and stay in either state, while the flag it sets is a
+    // resolution outcome and belongs to the table with the master switch off.
+    if (success && isCombatAutomationEnabled()) await CyberpunkActor.setStabilized(patient);
+
+    return { total: roll.total, target, success };
+  }
+
+  /**
+   * Write `stabilized` onto the patient, through the active GM when this client does not own them.
+   *
+   * A medic is routinely not the patient's owner — a player treating another player's character owns
+   * nothing on it — and a rejected update would have been silent (`T41`'s shape). The hand-off is the
+   * one `declareDodge` already uses.
+   *
+   * @param {CyberpunkActor} patient
+   * @returns {Promise<void>}
+   */
+  static async setStabilized(patient) {
+    if (patient.isOwner) {
+      await patient.update({ "system.stabilized": true });
+      return;
+    }
+
+    const gm = game.users.activeGM;
+    if (!gm) return;
+
+    try {
+      await gm.query("cyberpunk2020.applyStabilized", { actorUuid: patient.uuid },
+        { timeout: STABILIZE_QUERY_TIMEOUT_MS });
+    } catch (err) {
+      // The GM went away mid-roll. The card is posted either way, so the table can tick the box.
+    }
+  }
+
+  /**
+   * Write a stabilization handed over by another client. Runs on the active GM.
+   *
+   * The sender's own gate is re-applied here rather than trusted: it guards the *state*, not the
+   * sender, and a query is reachable from any player's console (`T82`).
+   *
+   * @param {object} payload
+   * @param {string} payload.actorUuid
+   * @returns {Promise<boolean>} whether the flag was written
+   */
+  static async applyStabilized({ actorUuid } = {}) {
+    if (!isCombatAutomationEnabled()) return false;
+
+    const actor = await fromUuid(String(actorUuid ?? ""));
+    if (actor?.documentName !== "Actor") return false;
+
+    await actor.update({ "system.stabilized": true });
+    return true;
   }
 
   async _preUpdate(changes, options, user) {

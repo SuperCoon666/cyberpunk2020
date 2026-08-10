@@ -165,6 +165,10 @@ Hooks.once('init', async function () {
     // nothing on an NPC defender, so the write is handed to the single writer everywhere else here.
     CONFIG.queries["cyberpunk2020.declareDodge"] = payload => applyDeclaredDodge(payload);
 
+    // A stabilization rolled by a medic who does not own the patient — a player treating another
+    // player's character owns nothing on it.
+    CONFIG.queries["cyberpunk2020.applyStabilized"] = payload => CyberpunkActor.applyStabilized(payload);
+
     // The defender picks the skill; the attacker's client rolls it, so this returns a choice and
     // never a result. Null means "decide for me" — the timeout path answers that way too.
     CONFIG.queries["cyberpunk2020.defensePrompt"] = async ({ attackerName, itemName, defenderActorUuid, attackTotal, choices }) => {
@@ -186,6 +190,19 @@ Hooks.once('init', async function () {
         `<option value="${esc(c.skillId)}">${esc(c.label)} (${Number(c.total) || 0})</option>`
       ).join("");
 
+      // The second level (`T232`, D58): the maneuvers the chosen skill offers, each with the art's
+      // own bonus shown — +0 where the style has no key attack there, because `07:1004` makes key
+      // attacks a bonus list and not a permission list. A skill the book gives no maneuvers to
+      // (`07:982` — anything but Brawling and the arts) renders no row at all.
+      const maneuverOptions = skillId => {
+        const rows = choices.find(c => c.skillId === skillId)?.actions ?? [];
+        return rows.map(row => {
+          const bonus = Number(row.bonus) || 0;
+          const label = `${localize(row.action)} (${bonus >= 0 ? "+" : ""}${bonus})`;
+          return `<option value="${esc(row.action)}">${esc(label)}</option>`;
+        }).join("");
+      };
+
       // An empty attacker name is the ambusher case, not missing data: `resolveDefense` blanks it
       // and the item name together, and the reduced line keeps the total (D29.5).
       const asked = attackerName
@@ -202,14 +219,33 @@ Hooks.once('init', async function () {
           window: { title: "CYBERPUNK.Defense" },
           content: `<p>${asked}</p>
             <label>${localize("DefenseSkill")} <select name="skillId">${options}</select></label>
+            <label class="cp-defense-action">${localize("DefenseAction")} <select name="action">${maneuverOptions(choices[0]?.skillId)}</select></label>
             <label>${localize("DefenseMod")} <input type="number" name="extraMod" value="0" step="1"></label>`,
           ok: { label: "CYBERPUNK.DefenseRollButton" },
-          render: (event, app) => { dialog = app; }
+          render: (event, app) => {
+            dialog = app;
+            // The maneuvers belong to the chosen skill, so the second level is rebuilt on every
+            // change of the first — and the row hides itself for a skill that has none.
+            const root = app.element;
+            const skill = root.querySelector('select[name="skillId"]');
+            const action = root.querySelector('select[name="action"]');
+            const row = root.querySelector(".cp-defense-action");
+            const sync = () => {
+              action.innerHTML = maneuverOptions(skill.value);
+              row.style.display = action.options.length ? "" : "none";
+            };
+            sync();
+            skill.addEventListener("change", sync);
+          }
         }),
         deadline
       ]);
 
-      return answer ? { skillId: answer.skillId, extraMod: Number(answer.extraMod) || 0 } : null;
+      // `action` is absent for a skill with no maneuvers, and `resolveDefense` falls back to the
+      // option's own total there — the same answer the timeout path gives.
+      return answer
+        ? { skillId: answer.skillId, action: answer.action ?? null, extraMod: Number(answer.extraMod) || 0 }
+        : null;
     };
 
     // Register System Settings

@@ -1,4 +1,6 @@
-import { martialOptions, meleeAttackTypes, meleeBonkOptions, rangedModifiers, weaponTypes, FNFF2_ONLY_MARTIAL_ART_IDS, isCombatAutomationEnabled, isFnff2Enabled, COMBAT_SENSE_SKILL_IDS, INTERFACE_SKILL_IDS, programTypes } from "../lookups.js";
+import { martialOptions, meleeAttackTypes, meleeBonkOptions, rangedModifiers, stabilizationOptions, weaponTypes, FNFF2_ONLY_MARTIAL_ART_IDS, isCombatAutomationEnabled, isFnff2Enabled, COMBAT_SENSE_SKILL_IDS, INTERFACE_SKILL_IDS, UNARMED_STRIKE_ID, programTypes } from "../lookups.js";
+import { CyberpunkItem } from "../item/item.js";
+import { CyberpunkActor } from "./actor.js";
 import { deleteFieldUpdate, localize, localizeParam, cwHasType, cwIsEnabled, refusedWhilePaused, withCompendiumSource } from "../utils.js"
 import { ModifiersDialog } from "../dialog/modifiers.js"
 import { SortOrders, sortSkills } from "./skill-sort.js";
@@ -9,6 +11,20 @@ import { MORTAL_WOUND_STATE } from "../damage.js";
 const { HandlebarsApplicationMixin } = foundry.applications.api;
 const { ActorSheetV2 } = foundry.applications.sheets;
 const { Tabs } = foundry.applications.ux;
+
+/**
+ * The `cyberpunk2020.melee` Strike document, which the combat tab's fixed unarmed button borrows
+ * for its icon and its weapon data. `T222` deleted the embedded copies, so this is fetched rather
+ * than owned — and cached, because `_prepareContext` runs on every render and a pack read there is
+ * a database hit per render. Null when the pack is not loaded, which is what the button refuses on.
+ */
+let unarmedSource;
+async function getUnarmedSource() {
+  if (unarmedSource !== undefined) return unarmedSource;
+  const doc = await game.packs.get("cyberpunk2020.melee")?.getDocument(UNARMED_STRIKE_ID);
+  unarmedSource = doc ? doc.toObject() : null;
+  return unarmedSource;
+}
 
 /** @extends {foundry.applications.sheets.ActorSheetV2} */
 export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2) {
@@ -148,6 +164,9 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       itemId: interfaceItemId
     };
 
+    const unarmed = await getUnarmedSource();
+    sheetData.unarmed = unarmed ? { name: unarmed.name, img: unarmed.img } : null;
+
     return sheetData;
   }
 
@@ -176,8 +195,14 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     let currentSkills =
       this.actor.itemTypes?.skill ?? this.actor.items.filter(i => i.type === "skill");
 
+    // D61: while the optional rule is off a trained FNFF2-only art is hidden from the sheet
+    // entirely — the document is untouched underneath and comes back with its level on re-enable.
+    // Through the id **candidates**, not `_id` alone: a copy dragged from the pack carries the
+    // original in `_stats.compendiumSource` and would otherwise stay visible here while
+    // `trainedMartials` — which resolves the same way — had already dropped it.
     if (!isFnff2Enabled()) {
-      currentSkills = currentSkills.filter(s => !FNFF2_ONLY_MARTIAL_ART_IDS.has(s._id));
+      currentSkills = currentSkills.filter(skill => !CyberpunkActor._getItemIdCandidates(skill)
+        .some(candidate => FNFF2_ONLY_MARTIAL_ART_IDS.has(candidate)));
     }
 
     const currentIds = currentSkills.map(s => s.id);
@@ -459,6 +484,29 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
         return;
       }
 
+      const unarmed = target.closest(".unarmed-attack");
+      if (unarmed) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation?.();
+
+        if (refusedWhilePaused()) return;
+
+        await this._cpOpenUnarmedAttackDialog();
+        return;
+      }
+
+      const stabilize = target.closest(".stabilize-roll");
+      if (stabilize) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (refusedWhilePaused()) return;
+
+        this._cpOpenStabilizationDialog();
+        return;
+      }
+
       const statRoll = target.closest(".stat-roll");
       if (statRoll) {
         event.preventDefault();
@@ -680,6 +728,43 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
   }
 
   /**
+   * The combat tab's fixed unarmed attack (`T222`, D53). `_preCreate` no longer injects Strike and
+   * Kick, so the weapon is built here as a **temporary** owned document: `__weaponRoll` needs
+   * `item.actor`, and `new CyberpunkItem(source, {parent})` supplies it without a create. Nothing
+   * is persisted, which is why the last-used options are remembered on the actor instead.
+   */
+  async _cpOpenUnarmedAttackDialog() {
+    const source = await getUnarmedSource();
+    if (!source) {
+      ui.notifications.warn(localize("UnarmedWeaponMissing"));
+      return;
+    }
+
+    this._cpOpenWeaponAttackDialog(new CyberpunkItem(source, { parent: this.actor }),
+      { flagHolder: this.actor });
+  }
+
+  /**
+   * The stabilization roll's own modifier dialog (D52): the book's three advantages as checkboxes
+   * plus the dialog's own free input. The patient is whoever this user has targeted — the roll is
+   * made against *their* damage — and both refusals belong to `rollStabilization`, which is the
+   * shape `__weaponRoll` already refuses `NoAmmo` in.
+   */
+  _cpOpenStabilizationDialog() {
+    const token = Array.from(game.users.current.targets.values())[0];
+    const patient = token?.actor ?? null;
+
+    const dialog = new ModifiersDialog({
+      window: { title: "CYBERPUNK.StabilizeModifiers" },
+      modifierGroups: stabilizationOptions(),
+      targetTokens: token ? [{ name: token.document.name }] : [],
+      onConfirm: (options) => this.actor.rollStabilization(patient, options)
+    });
+
+    dialog.render(true);
+  }
+
+  /**
    * Distance from this actor's token to the target, in the scene's own units. Null whenever either
    * token is off the canvas, which is what leaves the range band hand-picked as before.
    */
@@ -693,7 +778,14 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     return canvas.grid.measurePath([from.center, to.center]).distance;
   }
 
-  _cpOpenWeaponAttackDialog(item) {
+  /**
+   * @param {CyberpunkItem} item
+   * @param {object} [options]
+   * @param {Document} [options.flagHolder] Where the last-used options are remembered. Defaults to
+   *   the weapon; the unarmed attack passes the **actor**, because its weapon is a temporary
+   *   document that is in no collection and whose `update` therefore reaches no database.
+   */
+  _cpOpenWeaponAttackDialog(item, { flagHolder = item } = {}) {
     if (!item) return;
 
     if (this.#attacksInFlight.has(item.id)) {
@@ -704,8 +796,8 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     const isRanged = item.isRanged();
     const system = item._getWeaponSystem?.() ?? item.system ?? {};
     const savedAttackOptions = isRanged
-      ? this._cpGetSavedRangedAttackOptions(item)
-      : this._cpGetSavedMeleeAttackOptions(item);
+      ? this._cpGetSavedRangedAttackOptions(flagHolder)
+      : this._cpGetSavedMeleeAttackOptions(flagHolder);
 
     let modifierGroups;
     const targetTokens = Array.from(game.users.current.targets.values()).map(target => ({
@@ -743,9 +835,9 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       modifierGroups,
       onConfirm: async (fireOptions) => {
         if (isRanged) {
-          await this._cpSaveRangedAttackOptions(item, fireOptions);
+          await this._cpSaveRangedAttackOptions(flagHolder, fireOptions);
         } else {
-          await this._cpSaveMeleeAttackOptions(item, fireOptions);
+          await this._cpSaveMeleeAttackOptions(flagHolder, fireOptions);
         }
 
         // Charged after the attack resolves, not before it: a contested melee blocks on the
