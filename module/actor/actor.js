@@ -1225,6 +1225,27 @@ export class CyberpunkActor extends Actor {
   }
 
   /**
+   * Pick a charge back up rather than blowing it (`AL-Q4`): no roll and no check of any kind. The
+   * charge it was made from comes back with it when that weapon is still here — taking one back
+   * that costs you the charge is a delete, not a take-back — and a charge whose weapon is gone
+   * simply leaves the list.
+   *
+   * @param {string} chargeId
+   */
+  async takeBackCharge(chargeId) {
+    const charge = (this.system.deployedCharges ?? []).find(entry => entry.id === chargeId);
+    if (!charge) return null;
+
+    const weapon = this.items.get(charge.itemId);
+    if (weapon) {
+      await weapon.__setWeaponField("shotsLeft",
+        Number(weapon._getWeaponSystem().shotsLeft ?? 0) + 1);
+    }
+
+    return this.removeDeployedCharge(chargeId);
+  }
+
+  /**
    * Ch. 07:614 — TECH + a medical skill + 1d10, at or over the total damage the patient has taken.
    *
    * With neither medical skill the attempt is refused rather than rolled at TECH alone (D54): the

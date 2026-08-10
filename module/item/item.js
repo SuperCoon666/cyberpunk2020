@@ -642,18 +642,11 @@ export class CyberpunkItem extends Item {
       ap: !!system.ap
     });
 
-    // Reach is displayed and never enforced: refusing a placement is a hard limit on a player and
-    // needs the owner's separate word (project-rules).
-    const from = this.actor.getActiveTokens()[0]?.center;
-    const distance = (from && centre)
-      ? canvas.grid.measurePath([from, centre]).distance.toNearest(0.1)
-      : null;
-
+    // Where the charge may be put down is the table's to play out (`AL-Q2`): the placement is
+    // neither limited nor measured, so the card says the charge is set and nothing about reach.
     const card = new Multiroll(
       localize("PlantTitle"),
-      distance === null
-        ? localizeParam("ChargeSet", { weapon: this.name })
-        : localizeParam("ChargeSetAt", { weapon: this.name, distance })
+      localizeParam("ChargeSet", { weapon: this.name })
     ).addRoll(roll, { name: localize("Skill" + skillKey) });
 
     await card.defaultExecute({ img: this.img });

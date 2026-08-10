@@ -100,6 +100,7 @@ export const AMMO_ROUNDS_PER_BOX = {
     AmmoWeaponPaintloads: 1,
     AmmoWeaponGauss: 1,
     AmmoReloadGrenades: 1,
+    AmmoReloadThrown: 1,
     AmmoReloadOther: 1
 };
 

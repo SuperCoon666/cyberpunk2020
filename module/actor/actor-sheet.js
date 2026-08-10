@@ -486,6 +486,18 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
         return;
       }
 
+      // Before the row's own handler, the way `.item-delete` is: the icon sits inside the row that
+      // detonates, so a click that reached it must not go off.
+      const takeBack = target.closest(".charge-remove");
+      if (takeBack) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation?.();
+
+        await this.actor.takeBackCharge(takeBack.dataset.chargeId);
+        return;
+      }
+
       const detonate = target.closest(".detonate-charge");
       if (detonate) {
         event.preventDefault();

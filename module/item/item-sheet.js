@@ -196,6 +196,9 @@ export class CyberpunkItemSheet extends HandlebarsApplicationMixin(ItemSheetV2) 
       "AmmoWeaponGauss",
       "AmmoReloadFlamethrower",
 
+      // D96 — one reload type for everything thrown; the rounds are told apart by their
+      // effects, not by the type, and every thrown weapon still loads its own document.
+      "AmmoReloadThrown",
       "AmmoReloadGrenades",
       "AmmoReloadRockets",
       "AmmoReloadOther"
