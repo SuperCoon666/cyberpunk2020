@@ -50,6 +50,10 @@ class CyberpunkBaseActorData extends foundry.abstract.TypeDataModel {
       transient: objectField({ skillFilter: "" }),
 
       // Roll modifiers stored by the current sheet implementation
+      // Charges this actor has set down and not yet blown (D83). Kept as loose records for the
+      // same reason `activePrograms` is: the entry is a snapshot of a weapon that may be deleted.
+      deployedCharges: arrayField(),
+
       initiativeMod: numberField(0),
       initiativeImplantMod: numberField(0),
       CombatSenseMod: numberField(0),
@@ -110,6 +114,7 @@ class CyberpunkBaseActorData extends foundry.abstract.TypeDataModel {
     if (hasOwn(source, "hitLocLookup")) source.hitLocLookup ??= {};
     if (hasOwn(source, "sortedSkillIDs")) source.sortedSkillIDs = Array.isArray(source.sortedSkillIDs) ? source.sortedSkillIDs : [];
     if (hasOwn(source, "activePrograms")) source.activePrograms = Array.isArray(source.activePrograms) ? source.activePrograms : [];
+    if (hasOwn(source, "deployedCharges")) source.deployedCharges = Array.isArray(source.deployedCharges) ? source.deployedCharges : [];
     if (hasOwn(source, "transient")) source.transient = mergeDefaults(source.transient, { skillFilter: "" });
     if (hasOwn(source, "_cwChecks")) source._cwChecks = mergeDefaults(source._cwChecks, { saveStun: 0 });
     if (hasOwn(source, "skillsSortedBy")) source.skillsSortedBy ||= "Name";

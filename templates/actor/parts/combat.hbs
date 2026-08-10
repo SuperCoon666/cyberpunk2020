@@ -94,6 +94,25 @@
             </div>
             {{/if}}
         {{/each}}
+
+        {{!-- Charges this character has set down and not yet blown (D83). The header is the
+              section's own device reused, so the list reads as part of the weapons column; it is
+              rendered only when there is something on it. --}}
+        {{#if system.deployedCharges.length}}
+        <header>
+            <h2>{{CPLocal "DeployedCharges"}}</h2>
+        </header>
+        {{#each system.deployedCharges as |charge|}}
+            <div class="detonate-charge field action" data-charge-id="{{charge.id}}" data-tooltip="{{CPLocal 'DetonateHint'}}">
+            <div class="no-action field-image" style="background-image: url({{charge.img}})"></div>
+            <label class="name">{{charge.name}}</label>
+            <span class="flex-pad"></span>
+            <span>
+                <div class="field-label inactive">{{CPLocal "Detonate"}}</div>
+            </span>
+            </div>
+        {{/each}}
+        {{/if}}
     </section>
 
     <section class="armor-section">

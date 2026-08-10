@@ -29,6 +29,9 @@
         {{/if}}
     </div>
 
+    {{!-- A charge blown off the deployed list was rolled for when it was set, not now, so the
+          detonation card has no attack roll and no on-target line. --}}
+    {{#if attackRoll}}
     <div class="field-list one-col">
         <div class="field" style="grid-column-end: span 1">
             <span>{{CPLocal "Attack"}}: </span>
@@ -49,6 +52,7 @@
     </div>
 
     <p><em>{{#if onTarget}}{{CPLocal "BlastOnTarget"}}{{else}}{{CPLocalParam "BlastScattered" scatter}}{{/if}}</em></p>
+    {{/if}}
 
     <h3>{{CPLocal "Damage"}}</h3>
     <div class="field-list one-col">

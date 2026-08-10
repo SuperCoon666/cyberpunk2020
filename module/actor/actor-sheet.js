@@ -486,6 +486,18 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
         return;
       }
 
+      const detonate = target.closest(".detonate-charge");
+      if (detonate) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation?.();
+
+        if (refusedWhilePaused()) return;
+
+        await CyberpunkItem.detonateCharge(this.actor, detonate.dataset.chargeId);
+        return;
+      }
+
       const unarmed = target.closest(".unarmed-attack");
       if (unarmed) {
         event.preventDefault();
@@ -809,7 +821,13 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       actorUuid: target.actor?.uuid ?? ""
     }));
 
-    if (isRanged) {
+    // Setting a charge is a Demolitions check and nothing else — no range band, no fire mode, no
+    // aim, because RAW rolls nothing to place one (`07:914`). The dialog adds its own free
+    // modifier, so an empty group list is the whole prompt.
+    if (item.isPlanted?.() && isCombatAutomationEnabled()) {
+      modifierGroups = [];
+    }
+    else if (isRanged) {
       modifierGroups = rangedModifiers(item, targetTokens, savedAttackOptions, this._cpTargetDistance(targetTokens[0]));
     }
     else if (system.attackType === meleeAttackTypes.martial) {

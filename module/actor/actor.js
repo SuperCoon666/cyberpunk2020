@@ -1,7 +1,7 @@
 import { makeD10Roll, Multiroll } from "../dice.js";
 import { isFumbleRoll, buildSkillFumbleData } from "../utils.js";
 import { SortOrders, sortSkills } from "./skill-sort.js";
-import { btmFromBT, MARTIAL_ART_KEY_BY_ID, MARTIAL_ART_ID_BY_KEY, DEFENSIVE_MARTIAL_ACTIONS, FNFF2_ONLY_MARTIAL_ART_IDS, getMartialActionBonus, isCombatAutomationEnabled, isFnff2Enabled, AWARENESS_NOTICE_SKILL_ID, ATHLETICS_SKILL_ID, MELEE_DEFENSE_SKILL_IDS, BRAWLING_SKILL_ID, DODGE_SKILL_ID, MEDICAL_TECH_SKILL_IDS, FIRST_AID_SKILL_ID, STABILIZATION_ADVANTAGES } from "../lookups.js";
+import { btmFromBT, MARTIAL_ART_KEY_BY_ID, MARTIAL_ART_ID_BY_KEY, DEFENSIVE_MARTIAL_ACTIONS, FNFF2_ONLY_MARTIAL_ART_IDS, getMartialActionBonus, isCombatAutomationEnabled, isFnff2Enabled, AWARENESS_NOTICE_SKILL_ID, ATHLETICS_SKILL_ID, DEMOLITIONS_SKILL_ID, MELEE_DEFENSE_SKILL_IDS, BRAWLING_SKILL_ID, DODGE_SKILL_ID, MEDICAL_TECH_SKILL_IDS, FIRST_AID_SKILL_ID, STABILIZATION_ADVANTAGES } from "../lookups.js";
 import { properCase, localize, localizeParam, getDefaultSkills, cwHasType, cwIsEnabled, withCompendiumSource } from "../utils.js"
 
 /** The stabilization hand-off has no human in the loop — it is one flag write on the GM's client. */
@@ -941,6 +941,12 @@ export class CyberpunkActor extends Actor {
       if (byId) return CyberpunkActor.realSkillValue(byId);
     }
 
+    // D102 named Demolitions for setting a charge, by `_id` for the same reason.
+    if (skillName === "Demolitions") {
+      const byId = this._getSkillByStableId(DEMOLITIONS_SKILL_ID);
+      if (byId) return CyberpunkActor.realSkillValue(byId);
+    }
+
     const nameLoc = localize("Skill" + skillName);
     const prefixLoc = localize("SkillMartialArts");
 
@@ -1197,6 +1203,25 @@ export class CyberpunkActor extends Actor {
       if (skill) return skill;
     }
     return this._getSkillByStableId(FIRST_AID_SKILL_ID);
+  }
+
+  /**
+   * Record a charge this actor has set down (D83). The list lives on the actor because that is who
+   * can reach it: a player detonates his own charge, and a GM — a nominal owner of every actor —
+   * detonates any of them as that actor, which is Foundry's own permission model (D89).
+   *
+   * @param {object} charge A snapshot of the charge; see `__plantCharge`
+   */
+  async deployCharge(charge) {
+    const charges = [...(this.system.deployedCharges ?? []),
+      { ...charge, id: foundry.utils.randomID() }];
+    return this.update({ "system.deployedCharges": charges });
+  }
+
+  /** @param {string} chargeId */
+  async removeDeployedCharge(chargeId) {
+    const charges = (this.system.deployedCharges ?? []).filter(charge => charge.id !== chargeId);
+    return this.update({ "system.deployedCharges": charges });
   }
 
   /**

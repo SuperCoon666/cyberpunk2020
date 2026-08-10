@@ -1,7 +1,7 @@
 import { weaponTypes, rangedAttackTypes, meleeAttackTypes, fireModes, ranges, rangeDCs, rangeResolve, effectiveRange, strengthDamageBonus, getMartialActionBonus, martialActions, isCombatAutomationEnabled, isFnff2Enabled, getFnff2DamageBonusSymbol } from "../lookups.js"
 import { Multiroll, makeD10Roll } from "../dice.js"
 import { localize, localizeParam, rollLocation, cwHasType, cwIsEnabled, isFumbleRoll, buildRangedCombatFumbleData, buildSkillFumbleData, clamp, isRollableFormula } from "../utils.js";
-import { createCyberpunkChatMessage, renderCyberpunkTemplate } from "../compat.js";
+import { createCyberpunkChatMessage, createCyberpunkRollCard, renderCyberpunkTemplate } from "../compat.js";
 import { ATTACK_FLAG_VERSION, attackerIsHidden, hiddenMessageMode, snapshotAmmo } from "../damage.js";
 import { declareDodge, dodgeRangedPenalty, resolveDefense } from "../combat.js";
 import { blastProfile, blastRings, fireCorridor, isBlastAttack, isSpreadAttack, pickBlastCentre, placeSuppressionZone, scatterCentre, spreadProfileFor } from "../zones.js";
@@ -115,6 +115,11 @@ export class CyberpunkItem extends Item {
     const isMeleeByType = type === "melee";
     const isMeleeByAtk  = atk && Object.values(meleeAttackTypes).includes(atk);
     return !(isMeleeByType || isMeleeByAtk);
+  }
+
+  /** D99/D100 — a device that is put down rather than aimed. Delivery is the weapon's, not the round's. */
+  isPlanted() {
+    return this._getWeaponSystem()?.weaponType === weaponTypes.planted;
   }
 
   /**
@@ -409,6 +414,12 @@ export class CyberpunkItem extends Item {
       }
     }
 
+    // D100 — the weapon says how the device arrives, whatever round it carries, so this is ahead of
+    // the blast gate: a planted charge is set down and never thrown or fired.
+    if (isCombatAutomationEnabled() && this.isPlanted()) {
+      return this.__plantCharge(mods);
+    }
+
     // An area-effect charge is aimed and rolled like any other ranged weapon (ch. 07:837), but it
     // lands on a point rather than a body, so it never reaches the fire modes below. With
     // automation off it falls through to its fire mode, which is the plain shot v1.1.x rolled.
@@ -582,6 +593,143 @@ export class CyberpunkItem extends Item {
     );
 
     return roll;
+  }
+
+  /**
+   * Set a charge down where it is wanted (D99/D102). RAW rolls nothing to place one — `07:914`
+   * *"You step on it and it blows up"*, `07:920` tripwire, timer or remote — so there is no to-hit
+   * and no scatter; the check is Demolitions when the charge is set, on TECH (`04:745`, `02:284`),
+   * and the explosion waits on the Detonate button of the actor's deployed list (D83).
+   *
+   * @param {object} attackMods
+   * @returns {Promise<Multiroll|null>} null when the placement was dismissed
+   */
+  async __plantCharge(attackMods) {
+    const system = this._getWeaponSystem();
+    const ammo = snapshotAmmo(this);
+    const profile = blastProfile(ammo);
+
+    let centre = null;
+    if (canvas.ready) {
+      centre = await pickBlastCentre(profile.radius, localizeParam("BlastZoneName", { weapon: this.name }));
+      // Dismissing the placement takes the whole action back: nothing rolled, nothing spent.
+      if (!centre) return null;
+    }
+
+    const skillKey = system.attackSkill || "Demolitions";
+    const skillVal = Number(this.actor.getSkillVal(skillKey)) || 0;
+    const actionPenalty = Number(attackMods?.actionPenalty) || 0;
+    const extraMod = Number(attackMods?.extraMod) || 0;
+    const roll = await makeD10Roll(
+      ["@stats.tech.total", skillVal, actionPenalty, extraMod].filter(term => term !== 0),
+      this.actor.system
+    ).evaluate();
+
+    await this.__setWeaponField("shotsLeft", Math.max(0, Number(system.shotsLeft) - 1));
+
+    // The record is the whole charge: the weapon it came from is spent, may be deleted, and a
+    // charge laid one session is detonated in another.
+    await this.actor.deployCharge({
+      name: this.name,
+      img: this.img,
+      itemId: this.id,
+      sceneId: centre ? canvas.scene.id : "",
+      x: centre?.x ?? 0,
+      y: centre?.y ?? 0,
+      ...profile,
+      damageFormula: this.__ammoDamageFormula(system.damage, ammo),
+      ammo,
+      ap: !!system.ap
+    });
+
+    // Reach is displayed and never enforced: refusing a placement is a hard limit on a player and
+    // needs the owner's separate word (project-rules).
+    const from = this.actor.getActiveTokens()[0]?.center;
+    const distance = (from && centre)
+      ? canvas.grid.measurePath([from, centre]).distance.toNearest(0.1)
+      : null;
+
+    const card = new Multiroll(
+      localize("PlantTitle"),
+      distance === null
+        ? localizeParam("ChargeSet", { weapon: this.name })
+        : localizeParam("ChargeSetAt", { weapon: this.name, distance })
+    ).addRoll(roll, { name: localize("Skill" + skillKey) });
+
+    await card.defaultExecute({ img: this.img });
+    return card;
+  }
+
+  /**
+   * Blow a charge off the deployed list (D83): one card, the same zone payload a thrown blast
+   * posts, so *Apply over zone* collects the crater the same way. A static because the charge
+   * outlives its weapon — the record carries everything, and the item may be long deleted.
+   *
+   * @param {CyberpunkActor} actor The actor the charge was laid by
+   * @param {string} chargeId The entry's own id in `system.deployedCharges`
+   * @returns {Promise<ChatMessage|null>} null when the charge is gone or its formula is not rollable
+   */
+  static async detonateCharge(actor, chargeId) {
+    const charge = (actor.system.deployedCharges ?? []).find(entry => entry.id === chargeId);
+    if (!charge) return null;
+
+    // The formula was typed on an item sheet and outlives the item, so it is checked here rather
+    // than trusted (`T120`, D33). The charge stays on the list: it is still lying there.
+    if (!isRollableFormula(charge.damageFormula)) {
+      ui.notifications.warn(localize("ChargeFormulaBroken"));
+      return null;
+    }
+
+    await actor.removeDeployedCharge(chargeId);
+
+    const damageRoll = await new Roll(charge.damageFormula, actor.getRollData()).evaluate();
+    const damage = CyberpunkItem._floorDamageTotal(damageRoll.total);
+    const profile = {
+      radius: charge.radius,
+      fullDamageWithin: charge.fullDamageWithin,
+      multipliers: charge.multipliers
+    };
+    // With automation off the card is the v1.1.x one: the damage and the geometry, applied by hand.
+    const blast = (charge.sceneId && isCombatAutomationEnabled())
+      ? { x: charge.x, y: charge.y, ...profile, damage, sceneId: charge.sceneId }
+      : null;
+
+    return createCyberpunkRollCard({
+      rolls: [damageRoll],
+      speaker: ChatMessage.getSpeaker({ actor }),
+      content: await renderCyberpunkTemplate("systems/cyberpunk2020/templates/chat/blast.hbs", {
+        title: localize("DetonateTitle"),
+        weaponName: charge.name,
+        placed: !!blast,
+        radius: profile.radius,
+        fullDamageWithin: profile.fullDamageWithin,
+        rings: blastRings(profile),
+        damage,
+        damageHtml: CyberpunkItem._inlineRollHtml(damage, damageRoll, "damage")
+      }),
+      flags: blast
+        ? {
+          cyberpunk2020: {
+            attack: {
+              version: ATTACK_FLAG_VERSION,
+              kind: "blast",
+              itemId: charge.itemId,
+              attackerActorUuid: actor.uuid,
+              fireMode: "",
+              range: "",
+              ap: !!charge.ap,
+              melee: false,
+              mono: false,
+              ammo: charge.ammo,
+              blast,
+              targets: [],
+              hits: [],
+              applied: {}
+            }
+          }
+        }
+        : undefined
+    });
   }
 
   /**

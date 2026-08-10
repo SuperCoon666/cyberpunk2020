@@ -30,6 +30,11 @@ export const BRAWLING_SKILL_ID = "i8qoUwZ5jI9KAZeK";
 /** Ch. 07:731 — the skill a suppressive-fire save is rolled on, and ch. 04:654 a throw (D52). */
 export const ATHLETICS_SKILL_ID = "gULme1P5CR8rXXIh";
 
+// Ch. 04:745 — "how to set timers and detonators, and how much explosive to use", the check a
+// planted charge is set with (D102). A TECH skill (`02:284`), which is why the plant roll does not
+// go through `attackRoll`'s REF.
+export const DEMOLITIONS_SKILL_ID = "aMpWKwdKl1m4k9Py";
+
 export const INTERFACE_SKILL_IDS = new Set([
   "sqHlfxm32pNENNFZ", // Interface
   "Nc1zY8vB6qWt4pXj"  // Интерфейс
@@ -106,6 +111,9 @@ export let weaponTypes = {
     heavy: "Heavy",
     melee: "Melee",
     thrown: "Thrown",
+    // D99/D100 — the fourth classification: a device put down where it is wanted rather than
+    // aimed. Delivery lives on the weapon; what happens when it goes off lives on the round.
+    planted: "Planted",
     exotic: "Exotic"
 }
 
@@ -123,6 +131,8 @@ export let attackSkills = {
     // Ch. 07:804's "Throwing Skill" is in no skill list of its own; 04:654 gives the job to
     // Athletics, which is also what a suppressive-fire save is rolled on (D52).
     "Thrown": ["Athletics"],
+    // D102 — setting a charge is Demolitions, resolved by `_id` like Athletics above.
+    "Planted": ["Demolitions"],
     // No limitations for exotic, go nuts
     "Exotic": []
 }
