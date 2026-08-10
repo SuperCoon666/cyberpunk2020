@@ -144,8 +144,10 @@
   margin-bottom: 6px;
 }
 
+/* A hairline, not the item sheet's 6px: the wider gap was tried on the owner's word and read as too
+   much air under the bar (ruled 2026-08-10). Pinned by K.8.18 so it is not "fixed" again. */
 .cyberpunk.sheet.actor .sheet-tabs {
-  margin-bottom: 0.5px;
+  margin-bottom: 0.3px;
 }
 
 .cyberpunk .sheet-body .tab {
@@ -732,18 +734,115 @@ div.statderive .value.rightborder {
   margin-left: 3em;
 }
 
+/* Two columns the whole way down: everything that acts on the left, the body on the right. The
+   right column is the armour diagram's own declared width (`.armor-display` is 16em) plus the
+   rule and gutter that divide it from the acting column, so neither column is wider than the
+   content asks for.
+
+   `--cp-combat-col` is the narrowest column either list in the acting half will accept. A row is
+   allowed to wrap — the ru save label takes two lines here and is meant to, the way a weapon's name
+   and type already do — so the number is the width at which text stops *fitting*: below it a single
+   token is wider than the box and paints over the value beside it. Measured as the last width at
+   which nothing clips: en 124px, ru 168px, and 180px is that with a margin. Both lists read it,
+   because they have to split at the same width or the half reads as two unrelated grids.
+
+   It is the two maintained locales that set it. `it` (122px) clears it and `es` (194px, its save
+   label is a translated sentence) does not, and that is accepted rather than paid for: a locale
+   nobody maintains does not widen the column for the two that are. `K.8.12` measures every locale
+   and asserts on the maintained ones, so promoting one is a single entry there and a re-measure
+   here.
+
+   The number is a constant because a grid cannot find it: `auto-fill` accepts fixed track sizes
+   only, and `repeat(auto-fill, minmax(min-content, 1fr))` is rejected outright — measured, the
+   declaration does not stick. A breakpoint that followed the text would be JS measuring on every
+   resize. */
 .combat-tab {
+  --cp-combat-col: 180px;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: auto auto;
-  grid-template-areas: "rolls rolls" "weapons armor";
+  grid-template-columns: 1fr calc(16em + 12px);
+  /* The armour spans both rows, so with two content-sized rows the grid hands the height it needs
+     over them and the acting section grows a gap above the weapons — what shows as soon as the
+     acting lists fold into two columns and become short. A flexible second row takes that height
+     instead: an item spanning a flexible track is left out of intrinsic row sizing (CSS Grid
+     §12.5), so the acting section is sized by its own content and the slack falls below the
+     weapons, where there is nothing to push down. */
+  grid-template-rows: auto 1fr;
+  grid-template-areas: "rolls armor" "weapons armor";
   column-gap: 10px;
   row-gap: 10px;
   align-items: start;
   align-content: start;
 }
+
+/* One header device for all three sections: the section's name over a rule that runs the width of
+   the column it names, so the rule separates rather than sitting beside the words. The margin and
+   border are reset because core gives every `.app h2` its own bottom rule and a 0.5rem margin
+   (`public/css/foundry2.css:12309`, 14.365.0); its 1.5em size is kept. The name sits in from the
+   column's left edge by the same amount in all three, so the names line up down the tab; the rule
+   is the header's own border and still runs the full width of the column. */
+.combat-tab section > header,
+.combat-tab .section-fold > summary {
+  border-bottom: 2px solid black;
+  margin-bottom: 6px;
+  padding-left: 10px;
+}
+.combat-tab section > header h2,
+.combat-tab .section-fold > summary h2 {
+  margin: 0;
+  border: 0;
+  letter-spacing: 0.04em;
+}
+/* The rules meet the divider instead of stopping short of it: a section's header spans its own
+   column, so the acting half's headers reach across the 10px gutter and the armour's reaches back
+   across its own 10px of padding. Without these the three rules and the divider read as four
+   separate lines. Only the rule crosses — the name is held back by the padding above, which for
+   the armour is exactly the padding its header borrowed. */
+.combat-tab .combat-rolls > .section-fold > summary,
+.combat-tab .weapons-list > header {
+  margin-right: -10px;
+}
+.combat-tab .armor-section > header {
+  margin-left: -10px;
+}
+
+/* The acting section folds away for a table that has its two rolls memorised; the name is the
+   control, with the marker at the far end of the rule. The padding holds the marker inside the
+   column the rule crosses. */
+.combat-tab .section-fold > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 10px;
+  cursor: pointer;
+}
+.combat-tab .section-fold > summary::after {
+  content: "";
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid black;
+}
+.combat-tab .section-fold:not([open]) > summary::after {
+  transform: rotate(-90deg);
+}
+.combat-tab .section-fold > summary:hover::after {
+  border-top-color: firebrick;
+}
+/* The fold's body is the `<details>`'s sibling rather than its content: Chrome paints an open
+   `<details>`'s own content through `::details-content` and skips it for the first frames of a
+   render — measured, the Actions section was blank in the very frame that already carried the rest
+   of the tab, and `content-visibility: visible` on the pseudo did not put it back. Outside the
+   element the rows are ordinary children and paint with everything else, while `<details>` keeps
+   the toggle and the open flag core carries across a re-render. */
+.combat-tab .section-fold:not([open]) + .fold-body {
+  display: none;
+}
+/* The armour column is divided from the acting column by a rule of the sheet's own weight, and
+   stretches so that rule runs the full height of the tab rather than the section's own. */
 .combat-tab .armor-section {
   grid-area: armor;
+  align-self: stretch;
+  border-left: 2px solid black;
+  padding-left: 10px;
 }
 .combat-tab .armor-section .armors-mockup .field label {
   min-width: 3em;
@@ -802,22 +901,59 @@ div.statderive .value.rightborder {
 }
 
 .combat-tab .combat-rolls .flexrow .field + .field { margin-left: 5px; }
-.combat-tab .combat-rolls .field-list { grid-template-columns: 1fr 1fr; }
-
-.combat-tab .combat-rolls .field-list .field label { min-width: 0; }
-
-/* The two fixed actions read as buttons rather than as rows: they are the only things on this tab
-   that do something on a click without naming a document the player owns. */
-.combat-tab .combat-actions .field.action {
-  cursor: pointer;
-  border: 1px solid var(--color-border-light-tertiary, #7a7971);
-  border-radius: 3px;
-  padding: 2px 4px;
+/* The rolls split into as many columns as fit, on the same measure as the weapons below them, so
+   the two lists line up column for column. */
+.combat-tab .combat-rolls .field-list {
+  grid-template-columns: repeat(auto-fill, minmax(var(--cp-combat-col), 1fr));
+}
+/* The three lists are one strip, not three blocks: they take the same 3px the rows inside them
+   take, against the 10px `.field-list + *` gives every other list on the sheet. */
+.combat-tab .combat-rolls .field-list + .field-list {
+  margin-top: 3px;
 }
 
-.combat-tab .combat-actions .field.action:hover {
-  border-color: var(--color-shadow-primary, #ff0000);
-  text-shadow: 0 0 6px var(--color-shadow-primary, #ff0000);
+.combat-tab .combat-rolls .field-list .field label { min-width: 0; }
+/* The spacer between a row's name and its value is a `.flex-pad`, and as a child of a
+   `.cyberpunk .field` it carries the 8px of padding that row gives every child. Nothing is ever
+   drawn in it, so that is 8px of column the names could have had — and the column these lists
+   split at is set by the longest name they carry. */
+.combat-tab .field > .flex-pad { padding: 0; }
+
+/* Every row on this tab that rolls carries the wound tracker's own red on its leading edge; the
+   rows that only report state (Stabilized) or open a sheet (worn armour) deliberately do not.
+   The edge is a colour on the border `.cyberpunk .field` already draws, and nothing here may add
+   padding: every child of a `.cyberpunk .field` paints itself black, so padding on the row shows
+   as a ring of parchment between the border and the fill. */
+.combat-tab .combat-actions .field.action,
+.combat-tab .roll-initiative,
+.combat-tab .stun-death-save,
+.combat-tab .fire-weapon {
+  border-left-width: 3px;
+  border-left-color: firebrick;
+}
+
+/* The whole row is the click target — the handlers read `closest()`, not the label — so the whole
+   row shows the pointer, including the icon `.no-action` would otherwise leave as an arrow. The
+   modifier inputs opt out: the click handler skips them so the value can be selected and retyped,
+   and the caret is what says so. */
+.combat-tab .combat-rolls .field.action,
+.combat-tab .combat-rolls .field.action > *,
+.combat-tab .roll-initiative,
+.combat-tab .roll-initiative > *,
+.combat-tab .stun-death-save,
+.combat-tab .stun-death-save > * {
+  cursor: pointer;
+}
+.combat-tab .combat-rolls .field > input[type="number"] {
+  cursor: text;
+}
+
+.combat-tab .combat-actions .field.action:hover,
+.combat-tab .roll-initiative:hover,
+.combat-tab .stun-death-save:hover,
+.combat-tab .fire-weapon:hover {
+  border-color: firebrick;
+  text-shadow: 0 0 6px firebrick;
 }
 
 .combat-tab .combat-actions .field.action .field-image {
@@ -828,11 +964,6 @@ div.statderive .value.rightborder {
   background-position: center;
 }
 
-/* `stabilized` moved here from the wound tracker, and it is one control on a full-width row —
-   the two-column grid the saves use would leave it stranded beside an empty cell. */
-.combat-tab .combat-rolls .field-list.combat-state {
-  grid-template-columns: 1fr;
-}
 
 .combat-tab .combat-rolls .field-list .field input[type="number"] {
   flex: 0 0 2.6em;
@@ -854,11 +985,43 @@ div.statderive .value.rightborder {
 }
 .combat-tab .weapons-list {
   grid-area: weapons;
-  display: flex;
-  flex-flow: column nowrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--cp-combat-col), 1fr));
+  gap: 3px;
+  align-content: start;
 }
-.combat-tab .weapons-list > .field {
-  margin-bottom: 3px;
+.combat-tab .weapons-list > header {
+  grid-column: 1 / -1;
+}
+/* A weapon's type is the right-hand end of its row, so when the column is narrow enough to wrap it
+   the second line has to end there too — left-aligned, a wrapped type leaves a gap against the
+   border it was reading against. */
+.combat-tab .weapons-list .field-label {
+  text-align: right;
+}
+
+/* Below this the acting column can no longer hold one weapon row beside the armour: the armour
+   column, its rule and the gutters are a fixed 246px and the list's own minimum is 180px.
+   Measured against `.window-content`'s content box, which is the container. The divider goes with
+   the columns it divided. */
+@container (max-width: 426px) {
+  .combat-tab {
+    grid-template-columns: 1fr;
+    grid-template-areas: "rolls" "weapons" "armor";
+  }
+  .combat-tab .armor-section {
+    border-left: 0;
+    padding-left: 0;
+  }
+  /* One column has no gutter and no divider for the rules to reach across. Spelled out selector
+     for selector: a container query does not raise specificity, and `.combat-tab section > header`
+     loses to the three rules above it — measured, the rule still overhung by 10px. */
+  .combat-tab .combat-rolls > .section-fold > summary,
+  .combat-tab .weapons-list > header,
+  .combat-tab .armor-section > header {
+    margin-left: 0;
+    margin-right: 0;
+  }
 }
 
 .cyberpunk .armor-display {
@@ -1747,7 +1910,6 @@ div.statderive .value.rightborder {
 }
 
 
-
 .netrun-row {
 
   display: flex;
@@ -1763,7 +1925,6 @@ div.statderive .value.rightborder {
   border-bottom: none;
 
 }
-
 
 
 .netrun-cell {
@@ -1783,7 +1944,6 @@ div.statderive .value.rightborder {
   border-right: none;
 
 }
-
 
 
 /* String of 5 columns (CPU, SPEED, DATA WALL, RAM)*/
@@ -1820,11 +1980,45 @@ div.statderive .value.rightborder {
 
 /* A cell ending a line must not add its border to `.netrun-container`'s own 3px, which is what
 
-   read as a thicker right edge. Which cells those are depends on the column count. */
+   read as a thicker right edge. Which cells those are depends on the column count — and on the
 
-.netrun-row-four .netrun-cell:last-child {
+   position in the line, never on `:last-child`: five cells over three columns leave RAM in the
+
+   middle of the last line, where it owes its neighbour a border. */
+
+.netrun-row-four .netrun-cell:nth-child(5n) {
 
   border-right: none;
+
+}
+
+/* The last line is short whenever the cell count is not a multiple of the column count, and the
+
+   cell that is missing takes its bottom border with it — the separator then stops in mid-air.
+
+   The grid draws that rule itself, over exactly where the last line's own cells draw theirs. */
+
+.netrun-row-four {
+
+  position: relative;
+
+}
+
+.netrun-row-four::after {
+
+  content: "";
+
+  position: absolute;
+
+  left: 0;
+
+  right: 0;
+
+  bottom: 0;
+
+  height: 3px;
+
+  background-color: black;
 
 }
 
@@ -1836,11 +2030,15 @@ div.statderive .value.rightborder {
 
   }
 
-  .netrun-row-four .netrun-cell:nth-child(3n),
-
-  .netrun-row-four .netrun-cell:last-child {
+  .netrun-row-four .netrun-cell:nth-child(3n) {
 
     border-right: none;
+
+  }
+
+  .netrun-row-four .netrun-cell:nth-child(5n) {
+
+    border-right: 3px solid black;
 
   }
 
@@ -1853,7 +2051,6 @@ div.statderive .value.rightborder {
 }
 
 
-
 .netrun-label {
 
   display: block;
@@ -1863,7 +2060,6 @@ div.statderive .value.rightborder {
   margin-bottom: 4px;
 
 }
-
 
 
 .netrun-icon-frame {
@@ -1899,7 +2095,6 @@ div.statderive .value.rightborder {
 }
 
 
-
 .netrun-cell input[type="text"],
 
 .netrun-cell input[type="number"] {
@@ -1913,7 +2108,6 @@ div.statderive .value.rightborder {
   margin-bottom: 3px;
 
 }
-
 
 
 /* Left alone these keep Foundry's own input colours, rgb(48,40,49) and rgb(11,10,19), against the
@@ -1935,7 +2129,6 @@ div.statderive .value.rightborder {
 }
 
 
-
 .short-input {
 
   max-width: 60px !important;
@@ -1949,7 +2142,6 @@ div.statderive .value.rightborder {
   width: 60px !important;
 
 }
-
 
 
 /**********************************************
@@ -1987,7 +2179,6 @@ div.statderive .value.rightborder {
 }
 
 
-
 .deck-type-select {
 
   width: 100%;
@@ -2001,7 +2192,6 @@ div.statderive .value.rightborder {
   padding: 4px;
 
 }
-
 
 
 .deck-options {
@@ -2033,7 +2223,6 @@ div.statderive .value.rightborder {
 }
 
 
-
 /* Foundry's tick is knocked out of the box glyph, so it shows whatever is behind it. Everywhere
 
    else in the system that is a black row; here it is the beige page, which is why the tick came
@@ -2049,7 +2238,6 @@ div.statderive .value.rightborder {
   color: black;
 
 }
-
 
 
 /**********************************************
@@ -2069,7 +2257,6 @@ div.statderive .value.rightborder {
 }
 
 
-
 .netrun-active-icons {
 
   display: flex;
@@ -2081,7 +2268,6 @@ div.statderive .value.rightborder {
   margin-top: 5px;
 
 
-
   min-height: 100px;
 
   border: 2px dashed #999;
@@ -2089,7 +2275,6 @@ div.statderive .value.rightborder {
   margin-bottom: 15px;
 
 }
-
 
 
 .netrun-active-icon {
@@ -2111,7 +2296,6 @@ div.statderive .value.rightborder {
 }
 
 
-
 .netrun-active-icon img {
 
   width: 100%;
@@ -2123,13 +2307,11 @@ div.statderive .value.rightborder {
 }
 
 
-
 /**********************************************
 
  *  ALL PROGRAMS
 
  **********************************************/
-
 
 
 /* The element also carries `field-list`, so its two-column grid comes from `.cyberpunk .field-list`
@@ -2157,7 +2339,6 @@ div.statderive .value.rightborder {
   align-items: center;
 
   justify-content: space-between;
-
 
 
   background-color: black;
@@ -2219,7 +2400,6 @@ div.statderive .value.rightborder {
 }
 
 
-
 /* The row overflows its column by ~15px from 760px down (measured), so the name is the part that
 
    gives: everything else is short and must stay on one line. */
@@ -2231,7 +2411,6 @@ div.statderive .value.rightborder {
   flex: 1 1 auto;
 
 }
-
 
 
 .field.netrun-program .program-name {
@@ -2247,13 +2426,11 @@ div.statderive .value.rightborder {
 }
 
 
-
 .field.netrun-program .program-type {
 
   white-space: nowrap;
 
 }
-
 
 
 .field.netrun-program .program-controls {
@@ -2263,7 +2440,6 @@ div.statderive .value.rightborder {
   white-space: nowrap;
 
 }
-
 
 
 /* Everything in the row but the name measures 218px, and the name truncates, so two columns stay
