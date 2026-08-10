@@ -34,8 +34,10 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     classes: ["cyberpunk", "sheet", "actor", "flexcol"],
     tag: "form",
     position: {
-      width: 590,
-      height: 600
+      // 660 clears the combat tab's two-column threshold (637px, zone K.8.12); sized to the
+      // owner's own layout (his 661×795 screenshot, D105) rather than derived.
+      width: 660,
+      height: 800
     },
     window: {
       resizable: true
