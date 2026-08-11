@@ -678,11 +678,14 @@ export class CyberpunkItem extends Item {
 
     const damageRoll = await new Roll(charge.damageFormula, actor.getRollData()).evaluate();
     const damage = CyberpunkItem._floorDamageTotal(damageRoll.total);
-    const profile = {
-      radius: charge.radius,
-      fullDamageWithin: charge.fullDamageWithin,
-      multipliers: charge.multipliers
-    };
+    // Through `blastProfile` rather than straight out of the record: a charge laid before the
+    // falloff was withdrawn still carries rings in its own snapshot, and it outlives sessions —
+    // reading them here would have gone on quartering damage with no control left to see it.
+    const profile = blastProfile({
+      blastRadius: charge.radius,
+      blastFullDamageWithin: charge.fullDamageWithin,
+      blastMultipliers: charge.multipliers
+    });
     // With automation off the card is the v1.1.x one: the damage and the geometry, applied by hand.
     const blast = (charge.sceneId && isCombatAutomationEnabled())
       ? {

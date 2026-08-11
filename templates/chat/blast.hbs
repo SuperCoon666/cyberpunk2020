@@ -71,10 +71,14 @@
             <span>{{CPLocal "BlastRadius"}}: </span>
             <span class="flex-pad">{{radius}} {{CPLocal "UnitMetres"}}</span>
         </div>
+        {{!-- Only when it says something the radius has not: with no falloff the full-damage
+              radius *is* the radius, and printing it twice reads as two different numbers. --}}
+        {{#unless (eq fullDamageWithin radius)}}
         <div class="field">
             <span>{{CPLocal "BlastFullDamage"}}: </span>
             <span class="flex-pad">{{fullDamageWithin}} {{CPLocal "UnitMetres"}}</span>
         </div>
+        {{/unless}}
         {{/if}}
     </div>
 

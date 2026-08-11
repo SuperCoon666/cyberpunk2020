@@ -108,9 +108,15 @@ export function snapshotAmmo(item) {
 
   const a = ammo.system ?? {};
   return {
-    accuracyMod: numberOr(a.accuracyMod, 0),
-    rawDamageMult: numberOr(a.rawDamageMult, 1),
-    bonusDamageFormula: String(a.bonusDamageFormula ?? ""),
+    // The round's own accuracy, damage multiplier and bonus damage contribute nothing, and are not
+    // offered on the sheet: the corebook gives ammunition a price and nothing else (`05:629`) —
+    // damage is the weapon's (its DAM column) and accuracy is the weapon's WA. The one round the
+    // book does describe is AP, whose half damage and half SP live in the AP block. Neutralised
+    // here rather than only in the template so a round authored before this contributes nothing
+    // either; the stored fields are untouched and come back with the DLC.
+    accuracyMod: 0,
+    rawDamageMult: 1,
+    bonusDamageFormula: "",
     armorMultSoft: numberOr(a.armorMultSoft, 1),
     armorMultHard: numberOr(a.armorMultHard, 1),
     penDamageMult: numberOr(a.penDamageMult, 1),

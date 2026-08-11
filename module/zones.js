@@ -74,11 +74,14 @@ export function scatterCentre(origin, direction, metres) {
  */
 export function blastProfile(ammo) {
   const radius = Math.max(0, Number(ammo?.blastRadius) || 0);
-  const fullDamageWithin = Math.min(radius, Math.max(0, Number(ammo?.blastFullDamageWithin) || 0));
-  const multipliers = (Array.isArray(ammo?.blastMultipliers) ? ammo.blastMultipliers : [])
-    .map(m => Math.max(0, Number(m) || 0));
 
-  return { radius, fullDamageWithin, multipliers };
+  // Ch. 07:839 is full damage across the whole radius, so a round built from the book has no
+  // falloff — and the rings are not offered on the sheet (owner, 2026-08-11). Dropping them here
+  // rather than only in the template is what stops a round authored before that ruling from going
+  // on quartering its damage with no control left to see it. The ring arithmetic below and the
+  // stored multipliers both stay: the DLC that gives them a rule restores this line and the
+  // controls together.
+  return { radius, fullDamageWithin: radius, multipliers: [] };
 }
 
 /**

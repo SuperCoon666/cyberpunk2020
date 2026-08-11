@@ -327,7 +327,9 @@ export class CyberpunkAmmoData extends CyberpunkBaseItemData {
       blastThroughWalls: booleanField(false),
       blastZones: numberField(4),
       blastShrapnel: booleanField(false),
-      blastMultipliers: arrayField(null, [0.5, 0.25, 0.125, 0.0625]),
+      // Empty is ch. 07:839's own answer — full damage across the whole radius — and it is what a
+      // round is born with now that the rings are neither offered nor read (owner, 2026-08-11).
+      blastMultipliers: arrayField(null, []),
       spreadMode: stringField("single"),
       spreadDistance: numberField(0),
       spreadDamageShort: stringField(""),
@@ -346,7 +348,7 @@ export class CyberpunkAmmoData extends CyberpunkBaseItemData {
     if (hasOwn(source, "effectTypes")) {
       source.effectTypes = source.effectTypes.map(t => LEGACY_AMMO_EFFECTS[t] ?? t);
     }
-    normalizeArrayIfPresent(source, "blastMultipliers", [0.5, 0.25, 0.125, 0.0625]);
+    normalizeArrayIfPresent(source, "blastMultipliers", []);
     normalizeBooleanIfPresent(source, "stunSaveOnHit", false);
     normalizeBooleanIfPresent(source, "stunIgnoresArmor", false);
     normalizeBooleanIfPresent(source, "dotEnabled", false);

@@ -4,7 +4,7 @@
         <span class="flex-pad"></span>
     </div>
 
-    <div class="field">
+    <div class="field ammo-ms-field">
         <label>{{CPLocal "AmmoEffectTypes"}}</label>
         <span class="flex-pad"></span>
 
@@ -97,15 +97,11 @@
         />
     </div>
 
-    {{!-- ===== The round's own damage and accuracy — no effect has to be picked to reach them ===== --}}
-    <div class="field span-two-cells">
-        <label class="larger">{{CPLocal "AmmoSectionRound"}}</label>
-        <span class="flex-pad"></span>
-    </div>
-
-    {{> (template "fields/number") label="AmmoRawDamageMult" edit="system.rawDamageMult"}}
-    {{> (template "fields/number") label="AmmoAccuracyMod" edit="system.accuracyMod"}}
-    {{> (template "fields/string") label="AmmoBonusDamage" edit="system.bonusDamageFormula"}}
+    {{!-- The round's own accuracy, damage multiplier and bonus damage are not offered: `05:629`
+          gives ammunition a price and nothing else, damage belongs to the weapon's DAM column and
+          accuracy to its WA, and the one round the book describes mechanically is AP — whose half
+          damage and half SP are in the AP block below. The fields stay in the schema for the DLC;
+          `snapshotAmmo` is what makes them contribute nothing meanwhile. --}}
 
     {{!-- ===== Armour piercing ===== --}}
     {{#if (ammoHasEffect system "AP")}}
@@ -118,7 +114,10 @@
         {{> (template "fields/number") label="AmmoArmorMultHard" edit="system.armorMultHard"}}
 
         {{> (template "fields/number") label="AmmoPenDamageMult" edit="system.penDamageMult"}}
-        <div class="field"><span class="flex-pad"></span></div>
+        {{!-- A spacer, so the two «halve penetrating damage» booleans stay on one row together.
+              No `flex-pad` inside it: `.cyberpunk .field > *` fills black (`css:255`) and the pad
+              grows to the whole cell, which paints an empty row as a black bar. --}}
+        <div class="field"></div>
 
         {{> (template "fields/boolean") label="AmmoPenHalvesSoft" edit="system.penHalvesSoft"}}
         {{> (template "fields/boolean") label="AmmoPenHalvesHard" edit="system.penHalvesHard"}}
@@ -155,36 +154,13 @@
             <span class="flex-pad"></span>
         </div>
 
+        {{!-- The falloff rings, their inner radius and the shrapnel flag are not offered: ch. 07:839
+              is full damage across the whole radius, so none of them means anything to a round
+              built from the book (owner, 2026-08-11). The fields, their schema and the falloff
+              itself all stay for the DLC that gives them a rule — this is the display only. --}}
         {{> (template "fields/number") label="AmmoBlastRadius" edit="system.blastRadius"}}
-        {{> (template "fields/number") label="AmmoBlastFullDamageWithin" edit="system.blastFullDamageWithin"}}
-
         {{> (template "fields/boolean") label="AmmoOverallBody" edit="system.overallBody"}}
         {{> (template "fields/boolean") label="AmmoBlastThroughWalls" edit="system.blastThroughWalls"}}
-
-        {{!-- Zones count selector --}}
-        <div class="field">
-            <label>{{CPLocal "AmmoBlastZones"}}</label>
-            <span class="flex-pad"></span>
-            <select name="system.blastZones">
-                {{selectOptions blastZonesOptions selected=system.blastZones}}
-            </select>
-        </div>
-        {{> (template "fields/boolean") label="AmmoBlastShrapnel" edit="system.blastShrapnel"}}
-        {{#each blastMultiplierIndices}}
-            <div class="field">
-                <label>{{CPLocal "AmmoBlastMultiplier"}} ({{inc this}})</label>
-                <span class="flex-pad"></span>
-                <input
-                    type="number"
-                    class="ammo-blast-mult"
-                    data-index="{{this}}"
-                    placeholder="0"
-                    {{#unless (eq (lookup ../system.blastMultipliers this) 0)}}value="{{lookup ../system.blastMultipliers this}}"{{/unless}}
-                    step="0.01"
-                    min="0"
-                />
-            </div>
-        {{/each}}
     {{/if}}
 
     {{!-- Buckshot — the spread pattern a shell throws --}}

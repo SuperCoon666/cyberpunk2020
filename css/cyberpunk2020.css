@@ -1589,8 +1589,13 @@ div.statderive .value.rightborder {
   box-sizing: border-box;
   overflow: hidden;
 }
+/* A dropdown-multiselect menu is absolutely positioned inside its field and opens below it, so
+   the clip above erases the whole menu rather than trimming it: measured 218px of menu against a
+   field whose bottom edge is where the menu starts. Both multiselects need the exception. */
 .application.cyberpunk.sheet.item .field-list .field.cw-ms-field,
-.cyberpunk.sheet.item .field-list .field.cw-ms-field {
+.cyberpunk.sheet.item .field-list .field.cw-ms-field,
+.application.cyberpunk.sheet.item .field-list .field.ammo-ms-field,
+.cyberpunk.sheet.item .field-list .field.ammo-ms-field {
   overflow: visible;
 }
 
