@@ -226,6 +226,17 @@ export class CyberpunkProgramData extends CyberpunkBaseItemData {
   }
 }
 
+/**
+ * D107 — the thirteen `attackType` values that left `rangedAttackTypes`: six named a delivery
+ * method the weapon's own class already carries and seven named an effect belonging to the round.
+ * They are cleared rather than left in place because the sheet's select no longer offers them, so
+ * a weapon that kept one would lose it on the next unrelated edit and never say that it had.
+ */
+const REMOVED_ATTACK_TYPES = new Set([
+  "Throw", "Grenade", "RPG", "Landmine", "Claymore", "Explocharge",
+  "Paint", "Drugs", "Acid", "Gas", "Taser", "Dart", "Squirt"
+]);
+
 export class CyberpunkWeaponData extends CyberpunkBaseItemData {
   static defineSchema() {
     return {
@@ -269,6 +280,7 @@ export class CyberpunkWeaponData extends CyberpunkBaseItemData {
       source.mono = true;
       source.ap = true;
     }
+    if (REMOVED_ATTACK_TYPES.has(source.attackType)) source.attackType = "";
     return super.migrateData(source);
   }
 }
@@ -479,6 +491,7 @@ export class CyberpunkCyberwareData extends CyberpunkBaseItemData {
         }
         if (hasOwn(weapon, "rangeDamages")) weapon.rangeDamages = normalizeRangeDamages(weapon.rangeDamages);
         normalizeBooleanIfPresent(weapon, "ap", false);
+        if (REMOVED_ATTACK_TYPES.has(weapon.attackType)) weapon.attackType = "";
         cwt.Weapon = weapon;
       }
 

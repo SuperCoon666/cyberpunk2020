@@ -1844,6 +1844,16 @@ async _prepareCyberware(sheet) {
       if (plain) plain.checked = false;
     }
 
+    // D71 — a pattern and a crater are two payloads for one round, and one of them would never be
+    // reached: the blast gate returns before any fire mode (`item.js` `__weaponRoll`), so a round
+    // carrying both spreads nowhere. Ticking either drops the other; only that direction can make
+    // the pair.
+    if (checkbox.checked && (checkbox.value === "Buckshot" || checkbox.value === "Blast")) {
+      const other = checkbox.value === "Buckshot" ? "Blast" : "Buckshot";
+      const box = boxes.find((entry) => entry.value === other);
+      if (box) box.checked = false;
+    }
+
     let next = boxes.filter((box) => box.checked).map((box) => box.value);
 
     // The schema default and every template guard expect at least ["Standard"].

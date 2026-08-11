@@ -144,17 +144,13 @@ export function getStatNames() {
 
 // How a weapon attacks. Something like pistol or an SMG have rigid rules on how they can attack, but shotguns can be regular or auto shotgun, exotic can be laser, etc. So this is for weird and special stuff that isn't necessarily covered by the weapon's type or other information
 // If we change attack type to be an array, we could say, have ["BEAM" "LASER"]
+// D107 — thirteen values left this list, and the two reasons they left are why they should not
+// come back. How a weapon is delivered (thrown, grenade, mine, charge) is the weapon's own class,
+// and what it does on arrival (gas, acid, taser, dart) belongs to the round it loads.
+// `CyberpunkWeaponData.migrateData` renames each of them to `""`.
 export let rangedAttackTypes = {
     semiAuto: "SemiAuto",
     auto: "Auto",
-    // Strange ranged weapons
-    paint: "Paint",
-    drugs: "Drugs",
-    acid: "Acid",
-    taser: "Taser",
-    dart: "Dart",
-    squirt: "Squirt",
-    throwable: "Throw",
     archer: "Archer",
     // Beam weapons
     laser: "Laser",
@@ -162,14 +158,8 @@ export let rangedAttackTypes = {
     // Area effect weapons
     shotgun: "Shotgun",
     autoshotgun: "Autoshotgun",
-    grenade: "Grenade", // Separate entry from throwable because grenades have different throw distance
-    gas: "Gas",
     flamethrow: "Flamethrow",
-    landmine: "Landmine",
-    claymore: "Claymore",
-    rpg: "RPG", // Fired same as with other grenade launchers or shoulder mounts, so not sure if should be here,
-    missile: "Missile",
-    explosiveCharge: "Explocharge"
+    missile: "Missile"
 }
 
 // `Mono` was here until the feature wave: a mono edge is a property of the blade, so it became

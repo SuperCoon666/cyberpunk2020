@@ -68,7 +68,8 @@
         {{!-- Normal weapons --}}
         {{#each gear.weapons as |weapon|}}
             <div class="fire-weapon field action" data-item-id="{{weapon.id}}">
-            <div class="no-action field-image item-edit" style="background-image: url({{weapon.img}})" data-item-id="{{weapon.id}}"></div>
+            {{!-- D106 — the icon is its own action (it opens the item), so it is not `.no-action`. --}}
+            <div class="field-image item-edit" style="background-image: url({{weapon.img}})" data-item-id="{{weapon.id}}"></div>
             <label class="name">{{weapon.name}}</label>
             <span class="flex-pad"></span>
             <span>
@@ -83,7 +84,7 @@
         {{#each gear.cyberware as |cyber|}}
             {{#if (and (cwHasType cyber.system.CyberWorkType "Weapon") (cwIsEnabled cyber))}}
                 <div class="fire-weapon field action" data-item-id="{{cyber.id}}">
-                <div class="no-action field-image item-edit" style="background-image: url({{cyber.img}})" data-item-id="{{cyber.id}}"></div>
+                <div class="field-image item-edit" style="background-image: url({{cyber.img}})" data-item-id="{{cyber.id}}"></div>
                 <label class="name">{{cyber.name}}</label>
                 <span class="flex-pad"></span>
                 <span>

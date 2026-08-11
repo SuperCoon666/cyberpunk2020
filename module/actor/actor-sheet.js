@@ -473,8 +473,11 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
         return;
       }
 
+      // D106 — the combat tab nests the item's icon inside the row that fires, and the gear tab
+      // nests the firing icon inside the row that opens. Whichever of the two is inner is what the
+      // click meant, so an icon inside the row falls through to the `.item-edit` branch below.
       const fireWeapon = target.closest(".fire-weapon");
-      if (fireWeapon) {
+      if (fireWeapon && !fireWeapon.contains(target.closest(".item-edit"))) {
         event.preventDefault();
         event.stopPropagation();
         event.stopImmediatePropagation?.();
@@ -547,7 +550,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
       const itemEdit = target.closest(".item-edit");
       if (itemEdit) {
-        if (target.closest(".fire-weapon, .item-delete, .item-unequip, .cyber-effect-toggle")) return;
+        if (target.closest(".item-delete, .item-unequip, .cyber-effect-toggle")) return;
 
         event.preventDefault();
         event.stopPropagation();

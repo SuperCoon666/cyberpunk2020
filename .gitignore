@@ -11,4 +11,7 @@ npm-debug.log
 
 # The packs seem to change when I load foundry, so for now I'm adding them to the .gitignore
 # This will make changing them a little bit of a pain but we'll see how it goes
-packs/**
+packs/*/
+
+# Everything about dev local stuff
+dev/
