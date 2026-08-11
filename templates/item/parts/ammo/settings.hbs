@@ -38,8 +38,8 @@
                 </label>
 
                 <label class="ammo-ms-opt">
-                    <input type="checkbox" value="Poison" {{#if (ammoHasEffect system "Poison")}}checked{{/if}}>
-                    {{CPLocal "AmmoEffect_Poison"}}
+                    <input type="checkbox" value="Incendiary" {{#if (ammoHasEffect system "Incendiary")}}checked{{/if}}>
+                    {{CPLocal "AmmoEffect_Incendiary"}}
                 </label>
 
                 <label class="ammo-ms-opt">
@@ -131,20 +131,34 @@
         </div>
 
         {{> (template "fields/boolean") label="AmmoStunOnHit" edit="system.stunSaveOnHit"}}
-        {{> (template "fields/number") label="AmmoStunMod" edit="system.stunSaveMod"}}
+        {{> (template "fields/number") label="AmmoStunPenalty" edit="system.stunSavePenalty"}}
         {{> (template "fields/boolean") label="AmmoStunIgnoresArmor" edit="system.stunIgnoresArmor"}}
     {{/if}}
 
-    {{!-- ===== Poison / burn ===== --}}
-    {{#if (ammoHasEffect system "Poison")}}
+    {{!-- ===== Incendiary ===== --}}
+    {{#if (ammoHasEffect system "Incendiary")}}
         <div class="field span-two-cells" data-tooltip="{{CPLocal 'AmmoDoTDamageHint'}}">
-            <label class="larger">{{CPLocal "AmmoSectionPoison"}}</label>
+            <label class="larger">{{CPLocal "AmmoSectionIncendiary"}}</label>
             <span class="flex-pad"></span>
         </div>
 
         {{> (template "fields/boolean") label="AmmoDoTEnabled" edit="system.dotEnabled"}}
-        {{> (template "fields/number") label="AmmoDoTTurns" edit="system.dotTurns"}}
-        {{> (template "fields/string") label="AmmoDoTDamage" edit="system.dotDamageFormula"}}
+        {{> (template "fields/number") label="AmmoDoTTurns" edit="system.dotTurns" min=0 max=10}}
+
+        {{!-- One damage input per burning turn (D85), so the book's own declining fires can be
+              written down. No `name`: the list persists through its own handler alone. --}}
+        {{#each dotTickIndices}}
+            <div class="field">
+                <label>{{CPLocal "AmmoDoTTick"}} ({{inc this}})</label>
+                <span class="flex-pad"></span>
+                <input
+                    type="text"
+                    class="textsize ammo-dot-tick"
+                    data-index="{{this}}"
+                    value="{{lookup ../system.dotDamageFormulas this}}"
+                />
+            </div>
+        {{/each}}
     {{/if}}
 
     {{!-- ===== Blast (AoE) ===== --}}

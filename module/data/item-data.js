@@ -282,7 +282,12 @@ const LEGACY_AMMO_EFFECTS = {
   None: "Standard",
   CoreMods: "AP",
   Stun: "Electroshock",
-  DoT: "Poison",
+  // `Poison` named the flavour and never the rule: what the effect implements is ch. 07:910's
+  // fire, declining damage and the flamethrower's own armour paragraph included. The book's poison
+  // is a save plus a one-off effect (`07:761`) and is out of v1.2.0 (owner, 2026-08-11, `T-44`).
+  // `DoT` maps straight through rather than through `Poison`, because one `.map()` does not chain.
+  DoT: "Incendiary",
+  Poison: "Incendiary",
   Spread: "Buckshot"
 };
 
@@ -308,14 +313,21 @@ export class CyberpunkAmmoData extends CyberpunkBaseItemData {
       bonusDamageFormula: stringField(""),
       accuracyMod: numberField(0),
       stunSaveOnHit: booleanField(false),
-      stunSaveMod: numberField(0),
+      // D108 — a positive number is entered and the logic subtracts it, so the field reads as the
+      // penalty it is. The book prints the same idea with the opposite sign (`07:782`, "reduced by
+      // -2"), which is what the old `stunSaveMod` took and what nothing on screen ever said.
+      stunSavePenalty: numberField(0),
       // Ch. 07:780-782 conditions the save on being hit, but only a taser charge reaches its victim
       // through armour at all. Default off, so an electroshock bullet keeps asking only where it
       // got in (D62).
       stunIgnoresArmor: booleanField(false),
       dotEnabled: booleanField(false),
       dotTurns: numberField(0),
-      dotDamageFormula: stringField(""),
+      // D85 — one damage formula per turn, because the book's own fires decline: the flamethrower
+      // is 2D10, then 1D10, then 1D6 (`07:910`) and the cyberlimb flamer 2D6 then 1D6/2 twice
+      // (`06:804`). A tick with no formula of its own deals nothing (D87), which is what lets a
+      // fire burn, smoulder, then flare.
+      dotDamageFormulas: arrayField(null, []),
       blastRadius: numberField(0),
       // Ch. 07:960 / 07:966 — an explosive's and a molotov's damage is applied *"to the overall
       // body, rather than to a location"*. Opt-in per round because 07:839 leaves a grenade
@@ -349,6 +361,23 @@ export class CyberpunkAmmoData extends CyberpunkBaseItemData {
       source.effectTypes = source.effectTypes.map(t => LEGACY_AMMO_EFFECTS[t] ?? t);
     }
     normalizeArrayIfPresent(source, "blastMultipliers", []);
+    // The single pre-D85 string becomes one entry per turn rather than a one-element list: an
+    // empty tick deals no damage (D87), so a one-element list would silently cut a three-turn
+    // fire to one. Skipped once the list exists, which is what keeps a re-read from rebuilding
+    // it over the per-tick formulas a GM has since typed.
+    if (hasOwn(source, "dotDamageFormula") && !hasOwn(source, "dotDamageFormulas")) {
+      const turns = hasOwn(source, "dotTurns") ? Math.floor(Number(source.dotTurns) || 0) : 1;
+      source.dotDamageFormulas = Array.from({ length: Math.max(1, turns) },
+        () => String(source.dotDamageFormula ?? ""));
+    }
+    normalizeArrayIfPresent(source, "dotDamageFormulas", []);
+    // D108 — the sign flips with the field's meaning. Renamed rather than negated under the old
+    // key: `migrateData` runs on every read, so a bare negation would flip again on each one and a
+    // round would oscillate. Keyed on the new name being absent, it cannot run twice.
+    if (hasOwn(source, "stunSaveMod") && !hasOwn(source, "stunSavePenalty")) {
+      source.stunSavePenalty = -(Number(source.stunSaveMod) || 0);
+    }
+    normalizeNumberIfPresent(source, "stunSavePenalty", 0);
     normalizeBooleanIfPresent(source, "stunSaveOnHit", false);
     normalizeBooleanIfPresent(source, "stunIgnoresArmor", false);
     normalizeBooleanIfPresent(source, "dotEnabled", false);

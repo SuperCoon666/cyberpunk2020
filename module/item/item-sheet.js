@@ -7,6 +7,12 @@ const { HandlebarsApplicationMixin } = foundry.applications.api;
 const { ItemSheetV2 } = foundry.applications.sheets;
 const { Tabs } = foundry.applications.ux;
 
+/**
+ * D87 — the longest burn that can be *typed* on an ammunition sheet. An approved limit on the
+ * input, not a refusal of data: a document authored with more ticks is honoured at tick time.
+ */
+const MAX_DOT_TICKS = 10;
+
 /** @extends {foundry.applications.sheets.ItemSheetV2} */
 export class CyberpunkItemSheet extends HandlebarsApplicationMixin(ItemSheetV2) {
 
@@ -106,12 +112,11 @@ export class CyberpunkItemSheet extends HandlebarsApplicationMixin(ItemSheetV2) 
     setIfMissing("accuracyMod", 0);
 
     setIfMissing("stunSaveOnHit", false);
-    setIfMissing("stunSaveMod", 0);
+    setIfMissing("stunSavePenalty", 0);
     setIfMissing("stunIgnoresArmor", false);
 
     setIfMissing("dotEnabled", false);
     setIfMissing("dotTurns", 0);
-    setIfMissing("dotDamageFormula", "");
 
     setIfMissing("blastRadius", 0);
     setIfMissing("blastZones", 4);
@@ -224,6 +229,14 @@ export class CyberpunkItemSheet extends HandlebarsApplicationMixin(ItemSheetV2) 
       })
     );
 
+    // D87 — the burn shows exactly as many damage inputs as the entered turn count, no spares.
+    // Nothing is written back for them: the list is padded by the handler that persists a tick, so
+    // a document carrying more ticks than can be typed keeps every one of them.
+    sheet.dotTickIndices = Array.from(
+      { length: Math.min(MAX_DOT_TICKS, Math.max(0, Math.floor(Number(sys.dotTurns) || 0))) },
+      (_, i) => i
+    );
+
     // Indices for rendering multiplier inputs dynamically
     sheet.blastMultiplierIndices = Array.from(
       { length: Math.max(1, Math.min(10, Number(this.item.system?.blastZones ?? 4))) },
@@ -246,7 +259,7 @@ export class CyberpunkItemSheet extends HandlebarsApplicationMixin(ItemSheetV2) 
       Standard: "AmmoEffect_Standard",
       AP: "AmmoEffect_AP",
       Electroshock: "AmmoEffect_Electroshock",
-      Poison: "AmmoEffect_Poison",
+      Incendiary: "AmmoEffect_Incendiary",
       Buckshot: "AmmoEffect_Buckshot",
       Blast: "AmmoEffect_Blast"
     };
@@ -1793,6 +1806,12 @@ async _prepareCyberware(sheet) {
         return;
       }
 
+      const tick = target.closest("input.ammo-dot-tick");
+      if (tick && root.contains(tick)) {
+        await this._cpHandleAmmoDotTickChange(tick, event);
+        return;
+      }
+
       const pack = target.closest("input.ammo-pack");
       if (pack && root.contains(pack)) {
         await this._cpHandleAmmoPackChange(pack, event);
@@ -1863,6 +1882,27 @@ async _prepareCyberware(sheet) {
     // No re-render: the value lives in the input being edited, so rebuilding the form
     // would only drop focus out of it.
     await this.item.update({ "system.blastMultipliers": multipliers }, { render: false });
+  }
+
+  async _cpHandleAmmoDotTickChange(input, event) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+
+    const index = Number(input.dataset.index);
+    if (!Number.isFinite(index)) return;
+
+    const formulas = Array.isArray(this.item.system?.dotDamageFormulas)
+      ? this.item.system.dotDamageFormulas.slice()
+      : [];
+    // Padded rather than rebuilt to the turn count: a fire authored longer than can be typed keeps
+    // its tail, and `startDot` reads the list against the count anyway.
+    while (formulas.length <= index) formulas.push("");
+    formulas[index] = String(input.value ?? "").trim();
+
+    // No re-render: the value lives in the input being edited, so rebuilding the form
+    // would only drop focus out of it.
+    await this.item.update({ "system.dotDamageFormulas": formulas }, { render: false });
   }
 
   async _cpHandleAmmoPackChange(input, event) {
@@ -2379,6 +2419,16 @@ async _prepareCyberware(sheet) {
       if (slots !== undefined) {
         const n = Number(slots);
         foundry.utils.setProperty(data, "system.Module.SlotsTaken", Number.isFinite(n) ? n : 0);
+      }
+    }
+
+    if (this.item.type === "ammo") {
+      // D87 — an approved cap on the entered turn count. It lands here rather than on the input,
+      // because the shared number widget emits `data-max`, which only ModifiersDialog reads.
+      const turns = foundry.utils.getProperty(data, "system.dotTurns");
+      if (turns !== undefined) {
+        const n = Math.floor(Number(turns) || 0);
+        foundry.utils.setProperty(data, "system.dotTurns", Math.min(MAX_DOT_TICKS, Math.max(0, n)));
       }
     }
 

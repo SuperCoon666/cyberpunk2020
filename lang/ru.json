@@ -803,14 +803,14 @@
     "CYBERPUNK.AmmoEffect_Standard": "Обычный",
     "CYBERPUNK.AmmoEffect_AP": "Бронебойный",
     "CYBERPUNK.AmmoEffect_Electroshock": "Электрошок",
-    "CYBERPUNK.AmmoEffect_Poison": "Яд / зажигательный",
+    "CYBERPUNK.AmmoEffect_Incendiary": "Зажигательный",
     "CYBERPUNK.AmmoEffect_Buckshot": "Картечь",
     "CYBERPUNK.AmmoEffect_Blast": "Взрыв (AOE)",
 
     "CYBERPUNK.AmmoSectionRound": "Сам патрон",
     "CYBERPUNK.AmmoSectionAP": "Бронебойность",
     "CYBERPUNK.AmmoSectionElectroshock": "Электрошок",
-    "CYBERPUNK.AmmoSectionPoison": "Яд / зажигательный состав",
+    "CYBERPUNK.AmmoSectionIncendiary": "Зажигательный состав",
     "CYBERPUNK.AmmoSectionBlast": "Взрыв (AoE)",
     "CYBERPUNK.AmmoSectionBuckshot": "Разлёт картечи",
     "CYBERPUNK.AmmoPenHalvesSoft": "Делить пробивший урон пополам (мягкая броня)",
@@ -828,13 +828,13 @@
     "CYBERPUNK.AmmoAccuracyMod": "Модификатор точности",
 
     "CYBERPUNK.AmmoStunOnHit": "STUN при попадании",
-    "CYBERPUNK.AmmoStunMod": "Модификатор STUN",
+    "CYBERPUNK.AmmoStunPenalty": "Штраф к спасброску STUN",
     "CYBERPUNK.AmmoStunIgnoresArmor": "Разряд игнорирует броню",
 
     "CYBERPUNK.AmmoDoTEnabled": "DoT активен",
     "CYBERPUNK.AmmoDoTTurns": "DoT: ходов",
-    "CYBERPUNK.AmmoDoTDamage": "DoT: урон",
-    "CYBERPUNK.AmmoDoTDamageHint": "Одна формула, которая перебрасывается каждый ход. В рулбуке огонь затухает — огнемёт даёт 2D10 в первый ход, затем 1D10 и 1D6 — и такая кривая в этот релиз не входит: выберите ровный кубик, подходящий вашему огню.",
+    "CYBERPUNK.AmmoDoTTick": "DoT: ход",
+    "CYBERPUNK.AmmoDoTDamageHint": "Своя формула урона на каждый ход горения — огонь может затухать так же, как в рулбуке: огнемёт даёт 2D10, затем 1D10, затем 1D6. Пустой ход или 0 не наносит урона в этот ход: так огонь горит, тлеет, а потом вспыхивает.",
 
     "CYBERPUNK.AmmoBlastRadius": "Радиус взрыва",
     "CYBERPUNK.AmmoOverallBody": "Урон по телу целиком",

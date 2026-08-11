@@ -804,14 +804,14 @@
     "CYBERPUNK.AmmoEffect_Standard": "Standard",
     "CYBERPUNK.AmmoEffect_AP": "Armor-piercing",
     "CYBERPUNK.AmmoEffect_Electroshock": "Electroshock",
-    "CYBERPUNK.AmmoEffect_Poison": "Poison / incendiary",
+    "CYBERPUNK.AmmoEffect_Incendiary": "Incendiary",
     "CYBERPUNK.AmmoEffect_Buckshot": "Buckshot",
     "CYBERPUNK.AmmoEffect_Blast": "Blast (AOE)",
 
     "CYBERPUNK.AmmoSectionRound": "The round itself",
     "CYBERPUNK.AmmoSectionAP": "Armor-piercing",
     "CYBERPUNK.AmmoSectionElectroshock": "Electroshock",
-    "CYBERPUNK.AmmoSectionPoison": "Poison / incendiary",
+    "CYBERPUNK.AmmoSectionIncendiary": "Incendiary",
     "CYBERPUNK.AmmoSectionBlast": "Blast (AoE)",
     "CYBERPUNK.AmmoSectionBuckshot": "Buckshot spread",
     "CYBERPUNK.AmmoPenHalvesSoft": "Halve penetrating damage (soft)",
@@ -829,13 +829,13 @@
     "CYBERPUNK.AmmoAccuracyMod": "Accuracy modifier",
 
     "CYBERPUNK.AmmoStunOnHit": "STUN on hit",
-    "CYBERPUNK.AmmoStunMod": "STUN modifier",
+    "CYBERPUNK.AmmoStunPenalty": "STUN save penalty",
     "CYBERPUNK.AmmoStunIgnoresArmor": "Charge ignores armor",
 
     "CYBERPUNK.AmmoDoTEnabled": "DoT enabled",
     "CYBERPUNK.AmmoDoTTurns": "DoT: turns",
-    "CYBERPUNK.AmmoDoTDamage": "DoT: damage",
-    "CYBERPUNK.AmmoDoTDamageHint": "One formula, rolled again each turn. The corebook's own fires decline instead — a flamethrower is 2D10 the first turn, then 1D10 and 1D6 — and that curve is out of scope for this release: pick a flat die that suits the fire you mean.",
+    "CYBERPUNK.AmmoDoTTick": "DoT: turn",
+    "CYBERPUNK.AmmoDoTDamageHint": "One damage formula per burning turn, so a fire can decline the way the corebook's own do — a flamethrower is 2D10, then 1D10, then 1D6. Leave a turn empty or at 0 and it deals nothing that turn, which is how a fire burns, smoulders, then flares.",
 
     "CYBERPUNK.AmmoBlastRadius": "Blast radius",
     "CYBERPUNK.AmmoOverallBody": "Damages the overall body",

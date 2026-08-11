@@ -16,13 +16,18 @@ import { Multiroll } from "./dice.js";
  * 6: the ammunition snapshot carries `overallBody`, which decides where a blast resolves (`T96`).
  * 7: the blast payload carries `levelId` and `throughWalls`, which decide whether walls stop it
  *    and which level's walls are asked (D72/D75).
+ * 8: the ammunition snapshot carries `dotDamageFormulas`, a formula per burning turn, in place of
+ *    the single `dotDamageFormula` (D85).
+ * 9: `stunSavePenalty` replaces `stunSaveMod` and carries the opposite sign (D108) — a card written
+ *    before this would lower the save number it was authored to raise.
  */
-export const ATTACK_FLAG_VERSION = 7;
+export const ATTACK_FLAG_VERSION = 9;
 
 /** The flag a damage-over-time effect burns down from, one tick per turn. */
 const DOT_FLAG = "dot";
 
-/** The victim's own record of how many electroshock hits they have taken, and when (`T98`). */
+/** The victim's own record of which rounds their electroshock hits landed on, and in whose
+ *  encounter (`T98`, `T257`). */
 const SHOCK_FLAG = "shock";
 
 /** Ch. 07:781 — *"reduced by -2 for every successive shot in a three-turn time period"*. */
@@ -124,11 +129,13 @@ export function snapshotAmmo(item) {
     penHalvesSoft: a.penHalvesSoft !== false,
     penHalvesHard: a.penHalvesHard !== false,
     stunSaveOnHit: !!a.stunSaveOnHit,
-    stunSaveMod: numberOr(a.stunSaveMod, 0),
+    stunSavePenalty: numberOr(a.stunSavePenalty, 0),
     stunIgnoresArmor: !!a.stunIgnoresArmor,
     dotEnabled: !!a.dotEnabled,
     dotTurns: numberOr(a.dotTurns, 0),
-    dotDamageFormula: String(a.dotDamageFormula ?? ""),
+    dotDamageFormulas: Array.isArray(a.dotDamageFormulas)
+      ? a.dotDamageFormulas.map(f => String(f ?? ""))
+      : [],
     blastRadius: numberOr(a.blastRadius, 0),
     overallBody: !!a.overallBody,
     blastFullDamageWithin: numberOr(a.blastFullDamageWithin, 0),
@@ -341,78 +348,81 @@ export async function requestSave(actor, kind, { dc = null, messageMode } = {}) 
  * Ch. 07:780-782 — *"Tasers require the victim to make a save against stun… The save number is
  * reduced by -2 for every successive shot in a three-turn time period."* The count lives on the
  * **victim**, because the save is theirs: two shooters with tasers stack against one target. The
- * window is combat rounds (D52); outside an encounter there is no round counter, so nothing stacks
- * and nothing is written — a later fight must not inherit a ladder from a corridor ambush. The
- * ladder is uncapped on the owner's word, and the number it reaches is printed on the card.
+ * window is combat rounds (D52) and it **slides with the shot** (D97): the flag records the rounds
+ * its shots landed on, and each hit counts only those inside the three rounds ending on its own —
+ * so rounds 1/3/5/7 give -0/-2/-2/-2. Carrying a running count forward instead made the ladder a
+ * chain that never re-windowed, because every gap under three re-armed the whole tally (`T257`).
+ *
+ * The record also names its **encounter** (D94). Every `Combat` restarts at round 1, so without
+ * that a new fight's first shot read the previous fight's late rounds as its own neighbours and
+ * saved several steps down. Outside an encounter there is no counter at all, so nothing stacks and
+ * nothing is written. The ladder is uncapped on the owner's word, and the number it reaches is
+ * printed on the card.
+ *
+ * **A burst counts every round that landed** (D109): the book's unit is the round, in the ladder
+ * (`07:782`), in full auto — *"one round hits the target"* (`07:718`) — and in the burst's own
+ * *"how many rounds actually hit"* (`07:704`). Only **one** save is asked for them, which is a
+ * deliberate simplification (owner, `AL-Q10`) against `07:548`'s save per damage taken; it is asked
+ * at the number the **last** of those rounds left the victim at, so the ladder ends up where N
+ * separate shots would have left it and only the number of rolls differs.
  *
  * @param {CyberpunkActor} actor The victim
  * @param {object} ammo Snapshot from snapshotAmmo
+ * @param {number} landed Rounds that hit — the card's own hit count, never zero here
  * @returns {Promise<{threshold: number, shot: number, stacked: boolean}>}
  */
-async function armShockSave(actor, ammo) {
-  const base = actor.stunThreshold() + numberOr(ammo.stunSaveMod, 0);
+async function armShockSave(actor, ammo, landed) {
+  const base = actor.stunThreshold() - numberOr(ammo.stunSavePenalty, 0);
   const round = Number(game.combat?.round);
-  if (!Number.isFinite(round)) return { threshold: base, shot: 1, stacked: false };
+  if (!Number.isFinite(round)) return { threshold: base, shot: landed, stacked: false };
 
   const previous = actor.getFlag("cyberpunk2020", SHOCK_FLAG);
-  // The shot and the two rounds before it, so a hit on round 5 stacks with round 3 and not with 2.
-  const inWindow = Number.isFinite(previous?.round) && round - previous.round < SHOCK_WINDOW_ROUNDS;
-  const priorShots = inWindow ? (Number(previous.shots) || 0) : 0;
+  // A record from another encounter counts for nothing, and so does one written before this shape
+  // existed — it names no encounter, so a fight in progress across the upgrade restarts its ladder
+  // once, at the victim's own number.
+  const sameFight = previous?.combat === game.combat.id && Array.isArray(previous.rounds);
+  // This round and the two before it, so a hit on round 5 stacks with round 3 and not with round 2.
+  const shots = sameFight
+    ? previous.rounds.filter(r => Number.isFinite(r) && r <= round && round - r < SHOCK_WINDOW_ROUNDS)
+    : [];
+  for (let i = 0; i < landed; i++) shots.push(round);
 
-  await actor.setFlag("cyberpunk2020", SHOCK_FLAG, { round, shots: priorShots + 1 });
+  // Only the window is kept: a round that can no longer count against any later shot cannot start
+  // counting again, which is what keeps the ladder from re-arming across a lull in a long fight.
+  await actor.setFlag("cyberpunk2020", SHOCK_FLAG,
+    { combat: game.combat.id, rounds: shots });
   return {
-    threshold: base + SHOCK_LADDER_STEP * priorShots,
-    shot: priorShots + 1,
+    threshold: base + SHOCK_LADDER_STEP * (shots.length - 1),
+    shot: shots.length,
     stacked: true
   };
-}
-
-/** The largest a formula can roll, for comparing two fires without rolling either. */
-function formulaCeiling(formula) {
-  try {
-    return new Roll(String(formula)).evaluateSync({ maximize: true }).total;
-  } catch (err) {
-    // A hand-written ammunition formula is user-authored data and reaches this before any roll of
-    // it would; an unparseable one loses the comparison rather than throwing inside an attack.
-    return 0;
-  }
 }
 
 /**
  * Arm the damage-over-time burn an incendiary round leaves behind. Nothing to do while the
  * ammunition carries no burn, which is every round in the shipped packs.
  *
- * **A second ignition refreshes and escalates; there are never two fires** (D26.3): the larger
- * formula and the longer remaining duration each survive, chosen separately, so a weak round can
- * only ever add to a fire and never downgrade one. The corebook has no stacking rule at all.
+ * **A new burn replaces the old one whole** (D88, reversing D26.3): its own list and its own turn
+ * count, and the previous fire is dropped — so a 3-turn molotov does displace a 6-turn incendiary.
+ * That downgrade is the accepted cost of the simple rule: D85 made a burn a *list*, which left
+ * D26.3's «keep the larger formula» with nothing to compare. There are still never two fires.
  *
  * @param {CyberpunkActor} actor
  * @param {object|null} ammo Snapshot from snapshotAmmo
  * @param {string} zone The location the burn caught on — every tick is resolved against it
  */
 async function startDot(actor, ammo, zone) {
-  if (!ammo?.dotEnabled || !(ammo.dotTurns > 0) || !ammo.dotDamageFormula) return;
-  // Refused at the write, so a formula nobody can roll never becomes a burn that ticks for ever
-  // (`T119`, D33). `tickDot` guards the roll as well: a world can already be carrying one.
-  if (!isRollableFormula(ammo.dotDamageFormula)) return;
+  if (!ammo?.dotEnabled || !(ammo.dotTurns > 0)) return;
 
-  const turns = Math.floor(ammo.dotTurns);
-  const formula = ammo.dotDamageFormula;
-  const burning = actor.getFlag("cyberpunk2020", DOT_FLAG);
+  // The burn is exactly as long as the turn count says; the list is read against it, so shortening
+  // the count shortens the fire and a turn the GM never filled in simply does nothing (D87).
+  const list = Array.isArray(ammo.dotDamageFormulas) ? ammo.dotDamageFormulas : [];
+  const formulas = Array.from({ length: Math.floor(ammo.dotTurns) },
+    (_, i) => String(list[i] ?? "").trim());
+  // A fire with nothing to roll in any of its turns is not a fire.
+  if (!formulas.some(formula => formula && isRollableFormula(formula))) return;
 
-  if (!burning?.formula || !(burning.turns > 0)) {
-    await actor.setFlag("cyberpunk2020", DOT_FLAG, { turns, formula, zone });
-    return;
-  }
-
-  // The zone follows the formula that won: a fire is one fire, and it burns where the round that
-  // set its intensity landed.
-  const escalates = formulaCeiling(formula) > formulaCeiling(burning.formula);
-  await actor.setFlag("cyberpunk2020", DOT_FLAG, {
-    turns: Math.max(turns, Math.floor(burning.turns)),
-    formula: escalates ? formula : burning.formula,
-    zone: escalates ? zone : String(burning.zone || zone)
-  });
+  await actor.setFlag("cyberpunk2020", DOT_FLAG, { turns: formulas.length, formulas, zone });
 }
 
 /**
@@ -439,38 +449,57 @@ export async function tickDot(actor, { messageMode } = {}) {
 
   const dot = actor.getFlag("cyberpunk2020", DOT_FLAG);
   // User-authored flag data: a hand-edited or half-written one must not throw inside a turn change.
-  if (!dot?.formula || !(dot.turns > 0)) return;
+  const formulas = Array.isArray(dot?.formulas)
+    ? dot.formulas
+    // A fire armed before D85 carries one formula for the whole burn. Read here rather than
+    // migrated: the flag is transient, and a world upgraded mid-encounter still finishes its fire.
+    : (dot?.formula ? Array.from({ length: Math.max(1, Math.floor(dot.turns) || 0) }, () => dot.formula) : []);
+  if (!formulas.length || !(dot.turns > 0)) return;
+
+  // The flag counts the turns *left* and the list is as long as the burn, so this is which of them
+  // is alight now. A hand-edited count longer than the list falls off the front and burns for free.
+  const formula = String(formulas[formulas.length - Math.floor(dot.turns)] ?? "").trim();
   // The throw this replaces took the whole turn start with it — no tick, no stun-recovery save and
   // no Death Save, every turn, for ever, because the flag was never decremented (`T119`).
-  if (!isRollableFormula(dot.formula)) return;
+  if (formula && !isRollableFormula(formula)) return;
 
-  const roll = await new Roll(String(dot.formula)).evaluate();
+  // D87 — a turn with no formula of its own deals no damage rather than repeating the last, and it
+  // must not reach the pipeline below at all: a hit that connects is floored at one point and soft
+  // armour is worn two points a tick, so a turn that does nothing would still do both.
+  const roll = formula ? await new Roll(formula).evaluate() : null;
+  const rolled = Math.max(0, Math.floor(roll?.total ?? 0));
   const zone = String(dot.zone || "Torso");
-  const location = actor.system.hitLocations?.[zone] ?? {};
-  const softStops = numberOr(location.stoppingPower, 0) > BURN_SOFT_SP_MINIMUM;
+  let damage = 0;
 
-  const resolved = resolveHit({
-    damage: Math.max(0, Math.floor(roll.total)),
-    zone,
-    ammo: { armorMultHard: 1, armorMultSoft: softStops ? 1 : 0 }
-  }, actor, { doubleHead: false });
+  if (rolled > 0) {
+    const location = actor.system.hitLocations?.[zone] ?? {};
+    const softStops = numberOr(location.stoppingPower, 0) > BURN_SOFT_SP_MINIMUM;
 
-  // The wound track and a cyberlimb's SDP are exclusive by construction, so this is whichever
-  // of the two the burn landed on.
-  const damage = resolved.final + resolved.toSdp;
-  await actor.applyDamage({
-    wound: resolved.final,
-    sdp: resolved.toSdp ? { [zone]: resolved.toSdp } : {}
-  });
+    const resolved = resolveHit({
+      damage: rolled,
+      zone,
+      ammo: { armorMultHard: 1, armorMultSoft: softStops ? 1 : 0 }
+    }, actor, { doubleHead: false });
 
-  if (game.settings.get("cyberpunk2020", "armorAblation")) {
-    await ablateArmor(actor, { [zone]: BURN_ARMOR_WEAR }, { softOnly: true });
+    // The wound track and a cyberlimb's SDP are exclusive by construction, so this is whichever
+    // of the two the burn landed on.
+    damage = resolved.final + resolved.toSdp;
+    await actor.applyDamage({
+      wound: resolved.final,
+      sdp: resolved.toSdp ? { [zone]: resolved.toSdp } : {}
+    });
+
+    if (game.settings.get("cyberpunk2020", "armorAblation")) {
+      await ablateArmor(actor, { [zone]: BURN_ARMOR_WEAR }, { softOnly: true });
+    }
   }
 
+  // Posted even for a turn that dealt nothing: the fire is still burning and the count still fell,
+  // and silence reads at the table as the fire having gone out.
   await createCyberpunkChatMessage({
     speaker: ChatMessage.getSpeaker({ actor }),
     content: localizeParam("DotTick", { name: actor.name, damage, turns: dot.turns - 1 }),
-    rolls: [roll]
+    rolls: roll ? [roll] : []
   }, { useDefaultRollMode: true, messageMode });
 
   const turns = Math.floor(dot.turns) - 1;
@@ -578,7 +607,7 @@ export async function applyHitsToActor(actor,
   // — a hit that landed entirely in a cyberlimb penetrated, even though `wound` stayed 0.
   const asksForShock = ammo?.stunSaveOnHit
     && (ammo.stunIgnoresArmor || Object.keys(penetratedZones).length > 0);
-  const shock = asksForShock ? await armShockSave(actor, ammo) : null;
+  const shock = asksForShock ? await armShockSave(actor, ammo, hits.length) : null;
 
   const content = await renderCyberpunkTemplate(
     "systems/cyberpunk2020/templates/chat/damage-applied.hbs",
