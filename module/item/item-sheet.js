@@ -1,6 +1,6 @@
 import { weaponTypes, meleeAttackTypes, rangedAttackTypes, attackSkills, concealability, availability, reliability, getStatNames, programTypes, effectiveRange, AMMO_ROUNDS_PER_BOX } from "../lookups.js";
 import { formulaHasDice } from "../dice.js";
-import { deleteFieldUpdate, localize, localizeParam, cwHasType, getSkillIndex } from "../utils.js";
+import { deleteFieldUpdate, localize, localizeParam, localizeParamEscaped, cwHasType, getSkillIndex } from "../utils.js";
 import { createCyberpunkChatMessage, getHtmlElement, getPublicMessageMode, getRichEditorHTML, saveRichEditorHTML, rollToCyberpunkChatMessage } from "../compat.js";
 
 const { HandlebarsApplicationMixin } = foundry.applications.api;
@@ -939,7 +939,7 @@ async _prepareCyberware(sheet) {
 
     await createCyberpunkChatMessage({
       speaker,
-      content: game.i18n.format("CYBERPUNK.Chat.HumanityLossSet", {
+      content: localizeParamEscaped("Chat.HumanityLossSet", {
         actor: actor?.name ?? game.user.name,
         item: cyber.name,
         loss

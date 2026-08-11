@@ -1,6 +1,6 @@
 import { weaponTypes, rangedAttackTypes, meleeAttackTypes, fireModes, ranges, rangeDCs, rangeResolve, effectiveRange, strengthDamageBonus, getMartialActionBonus, martialActions, isCombatAutomationEnabled, isFnff2Enabled, getFnff2DamageBonusSymbol } from "../lookups.js"
 import { Multiroll, makeD10Roll } from "../dice.js"
-import { localize, localizeParam, rollLocation, cwHasType, cwIsEnabled, isFumbleRoll, buildRangedCombatFumbleData, buildSkillFumbleData, clamp, isRollableFormula } from "../utils.js";
+import { displayName, localize, localizeParam, rollLocation, cwHasType, cwIsEnabled, isFumbleRoll, buildRangedCombatFumbleData, buildSkillFumbleData, clamp, isRollableFormula } from "../utils.js";
 import { createCyberpunkChatMessage, createCyberpunkRollCard, renderCyberpunkTemplate } from "../compat.js";
 import { ATTACK_FLAG_VERSION, attackerIsHidden, hiddenMessageMode, snapshotAmmo } from "../damage.js";
 import { declareDodge, dodgeRangedPenalty, resolveDefense } from "../combat.js";
@@ -858,13 +858,28 @@ export class CyberpunkItem extends Item {
 
     let scatter = null;
     if (!onTarget && start && end) {
-      // Ch. 07:839's Grenade Table again, exactly as a thrown miss uses it — a rigid shift of both
-      // ends by the same vector, so the missed line keeps its own length and bearing off-target.
+      // Ch. 07:839's Grenade Table again, exactly as a thrown miss uses it — but a stream pivots
+      // rather than sliding (D140): the muzzle is where the shooter is standing and a miss does not
+      // move him, so `start` is fixed and only the bearing of `end` wanders. `start` is the muzzle
+      // everywhere else too (`blast.corridor.from`, read by `corridorPoint` and
+      // `patternWallBetween`), so moving it would put the stream's origin off the shooter.
       const direction = await new Roll("1d10").evaluate();
       const distance = await new Roll("1d10").evaluate();
       scatter = { direction: direction.total, distance: distance.total };
-      start = scatterCentre(start, scatter.direction, scatter.distance);
-      end = scatterCentre(end, scatter.direction, scatter.distance);
+      // The same roll and the same helper as before: scatter the far end as if it were a thrown
+      // centre, then keep only its **bearing** from the muzzle and re-place `end` at the stream's
+      // own original length along it.
+      const decoy = scatterCentre(end, scatter.direction, scatter.distance);
+      const length = Math.hypot(end.x - start.x, end.y - start.y);
+      const reach = Math.hypot(decoy.x - start.x, decoy.y - start.y);
+      // A decoy landing exactly on the muzzle has no bearing to take; the stream then keeps the one
+      // it was aimed along, which is the only answer that is not a division by zero.
+      if (reach > 0) {
+        end = {
+          x: start.x + ((decoy.x - start.x) / reach) * length,
+          y: start.y + ((decoy.y - start.y) / reach) * length
+        };
+      }
     }
 
     const rollData = this.actor?.getRollData?.() ?? {};
@@ -1303,8 +1318,9 @@ export class CyberpunkItem extends Item {
           saveDC,
           damageFormula,
           ap: !!this._getWeaponSystem()?.ap,
-          ammo: snapshotAmmo(this),
-          attackerUuid: this.actor?.uuid ?? ""
+          ammo: snapshotAmmo(this)
+          // No `attackerUuid`: this object is spread onto a Region every client can read, and
+          // `attackerActorUuid` above already carries the shooter on the card (`T115`).
         }
       }
     };
@@ -1434,7 +1450,7 @@ export class CyberpunkItem extends Item {
 
       const defense = attackMods.targetActor
         ? await resolveDefense(attackMods.targetActor, attackRoll.total,
-            { attackerName: this.actor.name, itemName: this.name,
+            { attackerName: displayName(this.actor), itemName: this.name,
               messageMode: CyberpunkItem.__targetMessageMode(targetTokens[0]),
               hideAttacker: CyberpunkItem.__attackerIsHidden(this.actor) })
         : null;
@@ -1664,7 +1680,7 @@ export class CyberpunkItem extends Item {
 
     const defense = attackMods.targetActor
       ? await resolveDefense(attackMods.targetActor, attackRoll.total,
-          { attackerName: actor.name, itemName: this.name,
+          { attackerName: displayName(actor), itemName: this.name,
             messageMode: CyberpunkItem.__targetMessageMode(targetTokens[0]),
             hideAttacker: CyberpunkItem.__attackerIsHidden(actor) })
       : null;

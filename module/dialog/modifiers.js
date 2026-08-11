@@ -1,4 +1,4 @@
-import { deepSet, localize, localizeParam, refusedWhilePaused } from "../utils.js"
+import { deepSet, localize, localizeParam, localizeParamEscaped, refusedWhilePaused } from "../utils.js"
 import { fireModes, rangedAttackTypes, getMartialActionBonus } from "../lookups.js"
 import { createCyberpunkChatMessage, getGMUserIds, getHtmlElement } from "../compat.js";
 
@@ -205,7 +205,7 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
             await createCyberpunkChatMessage({
               speaker: ChatMessage.getSpeaker({ actor }),
               whisper: gmRecipients,
-              content: localizeParam("Chat.Reload", {
+              content: localizeParamEscaped("Chat.Reload", {
                 actor: actor.name,
                 weapon: weapon.name,
                 shots: shotsText

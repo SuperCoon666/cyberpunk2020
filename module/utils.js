@@ -43,6 +43,53 @@ export function localizeParam(str, params) {
     return game.i18n.format("CYBERPUNK."+ str, params);
 }
 
+/**
+ * `localizeParam` for a string that becomes markup: every substituted value is escaped first.
+ *
+ * Actor, item and user names are user-authored and reach chat-card and dialog content raw
+ * otherwise. Measured (`T122`): a character named `<img src=x onerror=…>` is not script execution —
+ * the server strips the handler — but the element survives, renders on every client, and makes each
+ * of them fetch a URL that player chose. One helper rather than an escape per site, because the
+ * count grew from four notices to seven while the row sat open and the next one would be written
+ * raw as well.
+ *
+ * Deliberately opt-in: `localizeParam` stays for values that are markup on purpose, such as the
+ * fumble tables' die spans.
+ *
+ * @param {string} str Key suffix — `CYBERPUNK.` is prepended, as everywhere else here
+ * @param {object} params Substitutions, each escaped
+ * @returns {string}
+ */
+export function localizeParamEscaped(str, params) {
+    const escaped = {};
+    for (const [key, value] of Object.entries(params)) {
+        escaped[key] = foundry.utils.escapeHTML(String(value));
+    }
+    return localizeParam(str, escaped);
+}
+
+/**
+ * The name the table sees for a combatant.
+ *
+ * D133: the GM writes the real name on the actor sheet and the players see the token name he chose
+ * — «Бранд» on the sheet, «Бандит» in initiative, on the cards and in the prompts. So every
+ * player-visible combat string names the **token**, and `actor.name` is the last resort rather than
+ * the first read.
+ *
+ * The order is what each source can actually know. A token the caller already holds is the one the
+ * event is about; `actor.token` is set on the synthetic actor of an unlinked token; the prototype
+ * carries the name a linked actor's tokens are placed with, which is where a GM sets «Бандит» once
+ * for all of them. Core resolves `Combatant#name` the same way
+ * (`client/documents/combatant.mjs:168`, 14.365.0), so the initiative tracker needs nothing here.
+ *
+ * @param {CyberpunkActor} actor
+ * @param {TokenDocument} [token] The token the string is about, when the caller has one
+ * @returns {string}
+ */
+export function displayName(actor, token = null) {
+    return token?.name || actor?.token?.name || actor?.prototypeToken?.name || actor?.name || "";
+}
+
 export function shortLocalize(str) {
     let makeShort = !!game.i18n.has("CYBERPUNK." + str + "Short");
     return tryLocalize(makeShort ? str + "Short" : str);

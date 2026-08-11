@@ -23,8 +23,8 @@ import { ATTACK_FLAG_VERSION, SAVE_PROMPT_DEADLINE_MS, applyAttackFromMessage, r
 import { CyberpunkCombat, announceTurn, applyDeclaredDodge, clearSuppressionZones, clearTurnFlags, DEFENSE_PROMPT_DEADLINE_MS } from "./combat.js";
 import { isCombatAutomationEnabled } from "./lookups.js";
 import { CyberpunkTokenRuler, vetoOverspentMovement } from "./movement.js";
-import { applyBlastFromMessage, createSuppressionZone, drawZone, SuppressiveFireBehavior, toggleZoneVisibility, zoneRegions } from "./zones.js";
-import { localize, localizeParam } from "./utils.js";
+import { applyBlastFromMessage, drawZone, layZoneFromMessage, SuppressiveFireBehavior, toggleZoneVisibility, zoneRegions } from "./zones.js";
+import { displayName, localize, localizeParam, localizeParamEscaped } from "./utils.js";
 
 /**
  * Wound levels the token shows, indexed by woundState(). Mortal covers every state above it, so
@@ -150,7 +150,7 @@ Hooks.once('init', async function () {
       const answer = await Promise.race([
         foundry.applications.api.DialogV2.input({
           window: { title: titles[kind] ?? "CYBERPUNK.SaveStun" },
-          content: `<p>${localizeParam("SavePrompt", { name: actor.name })}</p>
+          content: `<p>${localizeParamEscaped("SavePrompt", { name: displayName(actor) })}</p>
             <input type="number" name="mod" value="0" step="1" autofocus>`,
           ok: { label: "CYBERPUNK.SaveRollButton" },
           render: (event, app) => { dialog = app; }
@@ -210,11 +210,11 @@ Hooks.once('init', async function () {
       // and the item name together, and the reduced line keeps the total (D29.5).
       const asked = attackerName
         ? localizeParam("DefensePrompt", {
-            attacker: esc(attackerName), defender: esc(defender.name),
+            attacker: esc(attackerName), defender: esc(displayName(defender)),
             item: esc(itemName), total: Number(attackTotal) || 0
           })
         : localizeParam("DefensePromptHidden", {
-            defender: esc(defender.name), total: Number(attackTotal) || 0
+            defender: esc(displayName(defender)), total: Number(attackTotal) || 0
           });
 
       const answer = await Promise.race([
@@ -451,6 +451,34 @@ Hooks.once('init', async function () {
       button.addEventListener("click", () => applyBlastFromMessage(message));
     });
 
+    // `T125` — the fire zone is laid by the active GM's hook above, and with none connected the
+    // rounds were spent for a zone that never existed and never could. The offer stays on the card:
+    // the first GM to see it lays what the burst described. Whether it is laid already is read off
+    // the Region and not off a flag, because the hook may have created it on another client.
+    Hooks.on("renderChatMessageHTML", (message, html) => {
+      const root = getHtmlElement(html);
+      const button = root?.querySelector?.('button[data-action="layZone"]');
+      if (!button || button.dataset.cpLayBound === "1") return;
+      button.dataset.cpLayBound = "1";
+
+      const attack = message.flags?.cyberpunk2020?.attack;
+      if (!game.user.isGM || !isCombatAutomationEnabled() || attack?.version !== ATTACK_FLAG_VERSION) {
+        button.remove();
+        return;
+      }
+
+      const laid = () => {
+        button.disabled = true;
+        button.textContent = localize("ZoneLaid");
+      };
+      if (zoneRegions(message).length) return laid();
+
+      button.addEventListener("click", async () => {
+        await layZoneFromMessage(message);
+        laid();
+      });
+    });
+
     // D122 — the GM's per-zone control over whether the players see this effect. Its label is read
     // off the regions rather than remembered, because `renderChatMessageHTML` fires again on every
     // re-render; on the first render of a card the drawing may not have landed yet, and the label's
@@ -509,7 +537,7 @@ Hooks.once('init', async function () {
       // A fire zone is a scene document, not damage: the apply mode decides who applies damage and
       // not whether the zone the shooter just placed exists, so this runs ahead of the setting.
       if (attack.kind === "suppression") {
-        await createSuppressionZone(attack.zone, attack.behaviour, message.id);
+        await layZoneFromMessage(message);
         return;
       }
 

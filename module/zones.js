@@ -1,7 +1,7 @@
 import { isCombatAutomationEnabled, ranges } from "./lookups.js";
 import { applyHitsToActor, attackerIsHidden, hiddenMessageMode, requestSave, ATTACK_FLAG_VERSION } from "./damage.js";
 import { createCyberpunkChatMessage } from "./compat.js";
-import { localize, localizeParam, rollLocation, isRollableFormula } from "./utils.js";
+import { displayName, localize, localizeParam, localizeParamEscaped, rollLocation, isRollableFormula } from "./utils.js";
 
 /**
  * Ch. 07's Grenade Table (`dev/rulebooks/corebook/07-friday-night-firefight.md:187-197`) as it is
@@ -217,8 +217,7 @@ export class SuppressiveFireBehavior extends foundry.data.regionBehaviors.Region
       saveDC: new NumberField({ required: true, integer: true, initial: 0, min: 0 }),
       damageFormula: new StringField({ required: true, initial: "1d6" }),
       ap: new BooleanField(),
-      ammo: new ObjectField({ nullable: true, initial: null }),
-      attackerUuid: new StringField({ required: true, initial: "" })
+      ammo: new ObjectField({ nullable: true, initial: null })
     };
   }
 
@@ -282,8 +281,18 @@ async function resolveZoneCrossing(zone, token) {
   // RAW asks for one save per target "during this attack" and this zone outlives the attack, so a
   // combat turn is what stands in for it. Outside an encounter there is no turn to reset on and
   // the book's own answer — one save per target per zone — is what is left.
-  const combat = game.combat;
-  const crossing = combat?.started ? `${combat.id}.${combat.round}.${combat.turn}` : "once";
+  //
+  // The encounter is the zone's own scene's, never `game.combat`: that getter is the reading
+  // client's tracker selection (`client/game.mjs:1692-1696`, 14.365.0) and `isActive` is
+  // `active && scene.isView` (`client/documents/combat.mjs:118-121`), so the active GM viewing
+  // another scene got `"once"` and re-asked the save on every re-entry (`T114`, the `T87` family).
+  // This is core's own resolution (`client/documents/collections/combat-encounters.mjs:44-55`)
+  // with the viewport dropped and the zone's scene put in its place: `active` is the world flag,
+  // `isView` was the client half. A scene-less encounter applies everywhere, a bound one only to
+  // its own scene.
+  const combat = game.combats.find(c =>
+    c.active && c.started && (!c.scene || c.scene === zone.scene));
+  const crossing = combat ? `${combat.id}.${combat.round}.${combat.turn}` : "once";
   const saved = zone.behavior.getFlag("cyberpunk2020", CROSSED_FLAG) ?? {};
   if (saved[token.id] === crossing) return;
 
@@ -295,18 +304,33 @@ async function resolveZoneCrossing(zone, token) {
   await zone.behavior.setFlag("cyberpunk2020", CROSSED_FLAG, { ...saved, [token.id]: crossing });
 
   // The save card that follows says nothing about why it is being rolled, so this is what makes the
-  // crossing legible — and it is the reader `attackerUuid` was stored for (`T70`). The uuid is
-  // persisted on a Region that outlives the actor it names, so an unresolvable shooter drops the
-  // clause rather than the notice.
-  // D31 — and an ambusher who laid the zone is not named either, which is the same nameless
-  // sentence an unresolvable shooter already gets (`T103`).
-  const attacker = zone.attackerUuid ? await fromUuid(zone.attackerUuid) : null;
-  const named = attacker && !attackerIsHidden(attacker);
+  // crossing legible. The shooter is read off the **card** the zone was laid from, never off the
+  // Region: a Region is world data at `visibility: ALWAYS`, so a persisted uuid there named the
+  // ambusher to any player who opened a console — defeating the very suppression D31 pays for
+  // (`T115`). The Region keeps only the link, and a Region that outlives its card resolves nothing.
+  const card = game.messages.get(
+    String(zone.behavior.region?.getFlag("cyberpunk2020", ZONE_FLAG) ?? ""));
+  const attackerUuid = card?.flags?.cyberpunk2020?.attack?.attackerActorUuid;
+  const attacker = attackerUuid ? await fromUuid(attackerUuid) : null;
+  // The shooter's own token, off the card's speaker — D133 wants the token's name, and the
+  // speaker is where the shooter's client recorded which token fired. Without it a linked actor
+  // would fall back to its prototype and show the sheet name the players are not meant to see.
+  const attackerToken = card?.speaker?.token
+    ? game.scenes.get(card.speaker.scene)?.tokens.get(card.speaker.token)
+    : null;
+  // D131 — an ambusher is *labelled* rather than passed over in silence, «чтоб было понятно что
+  // вообще происходит»: the crossing was the one surface that dropped the clause entirely, where
+  // the two defence notices already say "an unseen attacker". A shooter who cannot be resolved at
+  // all is a different sentence again — that one really is unknown, not withheld.
+  const content = !attacker
+    ? localizeParamEscaped("ZoneCrossingUnknown", { target: token.name })
+    : attackerIsHidden(attacker)
+      ? localizeParamEscaped("ZoneCrossingHidden", { target: token.name })
+      : localizeParamEscaped("ZoneCrossing",
+        { target: token.name, attacker: displayName(attacker, attackerToken) });
   await createCyberpunkChatMessage({
     speaker: ChatMessage.getSpeaker({ actor }),
-    content: named
-      ? localizeParam("ZoneCrossing", { target: token.name, attacker: attacker.name })
-      : localizeParam("ZoneCrossingUnknown", { target: token.name })
+    content
   }, { messageMode: hiddenMessageMode(token.hidden) });
 
   const save = await requestSave(actor, "zone", {
@@ -364,12 +388,31 @@ export async function placeSuppressionZone(width, length, name) {
 }
 
 /**
+ * Lay a suppression card's zone, from either of the two ways in — the active GM's `createChatMessage`
+ * hook, or the card's own button when no GM was connected to run it.
+ *
+ * Idempotent by the Region rather than by ordering: the two paths can overlap, because
+ * `renderChatMessageHTML` runs while the hook's own create is still in flight, and a burst that
+ * laid two zones would ask every crossing token to save twice (`T125`).
+ *
+ * @param {ChatMessage} message
+ * @returns {Promise<RegionDocument|null>} null when there is nothing to lay, or it is laid already
+ */
+export async function layZoneFromMessage(message) {
+  const attack = message?.flags?.cyberpunk2020?.attack;
+  if (attack?.kind !== "suppression" || !attack.zone) return null;
+  if (zoneRegions(message).length) return null;
+
+  return createSuppressionZone(attack.zone, attack.behaviour, message.id);
+}
+
+/**
  * Lay the fire zone the card describes on its own scene. A Region is a scene document, so only a
- * GM can write it: the shooter previews, the active GM creates, and with no GM connected the
- * card's own numbers are what the table plays off.
+ * GM can write it: the shooter previews, the active GM creates, and with no GM connected the card
+ * carries the button that lays it when one arrives (`T125`).
  *
  * @param {object} zone The card's zone payload
- * @param {object} behaviour What a crossing needs: name, saveDC, damageFormula, ap, ammo, attackerUuid
+ * @param {object} behaviour What a crossing needs: name, saveDC, damageFormula, ap, ammo
  * @param {string} messageId The card that laid it, so the GM's hide toggle finds it (D122)
  * @returns {Promise<RegionDocument|null>} null when the scene is gone
  */

@@ -1,5 +1,5 @@
 import { MORTAL_WOUND_STATE, hiddenMessageMode, requestSave, tickDot } from "./damage.js";
-import { localizeParam } from "./utils.js";
+import { displayName, localizeParam, localizeParamEscaped } from "./utils.js";
 import { createCyberpunkChatMessage } from "./compat.js";
 import { BaseDie } from "./dice.js";
 import { DODGE_SKILL_ID, isCombatAutomationEnabled } from "./lookups.js";
@@ -160,7 +160,7 @@ export class CyberpunkCombat extends Combat {
     if (actor.statuses.has("cpStunned")) {
       await createCyberpunkChatMessage({
         speaker: ChatMessage.getSpeaker({ actor, token: combatant.token }),
-        content: localizeParam("TurnStartStunSave", { name: actor.name })
+        content: localizeParamEscaped("TurnStartStunSave", { name: displayName(actor, combatant.token) })
       }, { messageMode });
 
       if (automated) {
@@ -173,7 +173,7 @@ export class CyberpunkCombat extends Combat {
 
     await createCyberpunkChatMessage({
       speaker: ChatMessage.getSpeaker({ actor, token: combatant.token }),
-      content: localizeParam("TurnStartDeathSave", { name: actor.name })
+      content: localizeParamEscaped("TurnStartDeathSave", { name: displayName(actor, combatant.token) })
     }, { messageMode });
 
     if (!automated) return;
@@ -293,8 +293,9 @@ export async function resolveDefense(defender, attackTotal,
       // D31 — the notice is public, so an ambusher is not named on it either. `hideAttacker` is
       // the same flag the prompt takes, so the three surfaces move together (`T103`).
       content: hideAttacker
-        ? localizeParam("DefensePendingHidden", { defender: defender.name })
-        : localizeParam("DefensePending", { attacker: attackerName, defender: defender.name })
+        ? localizeParamEscaped("DefensePendingHidden", { defender: displayName(defender) })
+        : localizeParamEscaped("DefensePending",
+          { attacker: attackerName, defender: displayName(defender) })
     }, { messageMode });
 
     try {
@@ -448,14 +449,17 @@ export function dodgeRangedPenalty(targetActor) {
 export async function clearSuppressionZones(combat) {
   if (!game.user.isActiveGM) return;
 
-  const scene = combat.scene;
-  if (!scene) return;
-
-  const ids = scene.regions
-    .filter(region => region.getFlag("cyberpunk2020", SUPPRESSION_FLAG)
-      || region.getFlag("cyberpunk2020", ZONE_FLAG))
-    .map(region => region.id);
-  if (ids.length) await scene.deleteEmbeddedDocuments("Region", ids);
+  // Every scene, not `combat.scene`: a zone is laid on the scene the shooter's canvas was showing,
+  // which the encounter need not be bound to, and an encounter bound to no scene swept nothing at
+  // all — so a crater or a fire zone outlived the fight it belonged to and sat on the map (`T118`).
+  // Only Regions this system laid are touched; a GM's own are left alone.
+  for (const scene of game.scenes) {
+    const ids = scene.regions
+      .filter(region => region.getFlag("cyberpunk2020", SUPPRESSION_FLAG)
+        || region.getFlag("cyberpunk2020", ZONE_FLAG))
+      .map(region => region.id);
+    if (ids.length) await scene.deleteEmbeddedDocuments("Region", ids);
+  }
 }
 
 /**

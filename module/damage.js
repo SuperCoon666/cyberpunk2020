@@ -1,5 +1,5 @@
 import { createCyberpunkChatMessage, renderCyberpunkTemplate } from "./compat.js";
-import { localize, localizeParam, rollLocation, isRollableFormula } from "./utils.js";
+import { displayName, localize, localizeParam, localizeParamEscaped, rollLocation, isRollableFormula } from "./utils.js";
 import { CyberpunkActor } from "./actor/actor.js";
 import { ATHLETICS_SKILL_ID, isCombatAutomationEnabled } from "./lookups.js";
 import { Multiroll } from "./dice.js";
@@ -22,8 +22,11 @@ import { Multiroll } from "./dice.js";
  *    before this would lower the save number it was authored to raise.
  * 10: the spread's blast payload carries `levelId` too, so a shotgun pattern gates the same wall
  *     channel a blast does (D115, `T284`/`T287`).
+ * 11: the suppression payload's `behaviour` no longer carries `attackerUuid` — the shooter is read
+ *     from the card's own `attackerActorUuid` instead, so nothing identifying them is written onto
+ *     a world-readable Region (`T115`, D131).
  */
-export const ATTACK_FLAG_VERSION = 10;
+export const ATTACK_FLAG_VERSION = 11;
 
 /** The flag a damage-over-time effect burns down from, one tick per turn. */
 const DOT_FLAG = "dot";
@@ -375,14 +378,22 @@ export async function requestSave(actor, kind, { dc = null, messageMode } = {}) 
  */
 async function armShockSave(actor, ammo, landed) {
   const base = actor.stunThreshold() - numberOr(ammo.stunSavePenalty, 0);
-  const round = Number(game.combat?.round);
-  if (!Number.isFinite(round)) return { threshold: base, shot: landed, stacked: false };
+  // The victim's own encounter, never `game.combat`: that getter is the *applying* client's tracker
+  // selection (`client/game.mjs:1692-1696`, 14.365.0) gated on `scene.isView`
+  // (`client/documents/combat.mjs:118-121`), so a GM applying the card while viewing another scene
+  // read null and the ladder silently stopped stacking — printing "no encounter running" under a
+  // tracker visibly running one (`T290`, `T114`'s family). Which fight the victim is in is a world
+  // fact, and this is `T87`'s resolution.
+  const combat = game.combats.find(c =>
+    c.started && c.combatants.some(combatant => combatant.actorId === actor.id));
+  if (!combat) return { threshold: base, shot: landed, stacked: false };
+  const round = combat.round;
 
   const previous = actor.getFlag("cyberpunk2020", SHOCK_FLAG);
   // A record from another encounter counts for nothing, and so does one written before this shape
   // existed — it names no encounter, so a fight in progress across the upgrade restarts its ladder
   // once, at the victim's own number.
-  const sameFight = previous?.combat === game.combat.id && Array.isArray(previous.rounds);
+  const sameFight = previous?.combat === combat.id && Array.isArray(previous.rounds);
   // This round and the two before it, so a hit on round 5 stacks with round 3 and not with round 2.
   const shots = sameFight
     ? previous.rounds.filter(r => Number.isFinite(r) && r <= round && round - r < SHOCK_WINDOW_ROUNDS)
@@ -392,7 +403,7 @@ async function armShockSave(actor, ammo, landed) {
   // Only the window is kept: a round that can no longer count against any later shot cannot start
   // counting again, which is what keeps the ladder from re-arming across a lull in a long fight.
   await actor.setFlag("cyberpunk2020", SHOCK_FLAG,
-    { combat: game.combat.id, rounds: shots });
+    { combat: combat.id, rounds: shots });
   return {
     threshold: base + SHOCK_LADDER_STEP * (shots.length - 1),
     shot: shots.length,
@@ -500,7 +511,8 @@ export async function tickDot(actor, { messageMode } = {}) {
   // and silence reads at the table as the fire having gone out.
   await createCyberpunkChatMessage({
     speaker: ChatMessage.getSpeaker({ actor }),
-    content: localizeParam("DotTick", { name: actor.name, damage, turns: dot.turns - 1 }),
+    content: localizeParamEscaped("DotTick",
+      { name: displayName(actor), damage, turns: dot.turns - 1 }),
     rolls: roll ? [roll] : []
   }, { useDefaultRollMode: true, messageMode });
 
