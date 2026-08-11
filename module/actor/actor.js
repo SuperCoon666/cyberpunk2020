@@ -1238,8 +1238,15 @@ export class CyberpunkActor extends Actor {
 
     const weapon = this.items.get(charge.itemId);
     if (weapon) {
+      const system = weapon._getWeaponSystem();
+      const returned = Number(system.shotsLeft ?? 0) + 1;
+      // A weapon reloaded between the plant and the take-back is already full, and the charge
+      // coming back must not push it past its own magazine (`T281`). A weapon that declares no
+      // capacity is not clamped to nothing: 0 is the schema's default and a cyberweapon may
+      // legitimately leave it there, so clamping there would swallow the charge instead.
+      const capacity = Number(system.shots) || 0;
       await weapon.__setWeaponField("shotsLeft",
-        Number(weapon._getWeaponSystem().shotsLeft ?? 0) + 1);
+        capacity > 0 ? Math.min(returned, capacity) : returned);
     }
 
     return this.removeDeployedCharge(chargeId);

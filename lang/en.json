@@ -442,6 +442,13 @@
     "CYBERPUNK.ChargeFormulaBroken": "This charge's damage formula cannot be rolled, so it stays where it is.",
     "CYBERPUNK.ApplyZone": "Apply over zone",
     "CYBERPUNK.ZoneApplied": "Zone applied",
+    "CYBERPUNK.ZoneRegionBlast": "Blast zone",
+    "CYBERPUNK.ZoneRegionSpread": "Shot pattern",
+    "CYBERPUNK.ZoneRegionCaught": "Caught in the zone",
+    "CYBERPUNK.ZoneRegionCaughtHidden": "Caught in the zone (unseen)",
+    "CYBERPUNK.HideZone": "Hide zone from players",
+    "CYBERPUNK.ShowZone": "Show zone to players",
+    "CYBERPUNK.ZoneNotDrawn": "This card drew no zone on the map, so there is nothing to hide.",
     "CYBERPUNK.SpreadTitle": "Shotgun pattern",
     "CYBERPUNK.DotTick": "{name} takes {damage} from a burning wound; {turns} turn(s) of it left.",
 

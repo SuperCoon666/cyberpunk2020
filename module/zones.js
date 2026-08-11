@@ -251,6 +251,21 @@ const CROSSED_FLAG = "suppressed";
 /** Marks the Regions this system laid, so combat cleanup leaves the GM's own alone. */
 export const SUPPRESSION_FLAG = "suppression";
 
+/** The card a drawn zone belongs to, by message id: what the GM's hide toggle and the sweep find. */
+export const ZONE_FLAG = "zone";
+
+/**
+ * D121 — a colour per kind, so a crater, a pattern and a fire zone on one map read apart. Firebrick
+ * is the system's own red (`css/cyberpunk2020.css:604`); the rest are picked to stay apart from it
+ * and from each other where two zones overlap.
+ */
+const ZONE_COLOURS = {
+  blast: "#b22222",
+  spread: "#c25e00",
+  suppression: "#3f6fa8",
+  caught: "#e8c547"
+};
+
 /**
  * Resolve one token's crossing of a fire zone: one save, and on a failure 1D6 randomly located
  * rounds through the damage pipeline (ch. 07:731-733).
@@ -354,19 +369,21 @@ export async function placeSuppressionZone(width, length, name) {
  *
  * @param {object} zone The card's zone payload
  * @param {object} behaviour What a crossing needs: name, saveDC, damageFormula, ap, ammo, attackerUuid
+ * @param {string} messageId The card that laid it, so the GM's hide toggle finds it (D122)
  * @returns {Promise<RegionDocument|null>} null when the scene is gone
  */
-export async function createSuppressionZone(zone, behaviour) {
+export async function createSuppressionZone(zone, behaviour, messageId = "") {
   const scene = game.scenes.get(String(zone?.sceneId ?? ""));
   if (!scene) return null;
 
   const { name, ...system } = behaviour;
   const [region] = await scene.createEmbeddedDocuments("Region", [{
     name,
+    color: ZONE_COLOURS.suppression,
     shapes: zone.shapes,
     levels: zone.levels,
     visibility: CONST.REGION_VISIBILITY.ALWAYS,
-    flags: { cyberpunk2020: { [SUPPRESSION_FLAG]: true } },
+    flags: { cyberpunk2020: { [SUPPRESSION_FLAG]: true, [ZONE_FLAG]: messageId } },
     behaviors: [{ type: "suppressiveFire", name, system }]
   }]);
 
@@ -412,7 +429,15 @@ function blastEdges(level, centre, radiusPixels) {
 
   // `getEdges` initializes the level's edges on entry, which is what makes all of this work on a
   // scene nobody is looking at (`client/canvas/geometry/edges/edges.mjs:138`, 14.365.0).
+  //
+  // `includeOuterBounds` defaults to **true** and the canvas border is added whatever `reach` says —
+  // `collisionTest` is not applied to bounds unless `collisionTestBounds` is set (`edges.mjs:147-151`,
+  // 14.365.0). Left at the default the edge set is never empty, so the "nothing to go around" exit
+  // below could not fire and every blast on every scene ran the lattice search. It caught nothing
+  // and lost nothing — a token outside the canvas is not on the scene — but the drawing branches on
+  // that exit, so it has to mean what it says.
   return [...level.edges.getEdges(reach, {
+    includeOuterBounds: false,
     collisionTest: edge => (edge.move === CONST.WALL_MOVEMENT_TYPES.NORMAL)
       // D76 — a charge laid against a wall sits *on* that line rather than behind it, so it is
       // stopped by it in neither direction. Core's own sweep drops a collinear edge the same way
@@ -530,13 +555,48 @@ function pathDistance({ centre, step, points, edges }, point) {
 }
 
 /**
- * Every token the blast caught, with how much of it reached them.
+ * How far the blast travels to reach one point, and what fraction of it arrives there.
  *
  * Membership and falloff are the same measurement — `Scene#grid.measurePath`, the grid-aware call
- * the range band is picked with, or the way round when a wall is in the way — so a token cannot be
- * inside the zone and in no ring. Everything
- * is read off the payload's own scene rather than the canvas, so the applying client does not have
- * to be looking at it, and a GM running with the canvas disabled gets the same answer.
+ * the range band is picked with, or the way round when a wall is in the way — so a target cannot be
+ * inside the zone and in no ring. Exported because the drawing has to consult the rule the
+ * resolution uses rather than reimplement it: two implementations drifting apart is the defect
+ * `T247` exists to close.
+ *
+ * @param {Scene} scene The payload's own scene
+ * @param {object|null} region From blastRegion, or null wherever walls do not apply
+ * @param {object} blast The card's blast payload
+ * @param {{x: number, y: number}} point
+ * @param {boolean} isShooter Whether this point is the shooter's own token
+ * @returns {{distance: number, multiplier: number}} multiplier 0 when the blast does not reach it
+ */
+export function blastCoverage(scene, region, blast, point, isShooter = false) {
+  const centre = { x: blast.x, y: blast.y };
+  let distance = scene.grid.measurePath([centre, point]).distance;
+  // D72/D73 — a wall does not merely stop a blast, it makes it go round: a target the straight
+  // line cannot reach is caught only if the way round is still inside the radius, and it takes
+  // the ring that longer way falls in.
+  if (region && wallBetween(region.edges, centre, point)) distance = pathDistance(region, point);
+  let multiplier = blastMultiplierFor(distance, blast);
+
+  if (multiplier <= 0 && blast.corridor && !isShooter) {
+    const along = scene.grid.measurePath([corridorPoint(blast.corridor, point), point]).distance;
+    // Ch. 07:843 — a target in the straight path between attacker and intended target is in the
+    // area of effect too, at the pattern's own width. Full damage: the book gives the corridor
+    // no falloff of its own, and the ring table belongs to the circle.
+    if (along <= blast.radius) {
+      distance = along;
+      multiplier = 1;
+    }
+  }
+
+  return { distance, multiplier };
+}
+
+/**
+ * Every token the blast caught, with how much of it reached them. Everything is read off the
+ * payload's own scene rather than the canvas, so the applying client does not have to be looking at
+ * it, and a GM running with the canvas disabled gets the same answer.
  *
  * @param {object} blast The card's blast payload
  * @returns {Array<{name: string, tokenUuid: string, actorUuid: string, distance: number, multiplier: number}>}
@@ -545,19 +605,10 @@ export function tokensInBlast(blast) {
   const scene = zoneScene(blast);
   if (!scene) return [];
 
-  const centre = { x: blast.x, y: blast.y };
   const region = blastRegion(blast);
   const caught = [];
 
   for (const token of scene.tokens) {
-    const point = token.getCenterPoint();
-    let distance = scene.grid.measurePath([centre, point]).distance;
-    // D72/D73 — a wall does not merely stop a blast, it makes it go round: a target the straight
-    // line cannot reach is caught only if the way round is still inside the radius, and it takes
-    // the ring that longer way falls in.
-    if (region && wallBetween(region.edges, centre, point)) distance = pathDistance(region, point);
-    let multiplier = blastMultiplierFor(distance, blast);
-
     // Ch. 07:843 is *"in the straight path **between** attacker and intended target"*, and the
     // attacker is an endpoint of that path rather than a point between its ends — so the shooter is
     // out of their own corridor, and out of it alone: a bystander standing on the muzzle is still
@@ -565,17 +616,8 @@ export function tokensInBlast(blast) {
     const isShooter = !!blast.corridor?.shooterTokenUuid
       && token.uuid === blast.corridor.shooterTokenUuid;
 
-    if (multiplier <= 0 && blast.corridor && !isShooter) {
-      const along = scene.grid.measurePath([corridorPoint(blast.corridor, point), point]).distance;
-      // Ch. 07:843 — a target in the straight path between attacker and intended target is in the
-      // area of effect too, at the pattern's own width. Full damage: the book gives the corridor
-      // no falloff of its own, and the ring table belongs to the circle.
-      if (along <= blast.radius) {
-        distance = along;
-        multiplier = 1;
-      }
-    }
-
+    const { distance, multiplier } = blastCoverage(scene, region, blast, token.getCenterPoint(),
+      isShooter);
     if (multiplier <= 0) continue;
 
     caught.push({
@@ -636,6 +678,253 @@ export function fireCorridor(shooter, target) {
     to: { x: to.x, y: to.y },
     shooterTokenUuid: shooter.document?.uuid ?? ""
   };
+}
+
+/**
+ * How finely the drawn contour follows the wall model: half a grid space. Measured at 99.8 %
+ * agreement with the membership rule against 97.1 % at a whole space, where a cell whose centre
+ * lands on a wall line is classified blocked and takes a metre-wide strip of the drawing with it
+ * (`DESIGN-zone-drawing.md` §4).
+ */
+const ZONE_CELL_SUBDIVISION = 2;
+
+/**
+ * How far the drawing takes the blast to a point, in scene units.
+ *
+ * D117 — the drawn shape stays a circle, so the straight line is measured Euclidean here where
+ * `blastCoverage` measures it on the scene's own grid; the divergence is the diagonal corner the
+ * grid metric adds, and the caught-token highlight is what carries it. The wall model is the same
+ * one in both.
+ *
+ * @param {object} region From blastRegion
+ * @param {{x: number, y: number}} centre
+ * @param {{x: number, y: number}} point
+ * @param {number} step Pixels per scene unit
+ * @returns {number}
+ */
+function drawnReach(region, centre, point, step) {
+  if (wallBetween(region.edges, centre, point)) return pathDistance(region, point);
+  return Math.hypot(point.x - centre.x, point.y - centre.y) / step;
+}
+
+/**
+ * The blast's own disc as walls leave it: the half-cells it reaches, unioned into contours.
+ *
+ * `ClipperLib` is a client global and the library core's own polygon intersection runs on
+ * (`client/canvas/extensions/polygon-extension.mjs:208`, 14.365.0). Executing into a `PolyTree`
+ * rather than `Paths` is what keeps the holes — a pillar inside the blast is a contour of its own.
+ *
+ * @param {object} region From blastRegion
+ * @param {{x: number, y: number}} centre
+ * @param {number} radius In scene units
+ * @param {number} step Pixels per scene unit
+ * @returns {Array<{type: string, points: number[], hole: boolean}>}
+ */
+function unionOfCells(region, centre, radius, step) {
+  const cell = step / ZONE_CELL_SUBDIVISION;
+  const reach = Math.ceil((radius * step) / cell);
+  const paths = [];
+
+  for (let i = -reach; i < reach; i++) {
+    for (let j = -reach; j < reach; j++) {
+      const x = centre.x + (j * cell);
+      const y = centre.y + (i * cell);
+      const middle = { x: x + (cell / 2), y: y + (cell / 2) };
+      if (drawnReach(region, centre, middle, step) > radius) continue;
+
+      paths.push([
+        { X: Math.round(x), Y: Math.round(y) },
+        { X: Math.round(x + cell), Y: Math.round(y) },
+        { X: Math.round(x + cell), Y: Math.round(y + cell) },
+        { X: Math.round(x), Y: Math.round(y + cell) }
+      ]);
+    }
+  }
+
+  const clipper = new ClipperLib.Clipper();
+  clipper.AddPaths(paths, ClipperLib.PolyType.ptSubject, true);
+  const tree = new ClipperLib.PolyTree();
+  clipper.Execute(ClipperLib.ClipType.ctUnion, tree,
+    ClipperLib.PolyFillType.pftNonZero, ClipperLib.PolyFillType.pftNonZero);
+
+  const shapes = [];
+  const walk = node => {
+    for (const child of node.Childs()) {
+      shapes.push({
+        type: "polygon",
+        points: child.Contour().flatMap(corner => [corner.X, corner.Y]),
+        hole: child.IsHole()
+      });
+      walk(child);
+    }
+  };
+  walk(tree);
+
+  return shapes;
+}
+
+/**
+ * The band a shotgun's line of fire lays, half the pattern's width to either side of it.
+ *
+ * @param {{from: {x: number, y: number}, to: {x: number, y: number}}} corridor
+ * @param {number} halfWidth In pixels
+ * @returns {object|null} null for a shooter standing on their own target, whose corridor is a point
+ */
+function corridorBand({ from, to }, halfWidth) {
+  const length = Math.hypot(to.x - from.x, to.y - from.y);
+  if (!length) return null;
+
+  const nx = ((from.y - to.y) / length) * halfWidth;
+  const ny = ((to.x - from.x) / length) * halfWidth;
+  return {
+    type: "polygon",
+    points: [
+      from.x + nx, from.y + ny, to.x + nx, to.y + ny,
+      to.x - nx, to.y - ny, from.x - nx, from.y - ny
+    ]
+  };
+}
+
+/**
+ * The shapes one splash is drawn as, on the payload's own scene.
+ *
+ * With nothing in reach to go around `blastRegion` returns null and the disc is exactly a circle,
+ * which is both cheaper and exact — the cell union is only what walls make necessary.
+ *
+ * @param {object} blast The card's blast payload
+ * @returns {object[]} region shape data; empty when there is no scene or no radius
+ */
+export function zoneShapes(blast) {
+  const scene = zoneScene(blast);
+  const radius = Math.max(0, Number(blast?.radius) || 0);
+  if (!scene || !radius) return [];
+
+  // Pixels per scene unit off the payload's own scene, never `canvas` (`T59`).
+  const step = scene.grid.size / scene.grid.distance;
+  const centre = { x: blast.x, y: blast.y };
+  const region = blastRegion(blast);
+
+  const shapes = region
+    ? unionOfCells(region, centre, radius, step)
+    : [{ type: "circle", x: centre.x, y: centre.y, radius: radius * step }];
+
+  // Ch. 07:843's corridor is part of what the pattern catches, so it is part of what it draws.
+  if (blast.corridor) {
+    const band = corridorBand(blast.corridor, radius * step);
+    if (band) shapes.push(band);
+  }
+
+  return shapes;
+}
+
+/**
+ * The footprint one caught token is highlighted by.
+ *
+ * @param {TokenDocument} token
+ * @returns {object} token shape data
+ */
+function tokenFootprint(token) {
+  return {
+    type: "token",
+    x: token.x, y: token.y,
+    width: token.width, height: token.height,
+    shape: token.shape
+  };
+}
+
+/**
+ * Draw the splash a card describes, with the tokens it caught highlighted (D74).
+ *
+ * Separate regions rather than one: the zone and the highlight carry a colour each (D121), and D120
+ * puts a caught token the players cannot see in a third at `GAMEMASTER` — a player-visible
+ * highlight over a hidden NPC's footprint would announce exactly where it is standing, which is the
+ * disclosure `T103`/D31 already refuses on the cards.
+ *
+ * @param {object} blast The card's blast payload
+ * @param {string} kind The card's own kind, which decides the colour and the name
+ * @param {string} messageId The card that laid it, so the toggle and the sweep find it again
+ * @returns {Promise<RegionDocument[]>} empty when there is no scene or nothing to draw
+ */
+export async function drawZone(blast, kind, messageId) {
+  const scene = zoneScene(blast);
+  if (!scene) return [];
+
+  const shapes = zoneShapes(blast);
+  if (!shapes.length) return [];
+
+  // A payload that names no level meets no walls on any of them, so it is drawn on all of them —
+  // an empty set is core's own "everywhere" (`common/data/fields.mjs`, SceneLevelsSetField).
+  const levels = blast.levelId ? [blast.levelId] : [];
+  const flags = { cyberpunk2020: { [ZONE_FLAG]: messageId } };
+  const drawing = [{
+    name: localize(kind === "spread" ? "ZoneRegionSpread" : "ZoneRegionBlast"),
+    color: ZONE_COLOURS[kind] ?? ZONE_COLOURS.blast,
+    shapes, levels, flags,
+    visibility: CONST.REGION_VISIBILITY.ALWAYS
+  }];
+
+  const caught = new Set(tokensInBlast(blast).map(entry => entry.tokenUuid));
+  const footprints = hidden => scene.tokens
+    .filter(token => caught.has(token.uuid) && (!!token.hidden === hidden))
+    .map(tokenFootprint);
+
+  const seen = footprints(false);
+  if (seen.length) {
+    drawing.push({
+      name: localize("ZoneRegionCaught"), color: ZONE_COLOURS.caught,
+      shapes: seen, levels, flags,
+      visibility: CONST.REGION_VISIBILITY.ALWAYS
+    });
+  }
+
+  const unseen = footprints(true);
+  if (unseen.length) {
+    drawing.push({
+      name: localize("ZoneRegionCaughtHidden"), color: ZONE_COLOURS.caught,
+      shapes: unseen, levels, flags,
+      visibility: CONST.REGION_VISIBILITY.GAMEMASTER
+    });
+  }
+
+  return scene.createEmbeddedDocuments("Region", drawing);
+}
+
+/**
+ * The regions one card drew.
+ *
+ * @param {ChatMessage} message
+ * @returns {RegionDocument[]}
+ */
+export function zoneRegions(message) {
+  const attack = message?.flags?.cyberpunk2020?.attack;
+  const scene = zoneScene(attack?.blast ?? attack?.zone);
+  if (!scene) return [];
+
+  return scene.regions.filter(region =>
+    region.getFlag("cyberpunk2020", ZONE_FLAG) === message.id);
+}
+
+/**
+ * D122 — the GM's per-zone control over whether the players see this effect at all.
+ *
+ * `hidden` rather than `visibility`: it takes the region off the players' canvas and leaves it on
+ * the GM's, drawn dashed (`client/canvas/placeables/region.mjs:427`, 14.365.0) — so the GM-only
+ * highlight of a hidden token stays GM-only however this is flipped.
+ *
+ * @param {ChatMessage} message
+ * @returns {Promise<boolean|null>} the state it is now in, or null when this card drew nothing
+ */
+export async function toggleZoneVisibility(message) {
+  const regions = zoneRegions(message);
+  if (!regions.length) {
+    ui.notifications.warn(localize("ZoneNotDrawn"));
+    return null;
+  }
+
+  const hidden = !regions.some(region => region.hidden);
+  await regions[0].parent.updateEmbeddedDocuments("Region",
+    regions.map(region => ({ _id: region.id, hidden })));
+  return hidden;
 }
 
 /**

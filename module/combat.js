@@ -3,7 +3,7 @@ import { localizeParam } from "./utils.js";
 import { createCyberpunkChatMessage } from "./compat.js";
 import { BaseDie } from "./dice.js";
 import { DODGE_SKILL_ID, isCombatAutomationEnabled } from "./lookups.js";
-import { SUPPRESSION_FLAG } from "./zones.js";
+import { SUPPRESSION_FLAG, ZONE_FLAG } from "./zones.js";
 
 /** Cumulative penalty per extra action taken in the same turn (optional rule). */
 const ACTION_PENALTY_STEP = -3;
@@ -437,9 +437,10 @@ export function dodgeRangedPenalty(targetActor) {
 }
 
 /**
- * Sweep the fire zones an encounter left behind. RAW's zone lasts one attack; this system's lasts
- * until the encounter ends or the GM deletes it, so the end of the encounter is where the sweep
- * belongs. Only Regions this system laid are touched — a GM's own are left alone.
+ * Sweep the zones an encounter left behind — the fire zones and the drawn craters both (D119).
+ * RAW's zone lasts one attack; this system's lasts until the encounter ends or the GM deletes it,
+ * so the end of the encounter is where the sweep belongs. Only Regions this system laid are
+ * touched — a GM's own are left alone.
  *
  * @param {Combat} combat
  * @returns {Promise<void>}
@@ -451,7 +452,8 @@ export async function clearSuppressionZones(combat) {
   if (!scene) return;
 
   const ids = scene.regions
-    .filter(region => region.getFlag("cyberpunk2020", SUPPRESSION_FLAG))
+    .filter(region => region.getFlag("cyberpunk2020", SUPPRESSION_FLAG)
+      || region.getFlag("cyberpunk2020", ZONE_FLAG))
     .map(region => region.id);
   if (ids.length) await scene.deleteEmbeddedDocuments("Region", ids);
 }

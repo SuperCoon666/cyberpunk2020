@@ -497,6 +497,8 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
         event.stopPropagation();
         event.stopImmediatePropagation?.();
 
+        if (refusedWhilePaused()) return;
+
         await this.actor.takeBackCharge(takeBack.dataset.chargeId);
         return;
       }

@@ -442,6 +442,13 @@
     "CYBERPUNK.ChargeFormulaBroken": "Формулу урона этого заряда невозможно бросить, поэтому он остаётся на месте.",
     "CYBERPUNK.ApplyZone": "Применить по зоне",
     "CYBERPUNK.ZoneApplied": "Зона применена",
+    "CYBERPUNK.ZoneRegionBlast": "Зона взрыва",
+    "CYBERPUNK.ZoneRegionSpread": "Дробовой сноп",
+    "CYBERPUNK.ZoneRegionCaught": "Задеты зоной",
+    "CYBERPUNK.ZoneRegionCaughtHidden": "Задеты зоной (скрытые)",
+    "CYBERPUNK.HideZone": "Скрыть зону от игроков",
+    "CYBERPUNK.ShowZone": "Показать зону игрокам",
+    "CYBERPUNK.ZoneNotDrawn": "Эта карточка не нарисовала зону на карте — скрывать нечего.",
     "CYBERPUNK.SpreadTitle": "Дробовой сноп",
     "CYBERPUNK.DotTick": "{name} получает {damage} от горящей раны; осталось ходов: {turns}.",
 

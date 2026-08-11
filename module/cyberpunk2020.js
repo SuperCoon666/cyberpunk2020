@@ -23,7 +23,7 @@ import { ATTACK_FLAG_VERSION, SAVE_PROMPT_DEADLINE_MS, applyAttackFromMessage, r
 import { CyberpunkCombat, announceTurn, applyDeclaredDodge, clearSuppressionZones, clearTurnFlags, DEFENSE_PROMPT_DEADLINE_MS } from "./combat.js";
 import { isCombatAutomationEnabled } from "./lookups.js";
 import { CyberpunkTokenRuler, vetoOverspentMovement } from "./movement.js";
-import { applyBlastFromMessage, createSuppressionZone, SuppressiveFireBehavior } from "./zones.js";
+import { applyBlastFromMessage, createSuppressionZone, drawZone, SuppressiveFireBehavior, toggleZoneVisibility, zoneRegions } from "./zones.js";
 import { localize, localizeParam } from "./utils.js";
 
 /**
@@ -141,7 +141,8 @@ Hooks.once('init', async function () {
       const titles = { death: "CYBERPUNK.SaveDeath", zone: "CYBERPUNK.SaveZone" };
 
       let dialog = null;
-      const deadline = new Promise(resolve => setTimeout(() => {
+      let deadlineTimer = null;
+      const deadline = new Promise(resolve => deadlineTimer = setTimeout(() => {
         dialog?.close();
         resolve(null);
       }, SAVE_PROMPT_DEADLINE_MS));
@@ -156,6 +157,7 @@ Hooks.once('init', async function () {
         }),
         deadline
       ]);
+      clearTimeout(deadlineTimer);
 
       const mod = Number(answer?.mod) || 0;
       return rollSaveOf(actor, kind, dc, mod, messageMode);
@@ -178,7 +180,8 @@ Hooks.once('init', async function () {
       if (!defender) throw new Error(`No actor for defense prompt: ${defenderActorUuid}`);
 
       let dialog = null;
-      const deadline = new Promise(resolve => setTimeout(() => {
+      let deadlineTimer = null;
+      const deadline = new Promise(resolve => deadlineTimer = setTimeout(() => {
         dialog?.close();
         resolve(null);
       }, DEFENSE_PROMPT_DEADLINE_MS));
@@ -240,6 +243,7 @@ Hooks.once('init', async function () {
         }),
         deadline
       ]);
+      clearTimeout(deadlineTimer);
 
       // `action` is absent for a skill with no maneuvers, and `resolveDefense` falls back to the
       // option's own total there — the same answer the timeout path gives.
@@ -447,6 +451,30 @@ Hooks.once('init', async function () {
       button.addEventListener("click", () => applyBlastFromMessage(message));
     });
 
+    // D122 — the GM's per-zone control over whether the players see this effect. Its label is read
+    // off the regions rather than remembered, because `renderChatMessageHTML` fires again on every
+    // re-render; on the first render of a card the drawing may not have landed yet, and the label's
+    // own default is the state a zone is drawn in.
+    Hooks.on("renderChatMessageHTML", (message, html) => {
+      const root = getHtmlElement(html);
+      const button = root?.querySelector?.('button[data-action="toggleZone"]');
+      if (!button || button.dataset.cpZoneBound === "1") return;
+      button.dataset.cpZoneBound = "1";
+
+      if (!game.user.isGM || !isCombatAutomationEnabled()) {
+        button.remove();
+        return;
+      }
+
+      const label = hidden => localize(hidden ? "ShowZone" : "HideZone");
+      button.textContent = label(zoneRegions(message).some(region => region.hidden));
+
+      button.addEventListener("click", async () => {
+        const hidden = await toggleZoneVisibility(message);
+        if (hidden !== null) button.textContent = label(hidden);
+      });
+    });
+
     // Wound icons follow system.damage wherever it comes from, which is what makes a hand click on
     // the wound tracker behave like an applied attack. One writer, as everywhere else here.
     Hooks.on("updateActor", (actor, changes) => {
@@ -481,9 +509,13 @@ Hooks.once('init', async function () {
       // A fire zone is a scene document, not damage: the apply mode decides who applies damage and
       // not whether the zone the shooter just placed exists, so this runs ahead of the setting.
       if (attack.kind === "suppression") {
-        await createSuppressionZone(attack.zone, attack.behaviour);
+        await createSuppressionZone(attack.zone, attack.behaviour, message.id);
         return;
       }
+
+      // Same argument for the splash the card describes, and the same place: drawing it is what
+      // lets the table see what will be hit before it is (D74), so it happens whoever applies.
+      if (attack.blast) await drawZone(attack.blast, attack.kind, message.id);
 
       if (game.settings.get("cyberpunk2020", "damageApplyMode") !== "auto") return;
 
