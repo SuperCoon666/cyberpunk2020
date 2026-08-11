@@ -257,11 +257,12 @@ export const ZONE_FLAG = "zone";
 /**
  * D121 — a colour per kind, so a crater, a pattern and a fire zone on one map read apart. Firebrick
  * is the system's own red (`css/cyberpunk2020.css:604`); the rest are picked to stay apart from it
- * and from each other where two zones overlap.
+ * and from each other where two zones overlap. `sweep` (`T252`) joins the same way.
  */
 const ZONE_COLOURS = {
   blast: "#b22222",
   spread: "#c25e00",
+  sweep: "#8e44ad",
   suppression: "#3f6fa8",
   caught: "#e8c547"
 };
@@ -479,10 +480,11 @@ function wallBetween(edges, from, to) {
  */
 export function blastRegion(blast) {
   const scene = zoneScene(blast);
-  // A payload with no level was not placed as an explosion: a shotgun pattern shares this geometry
-  // but meets walls where its corridor is laid (D69), and a round that goes through them (D75) is
-  // asking for the plain disc.
-  if (!scene || !blast.levelId || blast.throughWalls) return null;
+  // A corridor payload (a shotgun pattern, and now a flamethrower sweep, `T252`) carries `levelId`
+  // too since `T284`, but meets walls through `patternWallBetween`'s own binary gate — D115 rules
+  // it never wraps, so it must never reach this search. A round that goes through them (D75) is
+  // asking for the plain disc as well.
+  if (!scene || !blast.levelId || blast.throughWalls || blast.corridor) return null;
 
   const radius = Math.max(0, Number(blast.radius) || 0);
   if (!radius) return null;
@@ -555,6 +557,24 @@ function pathDistance({ centre, step, points, edges }, point) {
 }
 
 /**
+ * Whether a movement-blocking wall stands anywhere between the muzzle and a point, off the
+ * payload's own level — D115's gate for a shotgun pattern. It reuses D72's edge-collision channel
+ * (`blastEdges`'s open-door, secret-door and one-way exemptions all apply) without its wrap-around
+ * search: a bounding box around the two points is enough for a straight test, and a pattern does
+ * not go round corners the way a blast does.
+ *
+ * @param {Level} level
+ * @param {{x: number, y: number}} muzzle
+ * @param {{x: number, y: number}} point
+ * @returns {boolean}
+ */
+function patternWallBetween(level, muzzle, point) {
+  const centre = { x: (muzzle.x + point.x) / 2, y: (muzzle.y + point.y) / 2 };
+  const reach = Math.max(1, Math.hypot(point.x - muzzle.x, point.y - muzzle.y) / 2);
+  return wallBetween(blastEdges(level, centre, reach), muzzle, point);
+}
+
+/**
  * How far the blast travels to reach one point, and what fraction of it arrives there.
  *
  * Membership and falloff are the same measurement — `Scene#grid.measurePath`, the grid-aware call
@@ -568,10 +588,20 @@ function pathDistance({ centre, step, points, edges }, point) {
  * @param {object} blast The card's blast payload
  * @param {{x: number, y: number}} point
  * @param {boolean} isShooter Whether this point is the shooter's own token
+ * @param {boolean} isAimed Whether this point is the pattern's own designated target (`T284`) — D69
+ *   means the shot that was aimed never meets a wall, so this exempts it from the gate below
  * @returns {{distance: number, multiplier: number}} multiplier 0 when the blast does not reach it
  */
-export function blastCoverage(scene, region, blast, point, isShooter = false) {
+export function blastCoverage(scene, region, blast, point, isShooter = false, isAimed = false) {
   const centre = { x: blast.x, y: blast.y };
+
+  // D115 — a shotgun pattern's own wall gate: binary and never wrapped, unlike the blast's below.
+  // `T284` — a target the muzzle cannot reach in a straight line is out, disc and corridor alike.
+  if (blast.corridor && blast.levelId && !isAimed) {
+    const level = scene.levels.get(blast.levelId) ?? scene.initialLevel;
+    if (patternWallBetween(level, blast.corridor.from, point)) return { distance: Infinity, multiplier: 0 };
+  }
+
   let distance = scene.grid.measurePath([centre, point]).distance;
   // D72/D73 — a wall does not merely stop a blast, it makes it go round: a target the straight
   // line cannot reach is caught only if the way round is still inside the radius, and it takes
@@ -580,13 +610,18 @@ export function blastCoverage(scene, region, blast, point, isShooter = false) {
   let multiplier = blastMultiplierFor(distance, blast);
 
   if (multiplier <= 0 && blast.corridor && !isShooter) {
-    const along = scene.grid.measurePath([corridorPoint(blast.corridor, point), point]).distance;
-    // Ch. 07:843 — a target in the straight path between attacker and intended target is in the
-    // area of effect too, at the pattern's own width. Full damage: the book gives the corridor
-    // no falloff of its own, and the ring table belongs to the circle.
-    if (along <= blast.radius) {
-      distance = along;
-      multiplier = 1;
+    // `T287` — a projection behind the muzzle is rejected rather than clamped to it, so a
+    // bystander standing behind the shooter is outside the corridor rather than on top of it.
+    const nearest = corridorPoint(blast.corridor, point);
+    if (nearest) {
+      const along = scene.grid.measurePath([nearest, point]).distance;
+      // Ch. 07:843 — a target in the straight path between attacker and intended target is in the
+      // area of effect too, at the pattern's own width. Full damage: the book gives the corridor
+      // no falloff of its own, and the ring table belongs to the circle.
+      if (along <= blast.radius) {
+        distance = along;
+        multiplier = 1;
+      }
     }
   }
 
@@ -615,9 +650,12 @@ export function tokensInBlast(blast) {
     // caught, and the disc still reaches whoever is in it (`T110`).
     const isShooter = !!blast.corridor?.shooterTokenUuid
       && token.uuid === blast.corridor.shooterTokenUuid;
+    // D69 — ordinary fire meets no wall at all, and the pattern's own designated target was
+    // resolved exactly that way; `T284`'s gate is the splash rule and stops here.
+    const isAimed = !!blast.aimedTokenUuid && token.uuid === blast.aimedTokenUuid;
 
     const { distance, multiplier } = blastCoverage(scene, region, blast, token.getCenterPoint(),
-      isShooter);
+      isShooter, isAimed);
     if (multiplier <= 0) continue;
 
     caught.push({
@@ -633,16 +671,26 @@ export function tokensInBlast(blast) {
 }
 
 /**
- * The point on the fire corridor nearest a target.
+ * The point on the fire corridor nearest a target — or null when the target is behind the muzzle.
+ *
+ * `closestPointToSegment` clamps to both ends, and clamping to `from` is wrong there: ch. 07:843
+ * puts the corridor *between* attacker and target, and a point behind the muzzle is outside that
+ * band rather than standing on it (`T287`). The target end keeps the clamp — a point beyond `to`
+ * is already reached by the pattern's own disc, so there is nothing to correct at that end.
  *
  * @param {{from: {x: number, y: number}, to: {x: number, y: number}}} corridor
  * @param {{x: number, y: number}} point
- * @returns {{x: number, y: number}}
+ * @returns {{x: number, y: number}|null} null when the point projects behind the muzzle
  */
 function corridorPoint({ from, to }, point) {
   // closestPointToSegment throws on a zero-length segment, which is a shooter standing on top of
   // their own target — reachable, and then the corridor is just the one point.
   if (from.x === to.x && from.y === to.y) return from;
+
+  const dx = to.x - from.x, dy = to.y - from.y;
+  const t = (((point.x - from.x) * dx) + ((point.y - from.y) * dy)) / ((dx * dx) + (dy * dy));
+  if (t < 0) return null;
+
   return foundry.utils.closestPointToSegment(point, from, to);
 }
 
@@ -856,8 +904,9 @@ export async function drawZone(blast, kind, messageId) {
   // an empty set is core's own "everywhere" (`common/data/fields.mjs`, SceneLevelsSetField).
   const levels = blast.levelId ? [blast.levelId] : [];
   const flags = { cyberpunk2020: { [ZONE_FLAG]: messageId } };
+  const ZONE_NAMES = { spread: "ZoneRegionSpread", sweep: "ZoneRegionSweep" };
   const drawing = [{
-    name: localize(kind === "spread" ? "ZoneRegionSpread" : "ZoneRegionBlast"),
+    name: localize(ZONE_NAMES[kind] ?? "ZoneRegionBlast"),
     color: ZONE_COLOURS[kind] ?? ZONE_COLOURS.blast,
     shapes, levels, flags,
     visibility: CONST.REGION_VISIBILITY.ALWAYS

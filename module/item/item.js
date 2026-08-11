@@ -427,6 +427,13 @@ export class CyberpunkItem extends Item {
       return this.__blastAttack(mods, targets);
     }
 
+    // Ch. 07:910 — a flamethrower is swept between two chosen points rather than fired at one, so
+    // it never reaches a fire mode either; D91 schedules it in v1.2.0. With automation off it falls
+    // through to the plain shot v1.1.x rolled, the same fallback blast and suppression already use.
+    if (isCombatAutomationEnabled() && system.attackType === rangedAttackTypes.flamethrow) {
+      return this.__flamethrowerSweep(mods);
+    }
+
     // ---- Firemode-specific rolling. I may roll together some common aspects later ----
     // Full auto
     if(mods.fireMode === fireModes.fullAuto) {
@@ -574,12 +581,20 @@ export class CyberpunkItem extends Item {
         toHit: rangeDCs[attackMods.range],
         attackRoll,
         onTarget,
+        // "The charge lands where it was aimed" is wrong for a stream — resolved per kind rather
+        // than hard-coding the grenade's own wording; `BlastScattered` needs no such split, it
+        // never names a charge.
+        onTargetCaption: localize(kind === "sweep" ? "SweepOnTarget" : "BlastOnTarget"),
         scatter,
         placed: !!blast,
-        // A shotgun pattern shares this template with a grenade but is not one: it has a width
-        // rather than a radius, and the corridor `tokensInBlast` collects went unmentioned
-        // entirely, so *Apply over zone* damaged victims the card never described (`T162`).
-        isSpread: kind === "spread",
+        // A shotgun pattern (and now a flamethrower sweep) shares this template with a grenade but
+        // is not one: it has a width rather than a radius, and the corridor `tokensInBlast` collects
+        // went unmentioned entirely, so *Apply over zone* damaged victims the card never described
+        // (`T162`). `T252` widened the shape to a second kind, so the caption and the width's own
+        // label are resolved here rather than hard-coded to the shotgun's wording.
+        isCorridor: kind === "spread" || kind === "sweep",
+        corridorWidthLabel: localize(kind === "sweep" ? "SweepWidth" : "SpreadWidth"),
+        corridorCaption: localize(kind === "sweep" ? "SweepCorridor" : "SpreadCorridor"),
         spreadWidth: profile.radius * 2,
         radius: profile.radius,
         fullDamageWithin: profile.fullDamageWithin,
@@ -806,6 +821,86 @@ export class CyberpunkItem extends Item {
       onTarget,
       scatter,
       target: targetTokens[0],
+      fumble: rangedFumble?.fumble
+    });
+  }
+
+  /**
+   * Sweep a flamethrower between two chosen points (`T252`, D91). Ch. 07:910: the shooter places a
+   * starting point and an ending point, an attack roll says whether the stream landed there, and a
+   * miss refers to the Grenade Table — geometrically the same corridor a shotgun pattern lays, so
+   * `zones.js` needs nothing new: the band is D115's own gate, binary and never wrapped by a wall,
+   * and whatever the stream catches ignites on its own the way any dot-enabled round already does
+   * (`applyHitsToActor`'s `ignitionZone`) — the turn-by-turn burn is the loaded round's, authored on
+   * the ammo sheet, not this method's to compute.
+   *
+   * @param {object} attackMods
+   * @returns {Promise<Multiroll|null>} null when either placement was dismissed
+   */
+  async __flamethrowerSweep(attackMods) {
+    const system = this._getWeaponSystem();
+    const ammo = snapshotAmmo(this);
+    const width = Math.max(2, Math.floor(Number(attackMods.zoneWidth ?? 2)));
+    const profile = { radius: width / 2, fullDamageWithin: width / 2, multipliers: [] };
+
+    let start = null, end = null;
+    if (canvas.ready) {
+      start = await pickBlastCentre(profile.radius, localizeParam("SweepStartPoint", { weapon: this.name }));
+      // Dismissing either placement takes the whole action back: nothing has been rolled or spent.
+      if (!start) return null;
+      end = await pickBlastCentre(profile.radius, localizeParam("SweepEndPoint", { weapon: this.name }));
+      if (!end) return null;
+    }
+
+    const attackRoll = await this.attackRoll(attackMods);
+    const rangedFumble = await this._maybeApplyRangedFumble(attackRoll);
+    const onTarget = attackRoll.total >= rangeDCs[attackMods.range] && !rangedFumble?.forceMiss;
+
+    let scatter = null;
+    if (!onTarget && start && end) {
+      // Ch. 07:839's Grenade Table again, exactly as a thrown miss uses it — a rigid shift of both
+      // ends by the same vector, so the missed line keeps its own length and bearing off-target.
+      const direction = await new Roll("1d10").evaluate();
+      const distance = await new Roll("1d10").evaluate();
+      scatter = { direction: direction.total, distance: distance.total };
+      start = scatterCentre(start, scatter.direction, scatter.distance);
+      end = scatterCentre(end, scatter.direction, scatter.distance);
+    }
+
+    const rollData = this.actor?.getRollData?.() ?? {};
+    const damageRoll = await new Roll(this.__ammoDamageFormula(system.damage, ammo), rollData).evaluate();
+    const damage = CyberpunkItem._floorDamageTotal(damageRoll.total);
+
+    // The charge is spent whether or not the card renders, as in every other fire mode.
+    await this.__setWeaponField("shotsLeft",
+      rangedFumble?.outcome?.discharge ? 0 : Math.max(0, Number(system.shotsLeft) - 1));
+
+    return this.__zoneCard({
+      title: localize("SweepTitle"),
+      kind: "sweep",
+      attackMods,
+      attackRoll,
+      ammo,
+      profile,
+      blast: (start && end)
+        ? {
+          x: end.x, y: end.y, ...profile, damage,
+          sceneId: canvas.scene.id,
+          // Which level's walls the sweep meets, taken where it was placed (D69: a splash mechanic
+          // reads walls the same way a blast does; T284's binary gate is what actually applies).
+          levelId: canvas.level.id,
+          corridor: {
+            from: { x: start.x, y: start.y },
+            to: { x: end.x, y: end.y },
+            shooterTokenUuid: this.actor.getActiveTokens()[0]?.document?.uuid ?? ""
+          }
+        }
+        : null,
+      damage,
+      damageRoll,
+      onTarget,
+      scatter,
+      target: null,
       fumble: rangedFumble?.fumble
     });
   }
@@ -1299,6 +1394,9 @@ export class CyberpunkItem extends Item {
             ...profile,
             damage: dmg,
             sceneId: canvas.scene.id,
+            // Which level's walls the pattern meets, taken where it was fired from — D115's gate
+            // reads it the same way a blast's does (`T284`).
+            levelId: canvas.level.id,
             corridor: fireCorridor(this.actor.getActiveTokens()[0], patternCentre),
             aimedTokenUuid: targetTokens[0]?.tokenUuid ?? "",
             aimedZone: location

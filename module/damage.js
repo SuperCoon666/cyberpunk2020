@@ -20,8 +20,10 @@ import { Multiroll } from "./dice.js";
  *    the single `dotDamageFormula` (D85).
  * 9: `stunSavePenalty` replaces `stunSaveMod` and carries the opposite sign (D108) — a card written
  *    before this would lower the save number it was authored to raise.
+ * 10: the spread's blast payload carries `levelId` too, so a shotgun pattern gates the same wall
+ *     channel a blast does (D115, `T284`/`T287`).
  */
-export const ATTACK_FLAG_VERSION = 9;
+export const ATTACK_FLAG_VERSION = 10;
 
 /** The flag a damage-over-time effect burns down from, one tick per turn. */
 const DOT_FLAG = "dot";

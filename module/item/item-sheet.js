@@ -1,6 +1,6 @@
 import { weaponTypes, meleeAttackTypes, rangedAttackTypes, attackSkills, concealability, availability, reliability, getStatNames, programTypes, effectiveRange, AMMO_ROUNDS_PER_BOX } from "../lookups.js";
 import { formulaHasDice } from "../dice.js";
-import { deleteFieldUpdate, localize, cwHasType, getSkillIndex } from "../utils.js";
+import { deleteFieldUpdate, localize, localizeParam, cwHasType, getSkillIndex } from "../utils.js";
 import { createCyberpunkChatMessage, getHtmlElement, getPublicMessageMode, getRichEditorHTML, saveRichEditorHTML, rollToCyberpunkChatMessage } from "../compat.js";
 
 const { HandlebarsApplicationMixin } = foundry.applications.api;
@@ -1902,13 +1902,25 @@ async _prepareCyberware(sheet) {
     const index = Number(input.dataset.index);
     if (!Number.isFinite(index)) return;
 
+    const value = String(input.value ?? "").trim();
+
+    // D128 — refused at authoring, the fire-zone-width style: a native hint, and the write never
+    // happens. An empty tick is still valid (D87: nothing to roll, nothing dealt); `Roll.validate`
+    // rather than `isRollableFormula` because a rejected keystroke needs no toast on top of the hint.
+    input.setCustomValidity("");
+    if (value && !Roll.validate(value)) {
+      input.setCustomValidity(localizeParam("FormulaInvalid", { formula: value }));
+      input.reportValidity();
+      return;
+    }
+
     const formulas = Array.isArray(this.item.system?.dotDamageFormulas)
       ? this.item.system.dotDamageFormulas.slice()
       : [];
     // Padded rather than rebuilt to the turn count: a fire authored longer than can be typed keeps
     // its tail, and `startDot` reads the list against the count anyway.
     while (formulas.length <= index) formulas.push("");
-    formulas[index] = String(input.value ?? "").trim();
+    formulas[index] = value;
 
     // No re-render: the value lives in the input being edited, so rebuilding the form
     // would only drop focus out of it.

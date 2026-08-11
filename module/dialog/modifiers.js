@@ -1,5 +1,5 @@
 import { deepSet, localize, localizeParam, refusedWhilePaused } from "../utils.js"
-import { fireModes, getMartialActionBonus } from "../lookups.js"
+import { fireModes, rangedAttackTypes, getMartialActionBonus } from "../lookups.js"
 import { createCyberpunkChatMessage, getGMUserIds, getHtmlElement } from "../compat.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
@@ -341,14 +341,22 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
       // collect strings used exclusively for suppression
       const supRows = rowsFor([
-        '.field.suppressive-field',
-        '.field[data-path="zoneWidth"]',
+        '.field.suppressive-field:not(.suppressive-zone-width)',
         '.field[data-path="roundsFired"]',
         '.field[data-path="targetsCount"]',
-        'input[name="fields.zoneWidth"], input[name="zoneWidth"]',
         'input[name="fields.roundsFired"], input[name="roundsFired"]',
         'input[name="fields.targetsCount"], input[name="targetsCount"]'
       ]);
+
+      // The width field is shared with the flamethrower sweep (`T252`, D91) — it has no fire modes
+      // of its own to gate the row on, so this shows whenever the weapon carries the width instead.
+      const widthRows = rowsFor([
+        '.field.suppressive-zone-width',
+        '.field[data-path="zoneWidth"]',
+        'input[name="fields.zoneWidth"], input[name="zoneWidth"]'
+      ]);
+      const weaponSys = this.options.weapon?._getWeaponSystem?.() ?? this.options.weapon?.system ?? {};
+      const isFlamethrow = weaponSys.attackType === rangedAttackTypes.flamethrow;
 
       const fullAutoRows = rowsFor([
         '.field.full-auto-rounds',
@@ -510,6 +518,7 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
         const isFullAuto = fireMode === fireModes.fullAuto;
 
         for (const row of supRows) row.style.display = isSup ? "" : "none";
+        for (const row of widthRows) row.style.display = (isSup || isFlamethrow) ? "" : "none";
         for (const row of fullAutoRows) row.style.display = isFullAuto ? "" : "none";
 
         const fullAutoInput = getFullAutoRoundsInput();

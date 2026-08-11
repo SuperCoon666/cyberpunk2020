@@ -51,7 +51,7 @@
         </div>
     </div>
 
-    <p><em>{{#if onTarget}}{{CPLocal "BlastOnTarget"}}{{else}}{{CPLocalParam "BlastScattered" scatter}}{{/if}}</em></p>
+    <p><em>{{#if onTarget}}{{onTargetCaption}}{{else}}{{CPLocalParam "BlastScattered" scatter}}{{/if}}</em></p>
     {{/if}}
 
     <h3>{{CPLocal "Damage"}}</h3>
@@ -60,10 +60,11 @@
             <span>{{CPLocal "Damage"}}: </span>
             <span class="flex-pad">{{{damageHtml}}}</span>
         </div>
-        {{#if isSpread}}
-        {{!-- A shotgun pattern is a width, not a radius, and it takes the line of fire with it. --}}
+        {{#if isCorridor}}
+        {{!-- A shotgun pattern (or a flamethrower sweep) is a width, not a radius, and it takes
+              the line of fire with it. --}}
         <div class="field">
-            <span>{{CPLocal "SpreadWidth"}}: </span>
+            <span>{{corridorWidthLabel}}: </span>
             <span class="flex-pad">{{spreadWidth}} {{CPLocal "UnitMetres"}}</span>
         </div>
         {{else}}
@@ -82,8 +83,8 @@
         {{/if}}
     </div>
 
-    {{#if isSpread}}
-    <p><em>{{CPLocal "SpreadCorridor"}}</em></p>
+    {{#if isCorridor}}
+    <p><em>{{corridorCaption}}</em></p>
     {{/if}}
 
     {{#if rings}}
