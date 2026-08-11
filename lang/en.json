@@ -842,6 +842,7 @@
     "CYBERPUNK.AmmoOverallBodyHint": "Explosives and molotovs damage the overall body rather than a hit location: the Torso's armor meets the whole blast, and there is no location roll, no doubled head hit, no severance and no cyberlimb absorption. Grenades are location-silent in the rules, so leave this off for them.",
     "CYBERPUNK.OverallBody": "Overall body",
     "CYBERPUNK.AmmoBlastFullDamageWithin": "Full damage within (m)",
+    "CYBERPUNK.AmmoBlastThroughWalls": "Goes through walls",
     "CYBERPUNK.AmmoBlastZones": "Zones",
     "CYBERPUNK.AmmoBlastMultiplier": "Zone multiplier",
     "CYBERPUNK.AmmoBlastShrapnel": "Shrapnel",

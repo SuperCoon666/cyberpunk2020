@@ -322,6 +322,9 @@ export class CyberpunkAmmoData extends CyberpunkBaseItemData {
       // location-silent, so the located pipeline stays defensible there (`T96`, D52).
       overallBody: booleanField(false),
       blastFullDamageWithin: numberField(1),
+      // D75 — one switch per round rather than one per effect: a later effect that needs its own
+      // answer to walls arrives with its own block and its own field.
+      blastThroughWalls: booleanField(false),
       blastZones: numberField(4),
       blastShrapnel: booleanField(false),
       blastMultipliers: arrayField(null, [0.5, 0.25, 0.125, 0.0625]),
@@ -349,6 +352,7 @@ export class CyberpunkAmmoData extends CyberpunkBaseItemData {
     normalizeBooleanIfPresent(source, "dotEnabled", false);
     normalizeBooleanIfPresent(source, "overallBody", false);
     normalizeBooleanIfPresent(source, "blastShrapnel", false);
+    normalizeBooleanIfPresent(source, "blastThroughWalls", false);
     normalizeBooleanIfPresent(source, "penHalvesSoft", true);
     normalizeBooleanIfPresent(source, "penHalvesHard", true);
     return super.migrateData(source);

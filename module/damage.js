@@ -14,8 +14,10 @@ import { Multiroll } from "./dice.js";
  * 5: the payload carries `melee`/`mono` (shipped at `1f66757` without a bump, corrected here), and
  *    the ammunition snapshot carries `stunIgnoresArmor` (D62).
  * 6: the ammunition snapshot carries `overallBody`, which decides where a blast resolves (`T96`).
+ * 7: the blast payload carries `levelId` and `throughWalls`, which decide whether walls stop it
+ *    and which level's walls are asked (D72/D75).
  */
-export const ATTACK_FLAG_VERSION = 6;
+export const ATTACK_FLAG_VERSION = 7;
 
 /** The flag a damage-over-time effect burns down from, one tick per turn. */
 const DOT_FLAG = "dot";
@@ -125,6 +127,7 @@ export function snapshotAmmo(item) {
     overallBody: !!a.overallBody,
     blastFullDamageWithin: numberOr(a.blastFullDamageWithin, 0),
     blastMultipliers: Array.isArray(a.blastMultipliers) ? [...a.blastMultipliers] : [],
+    blastThroughWalls: !!a.blastThroughWalls,
     spreadMode: String(a.spreadMode ?? "single"),
     spreadWidthShort: numberOr(a.spreadWidthShort, 0),
     spreadWidthMedium: numberOr(a.spreadWidthMedium, 0),

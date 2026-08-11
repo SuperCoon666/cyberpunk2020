@@ -385,11 +385,153 @@ export function zoneScene(blast) {
   return game.scenes.get(String(blast?.sceneId ?? "")) ?? null;
 }
 
+/** The eight steps the region search may take from a lattice point. */
+const BLAST_STEPS = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]];
+
+/**
+ * The movement-blocking walls a blast this size can meet, off the payload's own level.
+ *
+ * D72 — movement only, the channel the shotgun corridor already truncates on: what stops an
+ * explosion is a physical obstruction, and a window is exactly the wall that blocks one and not a
+ * look. D76's four cases then cost nothing. An open door's edge has every channel zeroed
+ * (`client/documents/wall.mjs:151-154`, 14.365.0), so open passes while closed and locked block; a
+ * secret door is a wall until it is opened, so it blocks exactly like the wall it hides in; and a
+ * plain segment test reads no `dir`, so a one-way wall blocks from both sides.
+ *
+ * @param {Level} level The level the blast was placed on
+ * @param {{x: number, y: number}} centre
+ * @param {number} radiusPixels
+ * @returns {Edge[]}
+ */
+function blastEdges(level, centre, radiusPixels) {
+  const reach = new PIXI.Rectangle(centre.x - radiusPixels, centre.y - radiusPixels,
+    radiusPixels * 2, radiusPixels * 2);
+
+  // `getEdges` initializes the level's edges on entry, which is what makes all of this work on a
+  // scene nobody is looking at (`client/canvas/geometry/edges/edges.mjs:138`, 14.365.0).
+  return [...level.edges.getEdges(reach, {
+    collisionTest: edge => (edge.move === CONST.WALL_MOVEMENT_TYPES.NORMAL)
+      // D76 — a charge laid against a wall sits *on* that line rather than behind it, so it is
+      // stopped by it in neither direction. Core's own sweep drops a collinear edge the same way
+      // (`clockwise-sweep.mjs:269-270`).
+      && (foundry.utils.orient2dFast(edge.a, edge.b, centre) !== 0)
+  })];
+}
+
+/**
+ * Whether a wall stands between two points.
+ *
+ * @param {Edge[]} edges
+ * @param {{x: number, y: number}} from
+ * @param {{x: number, y: number}} to
+ * @returns {boolean}
+ */
+function wallBetween(edges, from, to) {
+  return edges.some(edge => foundry.utils.lineSegmentIntersects(from, to, edge.a, edge.b));
+}
+
+/**
+ * The ground a blast can actually reach, as the lattice of points its pressure travels over.
+ *
+ * D73 — a blast wraps: a target around a corner is caught when the shortest way round is inside the
+ * radius, not when it stands in a line-of-sight shadow. Core's own pathfinding is bound to the
+ * canvas (`Token#findMovementPath`) and the applying GM may be looking at another scene, so this is
+ * a search of its own over a lattice one **scene unit** wide — a metre, the unit `T48` records —
+ * tested against the level's movement-blocking edges. A grid square is not the step: the scene sets
+ * how many units one is worth, and the ruling was measured in metres with diagonals at √2. The
+ * distances are the way round, in scene units, which is what makes the falloff rings answer the
+ * wall too.
+ *
+ * Returned rather than consumed, because the same region is what a splash has to be *drawn* as
+ * (D74, `T247`).
+ *
+ * @param {object} blast The card's blast payload
+ * @returns {{centre: object, step: number, points: Map<string, object>, edges: Edge[]}|null}
+ *   null wherever walls do not apply, each case leaving the straight-line rule exactly as it was
+ */
+export function blastRegion(blast) {
+  const scene = zoneScene(blast);
+  // A payload with no level was not placed as an explosion: a shotgun pattern shares this geometry
+  // but meets walls where its corridor is laid (D69), and a round that goes through them (D75) is
+  // asking for the plain disc.
+  if (!scene || !blast.levelId || blast.throughWalls) return null;
+
+  const radius = Math.max(0, Number(blast.radius) || 0);
+  if (!radius) return null;
+
+  const level = scene.levels.get(blast.levelId) ?? scene.initialLevel;
+  const centre = { x: blast.x, y: blast.y };
+  // Pixels per scene unit, off the payload's own scene: `canvas.dimensions` is the applying GM's
+  // scene, which is the one thing this path may never read (`T59`).
+  const step = scene.grid.size / scene.grid.distance;
+  const edges = blastEdges(level, centre, radius * step);
+  // Nothing in reach to go around, so the straight line is already the shortest way to everything.
+  if (!edges.length) return null;
+
+  const origin = { i: 0, j: 0, x: centre.x, y: centre.y, distance: 0 };
+  const points = new Map([["0,0", origin]]);
+
+  // Nearest-first rather than a flood fill: a diagonal step costs more than a straight one, so the
+  // first way to a point is not always the shortest one.
+  const queue = [origin];
+  while (queue.length) {
+    let nearest = 0;
+    for (let k = 1; k < queue.length; k++) {
+      if (queue[k].distance < queue[nearest].distance) nearest = k;
+    }
+    const from = queue.splice(nearest, 1)[0];
+
+    for (const [di, dj] of BLAST_STEPS) {
+      const distance = from.distance + Math.hypot(di, dj);
+      if (distance > radius) continue;
+
+      const i = from.i + di;
+      const j = from.j + dj;
+      if (points.get(`${i},${j}`)?.distance <= distance) continue;
+
+      const to = { i, j, x: centre.x + (j * step), y: centre.y + (i * step), distance };
+      if (wallBetween(edges, from, to)) continue;
+
+      points.set(`${i},${j}`, to);
+      queue.push(to);
+    }
+  }
+
+  return { centre, step, points, edges };
+}
+
+/**
+ * How far the blast has to travel to reach a point, going around whatever stands in the way.
+ *
+ * @param {object} region From blastRegion
+ * @param {{x: number, y: number}} point
+ * @returns {number} Infinity when nothing in the region reaches it — the point is behind the wall
+ */
+function pathDistance({ centre, step, points, edges }, point) {
+  const j = Math.floor((point.x - centre.x) / step);
+  const i = Math.floor((point.y - centre.y) / step);
+
+  let shortest = Infinity;
+  // A target stands where it stands rather than on the lattice, so the last leg runs off it — and
+  // the four points it stands between are the ones that can carry the blast the rest of the way.
+  for (const [di, dj] of [[0, 0], [0, 1], [1, 0], [1, 1]]) {
+    const from = points.get(`${i + di},${j + dj}`);
+    if (!from) continue;
+
+    const distance = from.distance + (Math.hypot(point.x - from.x, point.y - from.y) / step);
+    if (distance >= shortest || wallBetween(edges, from, point)) continue;
+    shortest = distance;
+  }
+
+  return shortest;
+}
+
 /**
  * Every token the blast caught, with how much of it reached them.
  *
  * Membership and falloff are the same measurement — `Scene#grid.measurePath`, the grid-aware call
- * the range band is picked with — so a token cannot be inside the zone and in no ring. Everything
+ * the range band is picked with, or the way round when a wall is in the way — so a token cannot be
+ * inside the zone and in no ring. Everything
  * is read off the payload's own scene rather than the canvas, so the applying client does not have
  * to be looking at it, and a GM running with the canvas disabled gets the same answer.
  *
@@ -401,11 +543,16 @@ export function tokensInBlast(blast) {
   if (!scene) return [];
 
   const centre = { x: blast.x, y: blast.y };
+  const region = blastRegion(blast);
   const caught = [];
 
   for (const token of scene.tokens) {
     const point = token.getCenterPoint();
     let distance = scene.grid.measurePath([centre, point]).distance;
+    // D72/D73 — a wall does not merely stop a blast, it makes it go round: a target the straight
+    // line cannot reach is caught only if the way round is still inside the radius, and it takes
+    // the ring that longer way falls in.
+    if (region && wallBetween(region.edges, centre, point)) distance = pathDistance(region, point);
     let multiplier = blastMultiplierFor(distance, blast);
 
     // Ch. 07:843 is *"in the straight path **between** attacker and intended target"*, and the

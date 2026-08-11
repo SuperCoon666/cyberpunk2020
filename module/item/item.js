@@ -634,6 +634,7 @@ export class CyberpunkItem extends Item {
       img: this.img,
       itemId: this.id,
       sceneId: centre ? canvas.scene.id : "",
+      levelId: centre ? canvas.level.id : "",
       x: centre?.x ?? 0,
       y: centre?.y ?? 0,
       ...profile,
@@ -684,7 +685,14 @@ export class CyberpunkItem extends Item {
     };
     // With automation off the card is the v1.1.x one: the damage and the geometry, applied by hand.
     const blast = (charge.sceneId && isCombatAutomationEnabled())
-      ? { x: charge.x, y: charge.y, ...profile, damage, sceneId: charge.sceneId }
+      ? {
+        x: charge.x, y: charge.y, ...profile, damage,
+        sceneId: charge.sceneId,
+        // A charge laid before the walls landed says nothing about its level, and a blast that
+        // cannot name one meets no walls — the disc it was laid as is what it stays.
+        levelId: charge.levelId ?? "",
+        throughWalls: !!charge.ammo?.blastThroughWalls
+      }
       : null;
 
     return createCyberpunkRollCard({
@@ -780,7 +788,16 @@ export class CyberpunkItem extends Item {
       attackRoll,
       ammo,
       profile,
-      blast: centre ? { ...centre, ...profile, damage, sceneId: canvas.scene.id } : null,
+      blast: centre
+        ? {
+          ...centre, ...profile, damage,
+          sceneId: canvas.scene.id,
+          // Which level's walls the blast meets, taken where it was placed: edges are stored per
+          // level, and the GM applying the card may be looking at another scene entirely.
+          levelId: canvas.level.id,
+          throughWalls: !!ammo?.blastThroughWalls
+        }
+        : null,
       damage,
       damageRoll,
       onTarget,

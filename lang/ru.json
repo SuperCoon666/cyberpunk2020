@@ -841,6 +841,7 @@
     "CYBERPUNK.AmmoOverallBodyHint": "Взрывчатка и коктейли Молотова наносят урон телу целиком, а не по зоне попадания: весь взрыв встречает броня торса, зона попадания не бросается, удвоения урона по голове, отрыва конечностей и поглощения киберконечностью нет. Для гранат правила зону не оговаривают — им этот флажок не ставится.",
     "CYBERPUNK.OverallBody": "Тело целиком",
     "CYBERPUNK.AmmoBlastFullDamageWithin": "Полный урон (м)",
+    "CYBERPUNK.AmmoBlastThroughWalls": "Проходит сквозь стены",
     "CYBERPUNK.AmmoBlastZones": "Кол-во зон",
     "CYBERPUNK.AmmoBlastMultiplier": "Множитель зоны",
     "CYBERPUNK.AmmoBlastShrapnel": "Осколки",
