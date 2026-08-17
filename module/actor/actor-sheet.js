@@ -850,10 +850,23 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     // `addToCombatAndRollInitiative` now creates its combatant **with** a `tokenId` (`T306`/`T317`) —
     // before that, this read answered null inside a started encounter and the two surfaces leaked
     // two *different* wrong names.
-    const attackerToken = () => this.actor.token
-      ?? game.combats.find(c => c.started && c.combatants.some(cb => cb.actorId === this.actor.id))
-        ?.combatants.find(cb => cb.actorId === this.actor.id)?.token
-      ?? null;
+    //
+    // **D161 — which of them, once one sheet can hold several.** D159 lets a mob of three tokens off
+    // one NPC sheet be three combatants, and `find` then answered whichever the collection held
+    // first — collection order standing in for the mook the GM is actually swinging (`T330`). The
+    // click carries the user's selection, so a **controlled** token among this actor's combatants
+    // answers first; today's first-by-collection stays the fallback. Compared by document identity
+    // rather than by id: `canvas.tokens` is only ever the viewed scene, and `Combatant#token` reads
+    // the same scene collection (`client/documents/combatant.mjs:104-107`, 14.365.0), so the same
+    // token is the same object and no scene test is needed.
+    const attackerToken = () => {
+      if (this.actor.token) return this.actor.token;
+      const mine = game.combats
+        .find(c => c.started && c.combatants.some(cb => cb.actorId === this.actor.id))
+        ?.combatants.filter(cb => cb.actorId === this.actor.id) ?? [];
+      const controlled = canvas.tokens?.controlled.map(t => t.document) ?? [];
+      return mine.find(cb => controlled.includes(cb.token))?.token ?? mine[0]?.token ?? null;
+    };
     const system = item._getWeaponSystem?.() ?? item.system ?? {};
     const savedAttackOptions = isRanged
       ? this._cpGetSavedRangedAttackOptions(flagHolder)
