@@ -590,10 +590,16 @@ export class CyberpunkItem extends Item {
         attackRoll,
         onTarget,
         // "The charge lands where it was aimed" is wrong for a stream — resolved per kind rather
-        // than hard-coding the grenade's own wording; `BlastScattered` needs no such split, it
-        // never names a charge.
+        // than hard-coding the grenade's own wording.
         onTargetCaption: localize(kind === "sweep" ? "SweepOnTarget" : "BlastOnTarget"),
         scatter,
+        // The miss needs the same split since D140: the Grenade Table's second die is a landing
+        // distance for a thrown charge (`07:839`, *"how many meters away it hit"*) and the blast
+        // still honours it, but a stream **pivots** about the muzzle, so the die supplies a bearing
+        // and nothing travelled that far (`T308`).
+        scatterCaption: scatter
+          ? localizeParam(kind === "sweep" ? "SweepScattered" : "BlastScattered", scatter)
+          : "",
         placed: !!blast,
         // A shotgun pattern (and now a flamethrower sweep) shares this template with a grenade but
         // is not one: it has a width rather than a radius, and the corridor `tokensInBlast` collects

@@ -79,8 +79,13 @@ export function localizeParamEscaped(str, params) {
  * The order is what each source can actually know. A token the caller already holds is the one the
  * event is about; `actor.token` is set on the synthetic actor of an unlinked token; the prototype
  * carries the name a linked actor's tokens are placed with, which is where a GM sets «Бандит» once
- * for all of them. Core resolves `Combatant#name` the same way
- * (`client/documents/combatant.mjs:168`, 14.365.0), so the initiative tracker needs nothing here.
+ * for all of them.
+ *
+ * **Core does not resolve `Combatant#name` this way**, which this comment used to claim: it goes from
+ * the combatant's own token straight to `this.actor?.name`, with no prototype step in between
+ * (`client/documents/combatant.mjs:168`, 14.365.0). So a combatant created with no `tokenId` — which
+ * is what this system did until `T306` — showed the **sheet** name in the tracker while every card
+ * and prompt showed the token's. The tracker is answered where the combatant is created, not here.
  *
  * @param {CyberpunkActor} actor
  * @param {TokenDocument} [token] The token the string is about, when the caller has one

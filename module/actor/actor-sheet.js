@@ -789,7 +789,8 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       window: { title: "CYBERPUNK.StabilizeModifiers" },
       modifierGroups: stabilizationOptions(),
       targetTokens: token ? [{ name: token.document.name }] : [],
-      onConfirm: (options) => this.actor.rollStabilization(patient, options)
+      // The targeted token travels with the patient: it is the one the card names (D133, `T306`).
+      onConfirm: (options) => this.actor.rollStabilization(patient, options, token?.document ?? null)
     });
 
     dialog.render(true);
@@ -832,10 +833,16 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     // The **combatant's** token and never `getActiveTokens()`: that one is scoped to the viewed
     // scene (`client/documents/actor.mjs:282`, 14.365.0) and answers nothing at all for a GM
     // running two scenes — measured. Which fight an actor is in is a world fact, the `T87`
-    // resolution `declareDodge` uses next door, and it makes the notice agree with initiative by
-    // construction, since core reads `Combatant#name` the same way. Outside an encounter there is
-    // no such token and `displayName` keeps its own fallbacks. Read at confirm time, because the
-    // dialog outlives the click that opened it.
+    // resolution `declareDodge` uses next door. Outside an encounter there is no such token and
+    // `displayName` keeps its own fallbacks. Read at confirm time, because the dialog outlives the
+    // click that opened it.
+    //
+    // **Not** because core reads `Combatant#name` the same way, which this comment used to claim in
+    // its own words: core goes the combatant's token straight to `actor.name`, with no prototype step
+    // (`client/documents/combatant.mjs:168`, 14.365.0). What makes the two agree is that
+    // `addToCombatAndRollInitiative` now creates its combatant **with** a `tokenId` (`T306`/`T317`) —
+    // before that, this read answered null inside a started encounter and the two surfaces leaked
+    // two *different* wrong names.
     const attackerToken = () => this.actor.token
       ?? game.combats.find(c => c.started && c.combatants.some(cb => cb.actorId === this.actor.id))
         ?.combatants.find(cb => cb.actorId === this.actor.id)?.token

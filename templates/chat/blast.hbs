@@ -51,7 +51,15 @@
         </div>
     </div>
 
-    <p><em>{{#if onTarget}}{{onTargetCaption}}{{else}}{{CPLocalParam "BlastScattered" scatter}}{{/if}}</em></p>
+    {{!-- A miss with no canvas scatters nothing, so it has no sentence: the manual-fallback
+          paragraph below is what that card says. It used to print the grenade's own line with its
+          {distance} unsubstituted, because `format` leaves the braces when handed no data
+          (`client/helpers/localization.mjs:444`, 14.365.0). --}}
+    {{#if onTarget}}
+    <p><em>{{onTargetCaption}}</em></p>
+    {{else if scatterCaption}}
+    <p><em>{{scatterCaption}}</em></p>
+    {{/if}}
     {{/if}}
 
     <h3>{{CPLocal "Damage"}}</h3>

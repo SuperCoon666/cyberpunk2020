@@ -462,7 +462,9 @@ Hooks.once('init', async function () {
     // `T125` — the fire zone is laid by the active GM's hook above, and with none connected the
     // rounds were spent for a zone that never existed and never could. The offer stays on the card:
     // the first GM to see it lays what the burst described. Whether it is laid already is read off
-    // the Region and not off a flag, because the hook may have created it on another client.
+    // the Region **and** off the card's own record: the Region is what catches a create still in
+    // flight on another client, and the record is what tells *not yet* from *no longer* once the
+    // encounter's sweep has taken it (`T307`).
     Hooks.on("renderChatMessageHTML", (message, html) => {
       const root = getHtmlElement(html);
       const button = root?.querySelector?.('button[data-action="layZone"]');
@@ -479,7 +481,7 @@ Hooks.once('init', async function () {
         button.disabled = true;
         button.textContent = localize("ZoneLaid");
       };
-      if (zoneRegions(message).length) return laid();
+      if (attack.applied?.laid || zoneRegions(message).length) return laid();
 
       button.addEventListener("click", async () => {
         await layZoneFromMessage(message);
@@ -555,7 +557,12 @@ Hooks.once('init', async function () {
 
       if (game.settings.get("cyberpunk2020", "damageApplyMode") !== "auto") return;
 
-      if (attack.kind === "blast" || attack.kind === "spread") {
+      // The payload and not the kind, exactly as the drawing branch above already asks: a kind list
+      // went stale the moment `T252` added a third zone kind, and a flamethrower sweep then fell
+      // through to the loop below, which `__zoneFlags` leaves empty for every zone card — so under
+      // the mode this family exists for the stream was placed, carded and drawn and nobody in it
+      // took a point (`T302`). `applyBlastFromMessage` gates on the same field.
+      if (attack.blast) {
         await applyBlastFromMessage(message);
         return;
       }

@@ -2,7 +2,7 @@ import { makeD10Roll, Multiroll } from "../dice.js";
 import { isFumbleRoll, buildSkillFumbleData } from "../utils.js";
 import { SortOrders, sortSkills } from "./skill-sort.js";
 import { btmFromBT, MARTIAL_ART_KEY_BY_ID, MARTIAL_ART_ID_BY_KEY, DEFENSIVE_MARTIAL_ACTIONS, FNFF2_ONLY_MARTIAL_ART_IDS, getMartialActionBonus, isCombatAutomationEnabled, isFnff2Enabled, AWARENESS_NOTICE_SKILL_ID, ATHLETICS_SKILL_ID, DEMOLITIONS_SKILL_ID, MELEE_DEFENSE_SKILL_IDS, BRAWLING_SKILL_ID, DODGE_SKILL_ID, MEDICAL_TECH_SKILL_IDS, FIRST_AID_SKILL_ID, STABILIZATION_ADVANTAGES } from "../lookups.js";
-import { properCase, localize, localizeParam, getDefaultSkills, cwHasType, cwIsEnabled, withCompendiumSource } from "../utils.js"
+import { properCase, localize, localizeParam, displayName, getDefaultSkills, cwHasType, cwIsEnabled, withCompendiumSource } from "../utils.js"
 
 /** The stabilization hand-off has no human in the loop — it is one flag write on the GM's client. */
 const STABILIZE_QUERY_TIMEOUT_MS = 5000;
@@ -1128,9 +1128,20 @@ export class CyberpunkActor extends Actor {
   
     // If no combatant found and creation is allowed, add the actor to the combat
     if (!combatant && options.createCombatants) {
-      await combat.createEmbeddedDocuments("Combatant", [{ actorId: this.id }]);
+      // D133 — the tracker is the surface that ruling names first, and core resolves
+      // `Combatant#name` as the combatant's own token then straight to `actor.name`, with no
+      // prototype step (`client/documents/combatant.mjs:168`, 14.365.0). A combatant created as
+      // `{actorId}` alone therefore printed the sheet name players are never meant to see, while
+      // every card and prompt printed the token's (`T306`). The token comes off the encounter's own
+      // scene — world data — and never `getActiveTokens()`, which core scopes to the viewed scene
+      // (`client/documents/actor.mjs:284`) and which answers `[]` for a GM running two scenes.
+      // Naming no token stays the answer when there is none to name, as it was before.
+      const token = this.token ?? combat.scene?.tokens.find(t => t.actorId === this.id) ?? null;
+      await combat.createEmbeddedDocuments("Combatant", [token
+        ? { actorId: this.id, tokenId: token.id, sceneId: token.parent.id }
+        : { actorId: this.id }]);
       combatant = combat.combatants.find(c => c.actorId === this.id);
-    }    
+    }
   
     if (!combatant) {
       ui.notifications.error(localize("NoCombatantForActor"));
@@ -1261,9 +1272,10 @@ export class CyberpunkActor extends Actor {
    *
    * @param {CyberpunkActor} patient The actor being stabilized
    * @param {object} [options] The stabilization dialog's own fields
+   * @param {TokenDocument} [patientToken] The patient's own token, for the card's name (D133)
    * @returns {Promise<{total: number, target: number, success: boolean}|false>} false when refused
    */
-  async rollStabilization(patient, options = {}) {
+  async rollStabilization(patient, options = {}, patientToken = null) {
     if (!patient) {
       ui.notifications.warn(localize("StabilizeNoPatient"));
       return false;
@@ -1291,7 +1303,10 @@ export class CyberpunkActor extends Actor {
 
     const results = new Multiroll(
       localize("Stabilization"),
-      localizeParam(success ? "StabilizeSuccess" : "StabilizeFailure", { patient: patient.name })
+      // D133 — a combat card names the token, and the medic's own target is where that token comes
+      // from: `patient.token` is set only for an unlinked one (`T306`).
+      localizeParam(success ? "StabilizeSuccess" : "StabilizeFailure",
+        { patient: displayName(patient, patientToken) })
     );
     results.addRoll(roll, { name: skill.name });
     results.addRoll(new Roll(`${target}`), { name: localize("StabilizeTarget") });

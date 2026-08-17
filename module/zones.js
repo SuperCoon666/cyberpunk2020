@@ -257,16 +257,17 @@ export const ZONE_FLAG = "zone";
 export const COMBAT_FLAG = "combat";
 
 /**
- * The encounter a zone laid on this scene belongs to (D141).
+ * The encounter a zone on this scene belongs to — what it is stamped with when it is laid (D141),
+ * and what a crossing keys its one-save-per-turn guard on (`T313`).
  *
- * Never `game.combat`: that getter is the laying client's own tracker selection
+ * Never `game.combat`: that getter is the reading client's own tracker selection
  * (`client/game.mjs:1692-1696`, 14.365.0), which is the coupling `T114`/`T290` were fixed to
  * remove. A scene-less encounter applies everywhere, a bound one only to its own scene.
  *
  * **`active` is a tie-break, not the filter**, and that is measured rather than preferred: the
  * server keeps exactly one active Combat in the whole world — activating one clears the flag on
  * every other, with no scene filter (`dist/database/documents/combat.mjs`
- * `_preUpdateOperation`) — so a split party's second fight, which is the case this stamp exists
+ * `_preUpdateOperation`) — so a split party's second fight, which is the case both callers exist
  * for, is never the active one.
  *
  * @param {Scene} scene
@@ -310,12 +311,12 @@ async function resolveZoneCrossing(zone, token) {
   // client's tracker selection (`client/game.mjs:1692-1696`, 14.365.0) and `isActive` is
   // `active && scene.isView` (`client/documents/combat.mjs:118-121`), so the active GM viewing
   // another scene got `"once"` and re-asked the save on every re-entry (`T114`, the `T87` family).
-  // This is core's own resolution (`client/documents/collections/combat-encounters.mjs:44-55`)
-  // with the viewport dropped and the zone's scene put in its place: `active` is the world flag,
-  // `isView` was the client half. A scene-less encounter applies everywhere, a bound one only to
-  // its own scene.
-  const combat = game.combats.find(c =>
-    c.active && c.started && (!c.scene || c.scene === zone.scene));
+  //
+  // `zoneCombat` and not a second predicate of its own: this asked for `active && started` and the
+  // server keeps exactly one active Combat in the **world**, so of two fights on two scenes only one
+  // could ever answer and the other one's zone fell back to the `"once"` constant for ever — one
+  // save per token per zone in a running fight (`T313`). The two lookups are now one reading.
+  const combat = zoneCombat(zone.scene);
   const crossing = combat ? `${combat.id}.${combat.round}.${combat.turn}` : "once";
   const saved = zone.behavior.getFlag("cyberpunk2020", CROSSED_FLAG) ?? {};
   if (saved[token.id] === crossing) return;
@@ -420,15 +421,23 @@ export async function placeSuppressionZone(width, length, name) {
  * `renderChatMessageHTML` runs while the hook's own create is still in flight, and a burst that
  * laid two zones would ask every crossing token to save twice (`T125`).
  *
+ * The Region answers *is it there now* and cannot answer *was it ever* — so it is recorded on the
+ * card as well. `clearSuppressionZones` sweeps the Region at `deleteCombat` while the card outlives
+ * the encounter, and `renderChatMessageHTML` fires again on every re-render and every reload: the
+ * button then read "not laid" and laid a fresh zone from a burst two fights ago (`T307`). A card
+ * written before this flag existed has nothing to read and keeps the old answer.
+ *
  * @param {ChatMessage} message
- * @returns {Promise<RegionDocument|null>} null when there is nothing to lay, or it is laid already
+ * @returns {Promise<RegionDocument|null>} null when there is nothing to lay, or it was laid already
  */
 export async function layZoneFromMessage(message) {
   const attack = message?.flags?.cyberpunk2020?.attack;
   if (attack?.kind !== "suppression" || !attack.zone) return null;
-  if (zoneRegions(message).length) return null;
+  if (attack.applied?.laid || zoneRegions(message).length) return null;
 
-  return createSuppressionZone(attack.zone, attack.behaviour, message.id);
+  const region = await createSuppressionZone(attack.zone, attack.behaviour, message.id);
+  if (region) await message.update({ "flags.cyberpunk2020.attack.applied.laid": true });
+  return region;
 }
 
 /**
@@ -640,15 +649,25 @@ function pathDistance({ centre, step, points, edges }, point) {
  * search: a bounding box around the two points is enough for a straight test, and a pattern does
  * not go round corners the way a blast does.
  *
+ * **The muzzle is what `blastEdges` is given, and that is the fix rather than the obvious spelling.**
+ * A box centred on the midpoint bounds the segment more tightly, but `blastEdges`'s `collisionTest`
+ * drops every edge collinear with the point it is handed — D76, written about the blast *centre* so
+ * that a charge laid against a wall is not stopped by the wall it sits on. A midpoint carries no
+ * such meaning, and a wall crossing the line of fire is *at* the midpoint exactly when the victim is
+ * twice as far as the wall, so the gate failed open there (`T301`). D76's clause is kept rather than
+ * dropped because it has a real meaning at this site too — a shooter pressed against a wall is not
+ * stopped by his own wall — and dropping it would stop him: `lineSegmentIntersects` rejects only the
+ * fully collinear case, so an endpoint standing *on* the wall's line still counts as an intersection
+ * (`common/utils/geometry.mjs:35-42`, 14.365.0). Passing the muzzle is that meaning at this site.
+ *
  * @param {Level} level
  * @param {{x: number, y: number}} muzzle
  * @param {{x: number, y: number}} point
  * @returns {boolean}
  */
 function patternWallBetween(level, muzzle, point) {
-  const centre = { x: (muzzle.x + point.x) / 2, y: (muzzle.y + point.y) / 2 };
-  const reach = Math.max(1, Math.hypot(point.x - muzzle.x, point.y - muzzle.y) / 2);
-  return wallBetween(blastEdges(level, centre, reach), muzzle, point);
+  const reach = Math.max(1, Math.hypot(point.x - muzzle.x, point.y - muzzle.y));
+  return wallBetween(blastEdges(level, muzzle, reach), muzzle, point);
 }
 
 /**
@@ -833,29 +852,61 @@ function drawnReach(region, centre, point, step) {
 }
 
 /**
- * The blast's own disc as walls leave it: the half-cells it reaches, unioned into contours.
+ * How far the drawing takes a corridor kind's effect to a point, in scene units — the same two
+ * clauses `blastCoverage` resolves a pattern or a sweep by: D115's binary wall gate from the muzzle,
+ * then the disc at the far end or the band along the line of fire. Euclidean here where membership
+ * uses the scene's grid metric, which is D117's accepted divergence and the same one `drawnReach`
+ * carries for the blast.
+ *
+ * The edge set is passed in rather than built per point: `patternWallBetween` rebuilds one per call,
+ * which is right for a handful of tokens and wrong for a few thousand cells.
+ *
+ * @param {Edge[]} edges Off the muzzle, over the whole drawn reach
+ * @param {{from: {x: number, y: number}, to: {x: number, y: number}}} corridor
+ * @param {{x: number, y: number}} centre The disc's own centre
+ * @param {{x: number, y: number}} point
+ * @param {number} step Pixels per scene unit
+ * @returns {number} Infinity when the muzzle cannot reach the point in a straight line
+ */
+function corridorReach(edges, corridor, centre, point, step) {
+  if (wallBetween(edges, corridor.from, point)) return Infinity;
+
+  const direct = Math.hypot(point.x - centre.x, point.y - centre.y) / step;
+  // `T287` — a projection behind the muzzle is outside the band rather than clamped onto its end,
+  // so such a point is reached by the disc alone.
+  const nearest = corridorPoint(corridor, point);
+  if (!nearest) return direct;
+
+  return Math.min(direct, Math.hypot(point.x - nearest.x, point.y - nearest.y) / step);
+}
+
+/**
+ * The effect's own ground as walls leave it: the half-cells it reaches, unioned into contours.
  *
  * `ClipperLib` is a client global and the library core's own polygon intersection runs on
  * (`client/canvas/extensions/polygon-extension.mjs:208`, 14.365.0). Executing into a `PolyTree`
  * rather than `Paths` is what keeps the holes — a pillar inside the blast is a contour of its own.
  *
- * @param {object} region From blastRegion
+ * @param {(point: {x: number, y: number}) => number} reach How far the drawing takes the effect to
+ *   one point, in scene units: `drawnReach` for a blast, `corridorReach` for a pattern or a sweep
  * @param {{x: number, y: number}} centre
- * @param {number} radius In scene units
+ * @param {number} radius In scene units — what `reach` is cut off against
  * @param {number} step Pixels per scene unit
+ * @param {number} bound How far from `centre` to search, in scene units. The blast's own radius, and
+ *   more for a corridor kind, whose band reaches back to the muzzle
  * @returns {Array<{type: string, points: number[], hole: boolean}>}
  */
-function unionOfCells(region, centre, radius, step) {
+function unionOfCells(reach, centre, radius, step, bound) {
   const cell = step / ZONE_CELL_SUBDIVISION;
-  const reach = Math.ceil((radius * step) / cell);
+  const span = Math.ceil((bound * step) / cell);
   const paths = [];
 
-  for (let i = -reach; i < reach; i++) {
-    for (let j = -reach; j < reach; j++) {
+  for (let i = -span; i < span; i++) {
+    for (let j = -span; j < span; j++) {
       const x = centre.x + (j * cell);
       const y = centre.y + (i * cell);
       const middle = { x: x + (cell / 2), y: y + (cell / 2) };
-      if (drawnReach(region, centre, middle, step) > radius) continue;
+      if (reach(middle) > radius) continue;
 
       paths.push([
         { X: Math.round(x), Y: Math.round(y) },
@@ -911,6 +962,49 @@ function corridorBand({ from, to }, halfWidth) {
 }
 
 /**
+ * The shapes a shotgun pattern or a flamethrower sweep is drawn as, as D115's wall gate leaves them.
+ *
+ * `blastRegion` refuses a corridor payload outright, because D115 rules that a pattern never wraps —
+ * and reading that null as *no walls apply here* is what left the paint and the membership disagreeing
+ * by construction: a pattern fired into a doorway was drawn flooding the room behind the wall while
+ * every token in it was correctly excluded (`T303`, the drift `T247` exists to prevent). The gate is
+ * `blastCoverage`'s own, on the same condition — one edge set from the muzzle, hoisted out of
+ * `patternWallBetween` so it is built once for the drawing instead of once per cell.
+ *
+ * @param {Scene} scene The payload's own scene
+ * @param {object} blast The card's blast payload
+ * @param {{x: number, y: number}} centre The disc's centre
+ * @param {number} radius In scene units
+ * @param {number} step Pixels per scene unit
+ * @returns {object[]} region shape data
+ */
+function corridorShapes(scene, blast, centre, radius, step) {
+  // Ch. 07:843's corridor is part of what the pattern catches, so it is part of what it draws.
+  const exact = () => {
+    const shapes = [{ type: "circle", x: centre.x, y: centre.y, radius: radius * step }];
+    const band = corridorBand(blast.corridor, radius * step);
+    if (band) shapes.push(band);
+    return shapes;
+  };
+
+  // A payload naming no level meets no wall in `blastCoverage` either, so the two agree by saying
+  // nothing about walls.
+  if (!blast.levelId) return exact();
+
+  const level = scene.levels.get(blast.levelId) ?? scene.initialLevel;
+  const muzzle = blast.corridor.from;
+  // Far enough to cover the disc at the far end and the band all the way back to the muzzle.
+  const bound = radius + (Math.hypot(centre.x - muzzle.x, centre.y - muzzle.y) / step);
+  const edges = blastEdges(level, muzzle, bound * step);
+  // Nothing in reach to be stopped by, so the circle and the band are exact — and cheaper than a
+  // cell union, which is the same exit `blastRegion` takes for the blast.
+  if (!edges.length) return exact();
+
+  return unionOfCells(point => corridorReach(edges, blast.corridor, centre, point, step),
+    centre, radius, step, bound);
+}
+
+/**
  * The shapes one splash is drawn as, on the payload's own scene.
  *
  * With nothing in reach to go around `blastRegion` returns null and the disc is exactly a circle,
@@ -927,19 +1021,14 @@ export function zoneShapes(blast) {
   // Pixels per scene unit off the payload's own scene, never `canvas` (`T59`).
   const step = scene.grid.size / scene.grid.distance;
   const centre = { x: blast.x, y: blast.y };
+
+  // The two corridor kinds resolve through a gate of their own and are drawn from it.
+  if (blast.corridor) return corridorShapes(scene, blast, centre, radius, step);
+
   const region = blastRegion(blast);
-
-  const shapes = region
-    ? unionOfCells(region, centre, radius, step)
+  return region
+    ? unionOfCells(point => drawnReach(region, centre, point, step), centre, radius, step, radius)
     : [{ type: "circle", x: centre.x, y: centre.y, radius: radius * step }];
-
-  // Ch. 07:843's corridor is part of what the pattern catches, so it is part of what it draws.
-  if (blast.corridor) {
-    const band = corridorBand(blast.corridor, radius * step);
-    if (band) shapes.push(band);
-  }
-
-  return shapes;
 }
 
 /**

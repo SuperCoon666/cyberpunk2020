@@ -462,12 +462,14 @@ export async function clearSuppressionZones(combat) {
       .filter(region => region.getFlag("cyberpunk2020", SUPPRESSION_FLAG)
         || region.getFlag("cyberpunk2020", ZONE_FLAG))
       // D141 — and only this encounter's own, so a split party's second fight keeps its craters
-      // when the first one ends. A zone carrying no id is one laid before the stamp existed, or
-      // outside any encounter: it keeps the wide behaviour on purpose, because the alternative is
-      // a zone nothing will ever sweep.
+      // when the first one ends. D145 splits the two no-id cases the data already tells apart: an
+      // **absent** flag is a zone laid before the stamp existed and must not become immortal, while
+      // an **empty** one is `zoneCombat`'s answer for a zone laid outside any encounter, which D134
+      // rules manual-delete only. So the emptiness is load-bearing and `!owner` was one case too
+      // many.
       .filter(region => {
         const owner = region.getFlag("cyberpunk2020", COMBAT_FLAG);
-        return !owner || owner === combat.id;
+        return owner === undefined || owner === combat.id;
       })
       .map(region => region.id);
     if (ids.length) await scene.deleteEmbeddedDocuments("Region", ids);

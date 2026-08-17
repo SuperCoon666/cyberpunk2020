@@ -577,7 +577,11 @@ export function rangedModifiers(weapon, targetTokens = [], savedOptions = {}, me
         {localKey:"Running", dataPath:"running",defaultValue: false},
         {localKey:"TurnFace", dataPath:"turningToFace",defaultValue: false},
         {
-            localKey: "FireZoneWidth",
+            // The row is shared with the flamethrower sweep (`T252`, D91), and a flamethrower cannot
+            // suppress: `FireZoneWidth` reads «Ширина подавления (м)» in `ru`, naming a mechanic this
+            // weapon has no access to, while the card the same shot posts already says «Ширина
+            // струи». Resolved per weapon here so the dialog and the card agree (`T304`).
+            localKey: sys.attackType === rangedAttackTypes.flamethrow ? "SweepWidth" : "FireZoneWidth",
             dataPath: "zoneWidth",
             dtype: "Number",
             defaultValue: 2,
