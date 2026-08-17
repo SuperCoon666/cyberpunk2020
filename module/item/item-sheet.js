@@ -2447,10 +2447,18 @@ async _prepareCyberware(sheet) {
     if (this.item.type === "ammo") {
       // D87 — an approved cap on the entered turn count. It lands here rather than on the input,
       // because the shared number widget emits `data-max`, which only ModifiersDialog reads.
+      //
+      // D153 — the ceiling is on the field, not the form: `submitOnChange` serializes the whole
+      // form, so clamping whatever arrives truncated a round authored past the cap (through the
+      // API or a pack — no sheet can type it) on an edit that never touched the turn count
+      // (`T286`). A submit that did not change it entered nothing.
       const turns = foundry.utils.getProperty(data, "system.dotTurns");
       if (turns !== undefined) {
         const n = Math.floor(Number(turns) || 0);
-        foundry.utils.setProperty(data, "system.dotTurns", Math.min(MAX_DOT_TICKS, Math.max(0, n)));
+        const stored = Math.floor(Number(this.item.system.dotTurns) || 0);
+        if (n !== stored) {
+          foundry.utils.setProperty(data, "system.dotTurns", Math.min(MAX_DOT_TICKS, Math.max(0, n)));
+        }
       }
     }
 

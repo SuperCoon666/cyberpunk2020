@@ -1,4 +1,5 @@
-import { deleteFieldUpdate, getDefaultSkills, localize, tryLocalize, cwHasType, withCompendiumSource } from "./utils.js";
+import { deleteFieldUpdate, getDefaultSkills, localize, localizeParamEscaped, tryLocalize, cwHasType, withCompendiumSource } from "./utils.js";
+import { createCyberpunkChatMessage, getGMUserIds } from "./compat.js";
 import { UNARMED_WEAPON_IDS } from "./lookups.js";
 import { CyberpunkActor } from "./actor/actor.js";
 
@@ -98,13 +99,25 @@ export const migrateWorld = async function (targetVersion = game.system.version)
  * @returns {Promise<string[]>} the ids removed
  */
 export async function removeInjectedUnarmedWeapons(actor) {
-  const ids = actor.items.contents
+  const removed = actor.items.contents
     .filter(item => item.type === "weapon")
     .filter(item => CyberpunkActor._getItemIdCandidates(item)
-      .some(candidate => UNARMED_WEAPON_IDS.includes(candidate)))
-    .map(item => item.id);
+      .some(candidate => UNARMED_WEAPON_IDS.includes(candidate)));
 
-  if (ids.length) await actor.deleteEmbeddedDocuments("Item", ids);
+  if (!removed.length) return [];
+
+  const ids = removed.map(item => item.id);
+  const names = removed.map(item => item.name).join(", ");
+  await actor.deleteEmbeddedDocuments("Item", ids);
+
+  // D149/`T299` — the id match cannot tell the injected copy from a Strike or Kick a GM dragged out
+  // of the pack himself, and both go. So the sweep says what it took, per actor, and the re-drag is
+  // the table's. Whispered because the migration runs on the GM's client and the list is his.
+  await createCyberpunkChatMessage({
+    whisper: getGMUserIds(),
+    content: localizeParamEscaped("CP.Migration.UnarmedRemoved", { actor: actor.name, items: names })
+  });
+
   return ids;
 }
 

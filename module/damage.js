@@ -583,11 +583,16 @@ export async function applyHitsToActor(actor,
     // Forced here rather than at each caller, so the rule cannot arrive half applied.
     let zone = overallBody ? "Torso" : hit.zone;
     // Bounded because the loop is a re-roll, not a search: Head and Torso are never cyberlimbs, so
-    // in practice it ends on the first or second throw. Exhausting it leaves the hit where it was
-    // rolled, where it now reaches the wound track rather than a limb that cannot absorb it.
+    // in practice it ends on the first or second throw.
     for (let attempt = 0; attempt < REDERIVE_ATTEMPTS && zoneIsGone(zone); attempt++) {
       zone = (await rollLocation(actor)).areaHit;
     }
+    // D146 — the hit has to land on a zone that **exists**, so exhausting the throws must not leave
+    // it where it was rolled: the limb there is spent only in this attack's running tally, its
+    // persisted `sdp.current` still reads above zero, and `resolveHit` would absorb the whole hit
+    // into a pool `applyDamage` then floors at 0 (`T236`). The Torso is the deterministic answer —
+    // every target has one and it can never be a cyberlimb.
+    if (zoneIsGone(zone)) zone = "Torso";
 
     const resolved = resolveHit(
       { damage: hit.damage, zone, ap, mono, melee, ammo },
