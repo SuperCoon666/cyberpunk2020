@@ -1,7 +1,7 @@
 import { martialOptions, meleeAttackTypes, meleeBonkOptions, rangedModifiers, stabilizationOptions, weaponTypes, FNFF2_ONLY_MARTIAL_ART_IDS, isCombatAutomationEnabled, isFnff2Enabled, COMBAT_SENSE_SKILL_IDS, INTERFACE_SKILL_IDS, UNARMED_STRIKE_ID, programTypes } from "../lookups.js";
 import { CyberpunkItem } from "../item/item.js";
 import { CyberpunkActor } from "./actor.js";
-import { deleteFieldUpdate, localize, localizeParam, cwHasType, cwIsEnabled, refusedWhilePaused, withCompendiumSource } from "../utils.js"
+import { deleteFieldUpdate, localize, localizeParamEscaped, cwHasType, cwIsEnabled, refusedWhilePaused, withCompendiumSource } from "../utils.js"
 import { ModifiersDialog } from "../dialog/modifiers.js"
 import { SortOrders, sortSkills } from "./skill-sort.js";
 import { getHtmlElement, getRichEditorHTML, itemFromDropData, saveRichEditorHTML } from "../compat.js";
@@ -691,7 +691,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       window: {
         title: localize("ItemDeleteConfirmTitle")
       },
-      content: `<p>${localizeParam("ItemDeleteConfirmText", { itemName: item.name })}</p>`,
+      content: `<p>${localizeParamEscaped("ItemDeleteConfirmText", { itemName: item.name })}</p>`,
       modal: true,
       rejectClose: false
     });
@@ -825,6 +825,21 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     }
 
     const isRanged = item.isRanged();
+    // Which token this actor is attacking as: the melee notice and prompt name it, and nothing
+    // downstream can work it out — a linked actor carries no `token`, so both were named off the
+    // prototype and disagreed with initiative, which is what D133 rules against (`T296`).
+    //
+    // The **combatant's** token and never `getActiveTokens()`: that one is scoped to the viewed
+    // scene (`client/documents/actor.mjs:282`, 14.365.0) and answers nothing at all for a GM
+    // running two scenes — measured. Which fight an actor is in is a world fact, the `T87`
+    // resolution `declareDodge` uses next door, and it makes the notice agree with initiative by
+    // construction, since core reads `Combatant#name` the same way. Outside an encounter there is
+    // no such token and `displayName` keeps its own fallbacks. Read at confirm time, because the
+    // dialog outlives the click that opened it.
+    const attackerToken = () => this.actor.token
+      ?? game.combats.find(c => c.started && c.combatants.some(cb => cb.actorId === this.actor.id))
+        ?.combatants.find(cb => cb.actorId === this.actor.id)?.token
+      ?? null;
     const system = item._getWeaponSystem?.() ?? item.system ?? {};
     const savedAttackOptions = isRanged
       ? this._cpGetSavedRangedAttackOptions(flagHolder)
@@ -886,7 +901,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
         const declaredIn = currentTurnKey();
         let attack;
         try {
-          attack = await item.__weaponRoll(fireOptions, targetTokens);
+          attack = await item.__weaponRoll(fireOptions, targetTokens, attackerToken());
         } finally {
           this.#attacksInFlight.delete(item.id);
         }

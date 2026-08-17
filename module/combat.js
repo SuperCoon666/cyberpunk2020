@@ -3,7 +3,7 @@ import { displayName, localizeParam, localizeParamEscaped } from "./utils.js";
 import { createCyberpunkChatMessage } from "./compat.js";
 import { BaseDie } from "./dice.js";
 import { DODGE_SKILL_ID, isCombatAutomationEnabled } from "./lookups.js";
-import { SUPPRESSION_FLAG, ZONE_FLAG } from "./zones.js";
+import { COMBAT_FLAG, SUPPRESSION_FLAG, ZONE_FLAG } from "./zones.js";
 
 /** Cumulative penalty per extra action taken in the same turn (optional rule). */
 const ACTION_PENALTY_STEP = -3;
@@ -141,7 +141,7 @@ export class CyberpunkCombat extends Combat {
       await actor.unsetFlag("cyberpunk2020", DODGING_FLAG);
     }
 
-    await tickDot(actor, { messageMode });
+    await tickDot(actor, { messageMode, token: combatant.token });
 
     // A corpse is asked for nothing: the Death Save at the bottom of this function is what writes
     // `dead`, and without this gate it kept asking every turn for ever — a success against the
@@ -164,7 +164,7 @@ export class CyberpunkCombat extends Combat {
       }, { messageMode });
 
       if (automated) {
-        const recovery = await requestSave(actor, "stun", { messageMode });
+        const recovery = await requestSave(actor, "stun", { messageMode, token: combatant.token });
         if (recovery.success) await actor.toggleStatusEffect("cpStunned", { active: false });
       }
     }
@@ -178,7 +178,7 @@ export class CyberpunkCombat extends Combat {
 
     if (!automated) return;
 
-    const save = await requestSave(actor, "death", { messageMode });
+    const save = await requestSave(actor, "death", { messageMode, token: combatant.token });
     if (!save.success) await actor.toggleStatusEffect("dead", { active: true, overlay: true });
   }
 }
@@ -263,6 +263,8 @@ export async function clearTurnFlags(combatants) {
  * @param {object} context
  * @param {string} context.attackerName
  * @param {string} context.itemName
+ * @param {TokenDocument} [context.defenderToken] The token being attacked — the notice and the
+ *   prompt name it (D133), and the defender's own client cannot tell which token it was (`T296`)
  * @param {string} [context.messageMode] Visibility of the pending notice, for a hidden defender
  * @param {boolean} [context.hideAttacker] The attacker is an ambusher — see the query below
  * @returns {Promise<{total: number, label: string, roll: Roll, hit: boolean}|null>} hit is the
@@ -270,7 +272,7 @@ export async function clearTurnFlags(combatants) {
  *   which is what leaves the attack uncontested
  */
 export async function resolveDefense(defender, attackTotal,
-  { attackerName, itemName, messageMode, hideAttacker = false }) {
+  { attackerName, itemName, defenderToken = null, messageMode, hideAttacker = false }) {
   // One gate covers both call sites: `__meleeBonk` and `__martialBonk` already read
   // `hit = defense ? defense.hit : true`, so a null here is the uncontested v1.1.x attack.
   if (!isCombatAutomationEnabled()) return null;
@@ -293,9 +295,9 @@ export async function resolveDefense(defender, attackTotal,
       // D31 — the notice is public, so an ambusher is not named on it either. `hideAttacker` is
       // the same flag the prompt takes, so the three surfaces move together (`T103`).
       content: hideAttacker
-        ? localizeParamEscaped("DefensePendingHidden", { defender: displayName(defender) })
+        ? localizeParamEscaped("DefensePendingHidden", { defender: displayName(defender, defenderToken) })
         : localizeParamEscaped("DefensePending",
-          { attacker: attackerName, defender: displayName(defender) })
+          { attacker: attackerName, defender: displayName(defender, defenderToken) })
     }, { messageMode });
 
     try {
@@ -307,7 +309,9 @@ export async function resolveDefense(defender, attackTotal,
         {
           attackerName: hideAttacker ? "" : attackerName,
           itemName: hideAttacker ? "" : itemName,
-          defenderActorUuid: defender.uuid, attackTotal, choices: options
+          defenderActorUuid: defender.uuid,
+          defenderTokenUuid: defenderToken?.uuid ?? "",
+          attackTotal, choices: options
         },
         { timeout: DEFENSE_QUERY_TIMEOUT_MS }
       );
@@ -457,6 +461,14 @@ export async function clearSuppressionZones(combat) {
     const ids = scene.regions
       .filter(region => region.getFlag("cyberpunk2020", SUPPRESSION_FLAG)
         || region.getFlag("cyberpunk2020", ZONE_FLAG))
+      // D141 — and only this encounter's own, so a split party's second fight keeps its craters
+      // when the first one ends. A zone carrying no id is one laid before the stamp existed, or
+      // outside any encounter: it keeps the wide behaviour on purpose, because the alternative is
+      // a zone nothing will ever sweep.
+      .filter(region => {
+        const owner = region.getFlag("cyberpunk2020", COMBAT_FLAG);
+        return !owner || owner === combat.id;
+      })
       .map(region => region.id);
     if (ids.length) await scene.deleteEmbeddedDocuments("Region", ids);
   }

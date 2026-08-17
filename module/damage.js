@@ -326,9 +326,10 @@ export function rollSaveOf(actor, kind, dc, mod = 0, messageMode = undefined) {
  * @param {object} [options]
  * @param {number} [options.dc] The save number, for a zone save only
  * @param {string} [options.messageMode] Visibility of the card, for a hidden token
+ * @param {TokenDocument} [options.token] The token the save is about — the prompt names it (D133)
  * @returns {Promise<{total: number, threshold: number, success: boolean}>}
  */
-export async function requestSave(actor, kind, { dc = null, messageMode } = {}) {
+export async function requestSave(actor, kind, { dc = null, messageMode, token = null } = {}) {
   const manual = game.settings.get("cyberpunk2020", "pcSaveMode") === "manual" && actor.type !== "npc";
   const owner = manual
     ? game.users.players.find(u => u.active && actor.testUserPermission(u, "OWNER"))
@@ -338,7 +339,9 @@ export async function requestSave(actor, kind, { dc = null, messageMode } = {}) 
   try {
     return await owner.query(
       "cyberpunk2020.savePrompt",
-      { actorUuid: actor.uuid, kind, dc, messageMode },
+      // The token rides beside the actor: the prompt renders on the owner's client, which cannot
+      // tell which of a linked actor's placed tokens is being shot at (`T296`).
+      { actorUuid: actor.uuid, tokenUuid: token?.uuid ?? "", kind, dc, messageMode },
       { timeout: SAVE_QUERY_TIMEOUT_MS }
     );
   } catch (err) {
@@ -374,9 +377,10 @@ export async function requestSave(actor, kind, { dc = null, messageMode } = {}) 
  * @param {CyberpunkActor} actor The victim
  * @param {object} ammo Snapshot from snapshotAmmo
  * @param {number} landed Rounds that hit — the card's own hit count, never zero here
+ * @param {string} [sceneId] The scene the hit happened on — see the fallback below
  * @returns {Promise<{threshold: number, shot: number, stacked: boolean}>}
  */
-async function armShockSave(actor, ammo, landed) {
+async function armShockSave(actor, ammo, landed, sceneId = "") {
   const base = actor.stunThreshold() - numberOr(ammo.stunSavePenalty, 0);
   // The victim's own encounter, never `game.combat`: that getter is the *applying* client's tracker
   // selection (`client/game.mjs:1692-1696`, 14.365.0) gated on `scene.isView`
@@ -384,8 +388,16 @@ async function armShockSave(actor, ammo, landed) {
   // read null and the ladder silently stopped stacking — printing "no encounter running" under a
   // tracker visibly running one (`T290`, `T114`'s family). Which fight the victim is in is a world
   // fact, and this is `T87`'s resolution.
-  const combat = game.combats.find(c =>
+  const own = game.combats.find(c =>
     c.started && c.combatants.some(combatant => combatant.actorId === actor.id));
+  // D144 — a victim the tracker never held (a bystander, a prisoner, an NPC the GM did not add)
+  // stacks against the fight running on the scene the hit happened on, rather than getting every
+  // shot at its base number. The scene comes from the card the apply path already holds, in
+  // `T114`'s shape: naming a *parallel* fight wrongly is the accepted risk (two at once are rare),
+  // reading the applying client's viewport is not.
+  const combat = own ?? (sceneId
+    ? game.combats.find(c => c.active && c.started && (!c.scene || c.scene.id === sceneId))
+    : null);
   if (!combat) return { threshold: base, shot: landed, stacked: false };
   const round = combat.round;
 
@@ -453,9 +465,10 @@ async function startDot(actor, ammo, zone) {
  * @param {CyberpunkActor} actor
  * @param {object} [options]
  * @param {string} [options.messageMode] Visibility of the card, for a hidden token
+ * @param {TokenDocument} [options.token] The burning token — the card names it (D133)
  * @returns {Promise<void>}
  */
-export async function tickDot(actor, { messageMode } = {}) {
+export async function tickDot(actor, { messageMode, token = null } = {}) {
   // Before the flag is read, so the burn *pauses* rather than expiring: it resumes with its
   // remaining turns intact if the table switches automation back on.
   if (!isCombatAutomationEnabled()) return;
@@ -512,7 +525,7 @@ export async function tickDot(actor, { messageMode } = {}) {
   await createCyberpunkChatMessage({
     speaker: ChatMessage.getSpeaker({ actor }),
     content: localizeParamEscaped("DotTick",
-      { name: displayName(actor), damage, turns: dot.turns - 1 }),
+      { name: displayName(actor, token), damage, turns: dot.turns - 1 }),
     rolls: roll ? [roll] : []
   }, { useDefaultRollMode: true, messageMode });
 
@@ -539,11 +552,13 @@ export async function tickDot(actor, { messageMode } = {}) {
  * @param {boolean} [attack.overallBody] An area effect that damages the body rather than a location
  *   (`07:960`/`:966`): every hit resolves at the Torso, so head doubling, severance and cyberlimb
  *   absorption are all out of reach and a burn it starts catches there too
+ * @param {TokenDocument} [attack.token] The token that was hit — the save prompts name it (`T296`)
+ * @param {string} [attack.sceneId] The scene the hit happened on, for the shock ladder's fallback
  * @returns {Promise<ChatMessage>} the breakdown card
  */
 export async function applyHitsToActor(actor,
   { hits = [], ap = false, mono = false, melee = false, ammo = null, targetName = "", messageMode,
-    overallBody = false } = {}) {
+    overallBody = false, token = null, sceneId = "" } = {}) {
   const severanceThreshold = game.settings.get("cyberpunk2020", "severanceThreshold");
 
   const lines = [];
@@ -621,7 +636,7 @@ export async function applyHitsToActor(actor,
   // — a hit that landed entirely in a cyberlimb penetrated, even though `wound` stayed 0.
   const asksForShock = ammo?.stunSaveOnHit
     && (ammo.stunIgnoresArmor || Object.keys(penetratedZones).length > 0);
-  const shock = asksForShock ? await armShockSave(actor, ammo, hits.length) : null;
+  const shock = asksForShock ? await armShockSave(actor, ammo, hits.length, sceneId) : null;
 
   const content = await renderCyberpunkTemplate(
     "systems/cyberpunk2020/templates/chat/damage-applied.hbs",
@@ -652,7 +667,7 @@ export async function applyHitsToActor(actor,
   // killed outright above.
   if (severedLimbs.length) {
     const death = await requestSave(actor, "death",
-      { dc: actor.system.stats.bt.total, messageMode });
+      { dc: actor.system.stats.bt.total, messageMode, token });
     if (!death.success) await actor.toggleStatusEffect("dead", { active: true, overlay: true });
   }
 
@@ -660,14 +675,15 @@ export async function applyHitsToActor(actor,
   // a cyberlimb: ch. 06, "no saving roll against shock and stun". An electroshock round is asked
   // for regardless, at its own threshold: RAW conditions that save on being hit, not on wounding.
   if (wound > 0 || shock) {
-    const stun = await requestSave(actor, "stun", { dc: shock?.threshold ?? null, messageMode });
+    const stun = await requestSave(actor, "stun",
+      { dc: shock?.threshold ?? null, messageMode, token });
     if (!stun.success) await actor.toggleStatusEffect("cpStunned", { active: true });
   }
 
   // The mortality check reads a state rather than a delta, so it stays under the wound: an
   // electroshock hit that changed nothing must not ask a Mortal character to die again.
   if (wound > 0 && actor.woundState() >= MORTAL_WOUND_STATE) {
-    const death = await requestSave(actor, "death", { messageMode });
+    const death = await requestSave(actor, "death", { messageMode, token });
     if (!death.success) await actor.toggleStatusEffect("dead", { active: true, overlay: true });
   }
 
@@ -714,7 +730,11 @@ export async function applyAttackFromMessage(message, { tokenId } = {}) {
 
   return applyHitsToActor(actor, {
     hits: attack.hits ?? [], ap: attack.ap, mono: attack.mono, melee: attack.melee,
-    ammo: attack.ammo, targetName: target.name,
+    ammo: attack.ammo, targetName: target.name, token: tokenDoc,
+    // The card's own scene. `speaker.scene` is empty on an attack card — `Multiroll.execute` posts
+    // it with no speaker at all — so the target token the payload names is what carries it there;
+    // both are the card's own record, and neither is the applying client's canvas (D144).
+    sceneId: message.speaker?.scene || tokenDoc?.parent?.id || "",
     messageMode: hiddenMessageMode(tokenDoc?.hidden)
   });
 }

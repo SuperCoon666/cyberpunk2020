@@ -253,6 +253,30 @@ export const SUPPRESSION_FLAG = "suppression";
 /** The card a drawn zone belongs to, by message id: what the GM's hide toggle and the sweep find. */
 export const ZONE_FLAG = "zone";
 
+/** The encounter a zone was laid in, by combat id — what keeps one fight's sweep out of another. */
+export const COMBAT_FLAG = "combat";
+
+/**
+ * The encounter a zone laid on this scene belongs to (D141).
+ *
+ * Never `game.combat`: that getter is the laying client's own tracker selection
+ * (`client/game.mjs:1692-1696`, 14.365.0), which is the coupling `T114`/`T290` were fixed to
+ * remove. A scene-less encounter applies everywhere, a bound one only to its own scene.
+ *
+ * **`active` is a tie-break, not the filter**, and that is measured rather than preferred: the
+ * server keeps exactly one active Combat in the whole world — activating one clears the flag on
+ * every other, with no scene filter (`dist/database/documents/combat.mjs`
+ * `_preUpdateOperation`) — so a split party's second fight, which is the case this stamp exists
+ * for, is never the active one.
+ *
+ * @param {Scene} scene
+ * @returns {Combat|null}
+ */
+function zoneCombat(scene) {
+  const running = game.combats.filter(c => c.started && (!c.scene || c.scene === scene));
+  return running.find(c => c.active) ?? running[0] ?? null;
+}
+
 /**
  * D121 — a colour per kind, so a crater, a pattern and a fire zone on one map read apart. Firebrick
  * is the system's own red (`css/cyberpunk2020.css:604`); the rest are picked to stay apart from it
@@ -334,7 +358,7 @@ async function resolveZoneCrossing(zone, token) {
   }, { messageMode: hiddenMessageMode(token.hidden) });
 
   const save = await requestSave(actor, "zone", {
-    dc: zone.saveDC, messageMode: hiddenMessageMode(token.hidden)
+    dc: zone.saveDC, messageMode: hiddenMessageMode(token.hidden), token
   });
   if (save.success) return;
 
@@ -350,6 +374,7 @@ async function resolveZoneCrossing(zone, token) {
 
   await applyHitsToActor(actor, {
     hits, ap: zone.ap, ammo: zone.ammo, targetName: token.name,
+    token, sceneId: zone.scene?.id ?? "",
     messageMode: hiddenMessageMode(token.hidden)
   });
 }
@@ -427,7 +452,16 @@ export async function createSuppressionZone(zone, behaviour, messageId = "") {
     shapes: zone.shapes,
     levels: zone.levels,
     visibility: CONST.REGION_VISIBILITY.ALWAYS,
-    flags: { cyberpunk2020: { [SUPPRESSION_FLAG]: true, [ZONE_FLAG]: messageId } },
+    // D141 — the zone names the fight it belongs to, so ending one encounter does not sweep a
+    // second one's zones off a second scene. Stamped at creation, because that is the only moment
+    // the answer is knowable: the sweep runs after the encounter is already gone.
+    flags: {
+      cyberpunk2020: {
+        [SUPPRESSION_FLAG]: true,
+        [ZONE_FLAG]: messageId,
+        [COMBAT_FLAG]: zoneCombat(scene)?.id ?? ""
+      }
+    },
     behaviors: [{ type: "suppressiveFire", name, system }]
   }]);
 
@@ -946,7 +980,11 @@ export async function drawZone(blast, kind, messageId) {
   // A payload that names no level meets no walls on any of them, so it is drawn on all of them —
   // an empty set is core's own "everywhere" (`common/data/fields.mjs`, SceneLevelsSetField).
   const levels = blast.levelId ? [blast.levelId] : [];
-  const flags = { cyberpunk2020: { [ZONE_FLAG]: messageId } };
+  // D141 — every Region this system lays names its own encounter, the highlights included: they are
+  // swept by the same filter as the zone they belong to.
+  const flags = {
+    cyberpunk2020: { [ZONE_FLAG]: messageId, [COMBAT_FLAG]: zoneCombat(scene)?.id ?? "" }
+  };
   const ZONE_NAMES = { spread: "ZoneRegionSpread", sweep: "ZoneRegionSweep" };
   const drawing = [{
     name: localize(ZONE_NAMES[kind] ?? "ZoneRegionBlast"),
@@ -1077,6 +1115,7 @@ export async function applyBlastFromMessage(message) {
 
     cards.push(await applyHitsToActor(actor, {
       hits: [{ zone, damage }], ap: attack.ap, ammo: attack.ammo, targetName: entry.name,
+      token: tokenDoc, sceneId: String(attack.blast.sceneId ?? ""),
       messageMode: hiddenMessageMode(tokenDoc?.hidden),
       overallBody
     }));

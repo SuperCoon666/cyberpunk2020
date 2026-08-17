@@ -372,7 +372,7 @@ export class CyberpunkItem extends Item {
 
   // Let's just pretend the unusual ranged doesn't exist for now
   // Look into `modifiers.js` for the modifier obect
-  __weaponRoll(attackMods, targetTokens) {
+  __weaponRoll(attackMods, targetTokens, attackerToken = null) {
     if (this.type === "cyberware" && cwHasType(this, "Weapon") && !cwIsEnabled(this)) {
       ui?.notifications?.warn(game.i18n.localize("CYBERPUNK.CWT_WeaponDisabled"));
       return false;
@@ -407,10 +407,12 @@ export class CyberpunkItem extends Item {
     const mods = { ...attackMods, targetActor: CyberpunkItem.__targetActor(targets[0]) };
 
     if (!isRanged) {
+      // The attacker's own token rides through to the contest: only the acting client knows which
+      // token it is firing as, and the notice and the prompt name it (`T296`, D133).
       if (system.attackType === meleeAttackTypes.martial) {
-        return this.__martialBonk(mods, targets);
+        return this.__martialBonk(mods, targets, attackerToken);
       } else {
-        return this.__meleeBonk(mods, targets);
+        return this.__meleeBonk(mods, targets, attackerToken);
       }
     }
 
@@ -455,6 +457,12 @@ export class CyberpunkItem extends Item {
   static __targetActor(target) {
     if (!target?.tokenUuid) return undefined;
     return fromUuidSync(target.tokenUuid)?.actor;
+  }
+
+  /** The placed token behind a target entry — the name the defender is called by (D133, `T296`). */
+  static __targetToken(target) {
+    if (!target?.tokenUuid) return null;
+    return fromUuidSync(target.tokenUuid) ?? null;
   }
 
   /** A card about a token the players cannot see is whispered — the target's own state decides. */
@@ -1444,13 +1452,14 @@ export class CyberpunkItem extends Item {
       return roll;
   }
 
-  async __meleeBonk(attackMods, targetTokens = []) {
+  async __meleeBonk(attackMods, targetTokens = [], attackerToken = null) {
       // Melee attacks do not have a fixed DC; they are contested instead
       let attackRoll = await this.attackRoll(attackMods);
 
       const defense = attackMods.targetActor
         ? await resolveDefense(attackMods.targetActor, attackRoll.total,
-            { attackerName: displayName(this.actor), itemName: this.name,
+            { attackerName: displayName(this.actor, attackerToken), itemName: this.name,
+              defenderToken: CyberpunkItem.__targetToken(targetTokens[0]),
               messageMode: CyberpunkItem.__targetMessageMode(targetTokens[0]),
               hideAttacker: CyberpunkItem.__attackerIsHidden(this.actor) })
         : null;
@@ -1525,7 +1534,7 @@ export class CyberpunkItem extends Item {
 
       return bigRoll;
   }
-  async __martialBonk(attackMods, targetTokens = []) {
+  async __martialBonk(attackMods, targetTokens = [], attackerToken = null) {
     let actor = this.actor;
     let system = actor.system;
 
@@ -1680,7 +1689,8 @@ export class CyberpunkItem extends Item {
 
     const defense = attackMods.targetActor
       ? await resolveDefense(attackMods.targetActor, attackRoll.total,
-          { attackerName: displayName(actor), itemName: this.name,
+          { attackerName: displayName(actor, attackerToken), itemName: this.name,
+            defenderToken: CyberpunkItem.__targetToken(targetTokens[0]),
             messageMode: CyberpunkItem.__targetMessageMode(targetTokens[0]),
             hideAttacker: CyberpunkItem.__attackerIsHidden(actor) })
       : null;

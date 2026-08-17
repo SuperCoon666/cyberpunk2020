@@ -134,9 +134,13 @@ Hooks.once('init', async function () {
 
     // The owner of a player character rolls their own save when the world asks for it. The reply
     // has to beat the sender's timeout, so the dialog is closed here rather than waited on forever.
-    CONFIG.queries["cyberpunk2020.savePrompt"] = async ({ actorUuid, kind, dc, messageMode }) => {
+    CONFIG.queries["cyberpunk2020.savePrompt"] = async ({ actorUuid, tokenUuid, kind, dc, messageMode }) => {
       const actor = await fromUuid(actorUuid);
       if (!actor) throw new Error(`No actor for save prompt: ${actorUuid}`);
+
+      // A token this client cannot resolve leaves the name where it was, on the actor's own
+      // fallbacks — a save is never refused over a label (`T296`).
+      const token = tokenUuid ? await fromUuid(tokenUuid) : null;
 
       const titles = { death: "CYBERPUNK.SaveDeath", zone: "CYBERPUNK.SaveZone" };
 
@@ -150,7 +154,7 @@ Hooks.once('init', async function () {
       const answer = await Promise.race([
         foundry.applications.api.DialogV2.input({
           window: { title: titles[kind] ?? "CYBERPUNK.SaveStun" },
-          content: `<p>${localizeParamEscaped("SavePrompt", { name: displayName(actor) })}</p>
+          content: `<p>${localizeParamEscaped("SavePrompt", { name: displayName(actor, token) })}</p>
             <input type="number" name="mod" value="0" step="1" autofocus>`,
           ok: { label: "CYBERPUNK.SaveRollButton" },
           render: (event, app) => { dialog = app; }
@@ -173,11 +177,15 @@ Hooks.once('init', async function () {
 
     // The defender picks the skill; the attacker's client rolls it, so this returns a choice and
     // never a result. Null means "decide for me" — the timeout path answers that way too.
-    CONFIG.queries["cyberpunk2020.defensePrompt"] = async ({ attackerName, itemName, defenderActorUuid, attackTotal, choices }) => {
+    CONFIG.queries["cyberpunk2020.defensePrompt"] = async ({ attackerName, itemName, defenderActorUuid, defenderTokenUuid, attackTotal, choices }) => {
       // Named, not "you": a player may own more than one character, and only the uuid says which
       // of them is being attacked.
       const defender = await fromUuid(defenderActorUuid);
       if (!defender) throw new Error(`No actor for defense prompt: ${defenderActorUuid}`);
+
+      // Which of that actor's tokens is under attack — this client has no other way to know, and a
+      // linked actor would otherwise be named off its prototype (`T296`).
+      const defenderToken = defenderTokenUuid ? await fromUuid(defenderTokenUuid) : null;
 
       let dialog = null;
       let deadlineTimer = null;
@@ -210,11 +218,11 @@ Hooks.once('init', async function () {
       // and the item name together, and the reduced line keeps the total (D29.5).
       const asked = attackerName
         ? localizeParam("DefensePrompt", {
-            attacker: esc(attackerName), defender: esc(displayName(defender)),
+            attacker: esc(attackerName), defender: esc(displayName(defender, defenderToken)),
             item: esc(itemName), total: Number(attackTotal) || 0
           })
         : localizeParam("DefensePromptHidden", {
-            defender: esc(displayName(defender)), total: Number(attackTotal) || 0
+            defender: esc(displayName(defender, defenderToken)), total: Number(attackTotal) || 0
           });
 
       const answer = await Promise.race([
