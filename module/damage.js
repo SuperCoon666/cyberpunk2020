@@ -27,8 +27,12 @@ import { Multiroll } from "./dice.js";
  *     a world-readable Region (`T115`, D131).
  * 12: the ammunition snapshot carries `damageFormula`, the round's own replacing damage (D147) —
  *     a card written before this has no field to read and would silently roll the weapon's.
+ * 13: the ammunition snapshot carries `mono` (D174) — a thrown or shot mono edge is the round's,
+ *     so a card written before this would resolve a Mono round at full SP — and every other field
+ *     in it is now gated on its effect being ticked (D176), so an older card may carry values the
+ *     round no longer stands behind.
  */
-export const ATTACK_FLAG_VERSION = 12;
+export const ATTACK_FLAG_VERSION = 13;
 
 /** The flag a damage-over-time effect burns down from, one tick per turn. */
 const DOT_FLAG = "dot";
@@ -119,6 +123,25 @@ export function snapshotAmmo(item) {
   if (ammo?.type !== "ammo") return null;
 
   const a = ammo.system ?? {};
+
+  // D176 — the tick is the mechanical switch, exactly as an implant's is: ticked, the family's
+  // mechanism applies; unticked, it does not; re-ticked, it applies again, and the stored values are
+  // never rewritten in between. This is the only place that reads the ammunition document at fire
+  // time, so gating here is what makes every downstream test honour the list — `isBlastAttack`,
+  // `isSpreadAttack`, `tickDot`, the electroshock path, `__ammoDamageFormula` and `resolveHit` all
+  // read this snapshot and none of them changed. It is the same neutralise-at-the-source idiom the
+  // three fields below already use, and it supersedes the measured contract that `effectTypes` had
+  // no reader outside the sheet: it has exactly one now, here. A value gate keeps its own meaning
+  // on top — a ticked Blast with `blastRadius: 0` is still no blast.
+  const effects = Array.isArray(a.effectTypes) ? a.effectTypes : [];
+  const on = (...names) => names.some(name => effects.includes(name));
+  const armourPiercing = on("AP", "Slug", "Mono");
+  const blast = on("Blast");
+  const buckshot = on("Buckshot");
+  const incendiary = on("Incendiary");
+  const electroshock = on("Electroshock");
+  const damageReplace = on("DamageReplace");
+
   return {
     // The round's own accuracy, damage multiplier and bonus damage contribute nothing, and are not
     // offered on the sheet: the corebook gives ammunition a price and nothing else (`05:629`) —
@@ -131,33 +154,36 @@ export function snapshotAmmo(item) {
     bonusDamageFormula: "",
     // D147 — the replacing formula is the one damage field a round does carry: the book's shotgun
     // table is a damage *per gauge* and it stands in for the weapon's own (`07:867-873`).
-    damageFormula: String(a.damageFormula ?? ""),
-    armorMultSoft: numberOr(a.armorMultSoft, 1),
-    armorMultHard: numberOr(a.armorMultHard, 1),
-    penDamageMult: numberOr(a.penDamageMult, 1),
+    damageFormula: damageReplace ? String(a.damageFormula ?? "") : "",
+    armorMultSoft: armourPiercing ? numberOr(a.armorMultSoft, 1) : 1,
+    armorMultHard: armourPiercing ? numberOr(a.armorMultHard, 1) : 1,
+    // D174 — the one member of the family with nothing to author: ch. 07:1065's fractions are the
+    // book's own, so its tick is the whole mechanism rather than a switch over fields.
+    mono: on("Mono"),
+    penDamageMult: armourPiercing ? numberOr(a.penDamageMult, 1) : 1,
     // A field absent from an older document defaults to the flat AP rule, not to the slug's.
-    penHalvesSoft: a.penHalvesSoft !== false,
-    penHalvesHard: a.penHalvesHard !== false,
-    stunSaveOnHit: !!a.stunSaveOnHit,
-    stunSavePenalty: numberOr(a.stunSavePenalty, 0),
-    stunIgnoresArmor: !!a.stunIgnoresArmor,
-    dotEnabled: !!a.dotEnabled,
-    dotTurns: numberOr(a.dotTurns, 0),
-    dotDamageFormulas: Array.isArray(a.dotDamageFormulas)
+    penHalvesSoft: armourPiercing ? a.penHalvesSoft !== false : true,
+    penHalvesHard: armourPiercing ? a.penHalvesHard !== false : true,
+    stunSaveOnHit: electroshock && !!a.stunSaveOnHit,
+    stunSavePenalty: electroshock ? numberOr(a.stunSavePenalty, 0) : 0,
+    stunIgnoresArmor: electroshock && !!a.stunIgnoresArmor,
+    dotEnabled: incendiary && !!a.dotEnabled,
+    dotTurns: incendiary ? numberOr(a.dotTurns, 0) : 0,
+    dotDamageFormulas: incendiary && Array.isArray(a.dotDamageFormulas)
       ? a.dotDamageFormulas.map(f => String(f ?? ""))
       : [],
-    blastRadius: numberOr(a.blastRadius, 0),
-    overallBody: !!a.overallBody,
-    blastFullDamageWithin: numberOr(a.blastFullDamageWithin, 0),
-    blastMultipliers: Array.isArray(a.blastMultipliers) ? [...a.blastMultipliers] : [],
-    blastThroughWalls: !!a.blastThroughWalls,
-    spreadMode: String(a.spreadMode ?? "single"),
-    spreadWidthShort: numberOr(a.spreadWidthShort, 0),
-    spreadWidthMedium: numberOr(a.spreadWidthMedium, 0),
-    spreadWidthLong: numberOr(a.spreadWidthLong, 0),
-    spreadDamageShort: String(a.spreadDamageShort ?? ""),
-    spreadDamageMedium: String(a.spreadDamageMedium ?? ""),
-    spreadDamageLong: String(a.spreadDamageLong ?? "")
+    blastRadius: blast ? numberOr(a.blastRadius, 0) : 0,
+    overallBody: blast && !!a.overallBody,
+    blastFullDamageWithin: blast ? numberOr(a.blastFullDamageWithin, 0) : 0,
+    blastMultipliers: blast && Array.isArray(a.blastMultipliers) ? [...a.blastMultipliers] : [],
+    blastThroughWalls: blast && !!a.blastThroughWalls,
+    spreadMode: buckshot ? String(a.spreadMode ?? "single") : "single",
+    spreadWidthShort: buckshot ? numberOr(a.spreadWidthShort, 0) : 0,
+    spreadWidthMedium: buckshot ? numberOr(a.spreadWidthMedium, 0) : 0,
+    spreadWidthLong: buckshot ? numberOr(a.spreadWidthLong, 0) : 0,
+    spreadDamageShort: buckshot ? String(a.spreadDamageShort ?? "") : "",
+    spreadDamageMedium: buckshot ? String(a.spreadDamageMedium ?? "") : "",
+    spreadDamageLong: buckshot ? String(a.spreadDamageLong ?? "") : ""
   };
 }
 
@@ -169,8 +195,8 @@ export function snapshotAmmo(item) {
  * @param {number} hit.damage Rolled damage, ammunition raw multiplier already applied
  * @param {string} hit.zone Hit location key, e.g. "Torso"
  * @param {boolean} hit.ap Armour-piercing round, or — for a melee hit — an edged weapon
- * @param {boolean} hit.mono A mono edge. Only read together with `ap`, and deliberately not with
- *   `melee`: ch. 07:1065 is stated of *all* mono-edge weapons, thrown ones included (`T242`, D67)
+ * @param {boolean} hit.mono The striking weapon's own mono edge. Read only with `melee` (D174): a
+ *   thrown or shot blade carries its edge on the round instead, as `ammo.mono`
  * @param {boolean} hit.melee The hit came from a melee weapon, which meets armour by its own rules
  * @param {object|null} hit.ammo Snapshot from snapshotAmmo
  * @param {CyberpunkActor} targetActor
@@ -191,13 +217,18 @@ export function resolveHit({ damage = 0, zone = "Torso", ap = false, mono = fals
 
   let effSp = Math.floor(sp * armorMult);
 
-  if (ap && mono) {
+  // D174 — a weapon carries no effects unless it strikes. A melee blade's edge is its own property;
+  // a thrown or shot one is the round's `Mono` effect, so a ranged weapon's `mono` flag is
+  // deliberately not read here. Ch. 07:1065 is stated of *all* mono-edge weapons either way
+  // (`T242`, D67), which is why both sources land on the same arithmetic.
+  const monoEdge = (melee && mono) || !!ammo?.mono;
+
+  if (monoEdge) {
     // Ch. 07:1065 — *"all mono-edge weapons are at 1/3xSP vs. soft armors, 2/3xSP vs. hard armors"*.
     // Stated unconditionally and already accounting for hardness, so it **replaces** the √ halving
     // rather than stacking with it (`AB-Q3`, D52) — stacking would give a mono knife 1/6 SP against
-    // a flak vest, which no line in the book asks for. *"All mono-edge weapons"* is also why this
-    // does not ask how the blade arrived: a thrown one is still a mono edge (`T242`, D67), and the
-    // branch stays first so a mono blade never falls through to the plain edged rule below.
+    // a flak vest, which no line in the book asks for. The branch stays first so a mono blade never
+    // falls through to the plain edged rule below.
     effSp = Math.floor(sp * (location.hard ? 2 / 3 : 1 / 3));
   } else if (melee && ap) {
     // Ch. 07:462 — an edged weapon meets half SP from armour the table marks √, and full SP from
@@ -211,17 +242,19 @@ export function resolveHit({ damage = 0, zone = "Torso", ap = false, mono = fals
   }
 
   let penetrating = Math.max(0, Math.floor(damage) - effSp);
-  // The second half does branch: a finned slug's penetrating damage survives hard armour whole
-  // (ch. 07:865-873). Both flags default true, which is the flat AP rule (`T95`, D53 У3). A blade
-  // never halves its damage at all: ch. 07:462 limits itself to SP effectiveness, and the AP
-  // round's halving is justified by its "lower damage capacity" (`AB-Q1a`, D53 У2) — which is a
-  // property of the round and not of the delivery, so a thrown mono blade is out of it too
-  // (`T242`, D67). Leaving it in would hand that blade 1/3 SP and then halve what got through.
+  // D175 — the halving of what got through is the **round's** (`penDamageMult`), and the armour's
+  // hardness decides whether it applies at all: ch. 07:460 halves an AP round's damage against
+  // either armour, ch. 07:867 exempts a finned slug from the hard-armour half — *"damage that
+  // penetrates Hard armor is not halved"*. Both flags default true, which is the flat AP rule
+  // (`T95`, D53 У3). No weapon flag gates this any more: after D169/D173 no ranged weapon may carry
+  // armour-piercing at all, so requiring one made the slug's own exemption unreachable (`T345`).
+  // A blade never halves its damage: ch. 07:462 limits itself to SP effectiveness, and the halving
+  // is the round's "lower damage capacity" (`AB-Q1a`, D53 У2) — which is why a mono edge is out of
+  // it, and why leaving it in would hand that blade 1/3 SP and then halve what got through.
   const penHalves = location.hard
     ? (ammo?.penHalvesHard !== false)
     : (ammo?.penHalvesSoft !== false);
-  if (ap && !melee && !mono && penHalves) penetrating = Math.floor(penetrating / 2);
-  penetrating = Math.floor(penetrating * numberOr(ammo?.penDamageMult, 1));
+  if (!monoEdge && penHalves) penetrating = Math.floor(penetrating * numberOr(ammo?.penDamageMult, 1));
 
   const headDoubled = doubleHead && zone === "Head" && penetrating > 0;
   if (headDoubled) penetrating *= 2;
@@ -564,7 +597,7 @@ export async function tickDot(actor, { messageMode, token = null } = {}) {
  * @param {Array<{zone: string, damage: number}>} attack.hits
  * @param {boolean} attack.ap
  * @param {boolean} [attack.melee] The hits came from a melee weapon (`T94`)
- * @param {boolean} [attack.mono] A mono edge, read only with `ap` and `melee`
+ * @param {boolean} [attack.mono] The striking weapon's own mono edge, read only with `melee` (D174)
  * @param {object|null} attack.ammo
  * @param {string} attack.targetName
  * @param {string} [attack.messageMode] Visibility of the breakdown and of the saves behind it

@@ -64,12 +64,13 @@
 <div class="field-list">
     {{> (template "fields/select") label="Availability" edit="system.availability" choices=availabilities}}
 
+    {{!-- D173/D174 — a striking weapon is the only one that carries an effect of its own; a thrown
+          or shot blade carries it on the round. The two boxes are alternatives, not a box and its
+          sub-option: `07:1065`'s fractions replace `07:462`'s halving rather than refining it, so
+          the sheet refuses the pair the way an ammunition sheet refuses {AP, Slug, Mono}. --}}
     {{#if isMelee}}
         {{> (template "fields/boolean") label="AP" edit="system.ap"}}
-        {{!-- A mono edge is a kind of edge, so it only means anything on a weapon that has one. --}}
-        {{#if system.ap}}
-            {{> (template "fields/boolean") label="WeaponMono" edit="system.mono"}}
-        {{/if}}
+        {{> (template "fields/boolean") label="WeaponMono" edit="system.mono"}}
     {{else}}
         {{!-- `T340` — the box reads the way the reload families read everywhere else: `CPLocal`
               translates a known key and echoes anything else, so a value already written as prose

@@ -251,7 +251,8 @@ export class CyberpunkWeaponData extends CyberpunkBaseItemData {
       rangeDamages: objectField(DEFAULT_RANGE_DAMAGES),
       ap: booleanField(DEFAULT_WEAPON.ap),
       // Ch. 07:1065 — a mono edge is a property of the blade, not a kind of attack, so a martial
-      // weapon can carry one too. Only meaningful with `ap`, which is what the sheet gates it on.
+      // weapon can carry one too. Read on a striking weapon only (D174): a thrown or shot blade
+      // carries its edge on the round instead, as the `Mono` ammunition effect.
       mono: booleanField(false),
       shotsLeft: numberField(DEFAULT_WEAPON.shotsLeft),
       shots: numberField(DEFAULT_WEAPON.shots),
@@ -274,11 +275,12 @@ export class CyberpunkWeaponData extends CyberpunkBaseItemData {
     normalizeBooleanIfPresent(source, "ap", false);
     normalizeBooleanIfPresent(source, "mono", false);
     // `Mono` was an attack type before it was a property, which made a mono weapon unable to be a
-    // martial one. A blade the book calls mono-edge is also an edged weapon, so `ap` comes with it.
+    // martial one. `ap` deliberately does not come with it: D174 made the two exclusive on the
+    // weapon, and the mono fractions replace the edged halving rather than building on it, so a
+    // converted blade that also carried `ap` would arrive in the state the sheet now refuses.
     if (source.attackType === "Mono") {
       source.attackType = "Melee";
       source.mono = true;
-      source.ap = true;
     }
     if (REMOVED_ATTACK_TYPES.has(source.attackType)) source.attackType = "";
     return super.migrateData(source);

@@ -13,6 +13,13 @@ const { Tabs } = foundry.applications.ux;
  */
 const MAX_DOT_TICKS = 10;
 
+/**
+ * D172/D174 — the armour-piercing family. Three ways to write "this round gets through armour", of
+ * which a round carries one: the criterion is D71's *"do these two get in each other's way"*, and
+ * each of the three replaces the same arithmetic in `resolveHit`.
+ */
+const AP_FAMILY_EFFECTS = new Set(["AP", "Slug", "Mono"]);
+
 /** @extends {foundry.applications.sheets.ItemSheetV2} */
 export class CyberpunkItemSheet extends HandlebarsApplicationMixin(ItemSheetV2) {
 
@@ -259,6 +266,7 @@ export class CyberpunkItemSheet extends HandlebarsApplicationMixin(ItemSheetV2) 
       Standard: "AmmoEffect_Standard",
       AP: "AmmoEffect_AP",
       Slug: "AmmoEffect_Slug",
+      Mono: "AmmoEffect_Mono",
       Electroshock: "AmmoEffect_Electroshock",
       Incendiary: "AmmoEffect_Incendiary",
       Buckshot: "AmmoEffect_Buckshot",
@@ -746,7 +754,9 @@ async _prepareCyberware(sheet) {
   /**
    * The descriptive ammunition type (`T340`). Its box renders through `CPLocal` and therefore holds
    * translated text, so it must stay out of the framework's own submit — the input carries no
-   * `name` and this is its only writer.
+   * `name` and this is its only writer. The AP/Mono pair rides the same listener because it needs
+   * the same suppression: the framework's submit would persist the box that was clicked and leave
+   * the one this refusal clears, which is the combination being refused.
    */
   _cpActivateWeaponControls(root) {
     if (!root?.addEventListener) return;
@@ -757,13 +767,43 @@ async _prepareCyberware(sheet) {
 
     root.addEventListener("change", async (event) => {
       const input = event.target?.closest?.("input.weapon-ammo-type");
-      if (!input || !root.contains(input)) return;
+      if (input && root.contains(input)) {
+        event.preventDefault();
+        event.stopPropagation();
 
-      event.preventDefault();
-      event.stopPropagation();
+        await this.item.update({ "system.ammoType": input.value });
+        return;
+      }
 
-      await this.item.update({ "system.ammoType": input.value });
+      const edge = event.target?.closest?.('input[name="system.ap"], input[name="system.mono"]');
+      if (edge && root.contains(edge)) await this._cpHandleWeaponEdgeChange(edge, event, root);
     }, true);
+  }
+
+  /**
+   * D174 — a melee weapon carries armour-piercing or a mono edge, never both: the two name one
+   * property of one blade and `resolveHit` reads them as alternatives, the mono fractions replacing
+   * the √ halving rather than stacking with it. Refused at authoring, the way D71's ammunition pairs
+   * are, and warned because the box that clears is not the one clicked.
+   */
+  async _cpHandleWeaponEdgeChange(checkbox, event, root) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+
+    const otherName = checkbox.name === "system.ap" ? "system.mono" : "system.ap";
+    const other = root.querySelector(`input[name="${otherName}"]`);
+
+    const update = { [checkbox.name]: checkbox.checked };
+    if (checkbox.checked && other?.checked) {
+      other.checked = false;
+      update[otherName] = false;
+      ui.notifications.warn(localize("WeaponAPMonoExclusive"));
+    }
+
+    // No re-render: both boxes render unconditionally on a melee weapon now, so nothing changes
+    // shape and a rebuild would only drop focus out of the control just used.
+    await this.item.update(update, { render: false });
   }
 
   /** The header image carries `data-edit="img"`, which ApplicationV2 does not wire up on its own. */
@@ -1886,15 +1926,14 @@ async _prepareCyberware(sheet) {
       if (box) box.checked = false;
     }
 
-    // D172 — AP and Slug are two carriers of one armour-piercing family, so a round takes one. Warned
-    // rather than silently swapped, unlike the pair above: the box that clears is not the one clicked.
-    if (checkbox.checked && (checkbox.value === "AP" || checkbox.value === "Slug")) {
-      const other = checkbox.value === "AP" ? "Slug" : "AP";
-      const box = boxes.find((entry) => entry.value === other);
-      if (box?.checked) {
-        box.checked = false;
-        ui.notifications.warn(localize("AmmoAPSlugExclusive"));
-      }
+    // D172/D174 — AP, Slug and Mono are three carriers of one armour-piercing family, so a round
+    // takes one. Warned rather than silently swapped, unlike the pair above: the box that clears is
+    // not the one clicked.
+    if (checkbox.checked && AP_FAMILY_EFFECTS.has(checkbox.value)) {
+      const cleared = boxes.filter((entry) => entry.checked && entry !== checkbox
+        && AP_FAMILY_EFFECTS.has(entry.value));
+      for (const box of cleared) box.checked = false;
+      if (cleared.length) ui.notifications.warn(localize("AmmoAPFamilyExclusive"));
     }
 
     let next = boxes.filter((box) => box.checked).map((box) => box.value);

@@ -38,6 +38,11 @@
                 </label>
 
                 <label class="ammo-ms-opt">
+                    <input type="checkbox" value="Mono" {{#if (ammoHasEffect system "Mono")}}checked{{/if}}>
+                    {{CPLocal "AmmoEffect_Mono"}}
+                </label>
+
+                <label class="ammo-ms-opt">
                     <input type="checkbox" value="Electroshock" {{#if (ammoHasEffect system "Electroshock")}}checked{{/if}}>
                     {{CPLocal "AmmoEffect_Electroshock"}}
                 </label>
@@ -114,11 +119,17 @@
           `snapshotAmmo` is what makes them contribute nothing meanwhile. --}}
 
     {{!-- ===== Armour piercing ===== --}}
+    {{!-- D175 — the book gives AP and the slug the same two halvings (`07:458`, `07:460`,
+          `07:867`), so both blocks carry both multipliers; the one rule that separates them is
+          which armour exempts the penetrating damage, which is the boolean each block ends on. --}}
     {{#if (ammoHasEffect system "AP")}}
         <div class="field span-two-cells" data-tooltip="{{CPLocal 'AmmoPenHalvesHint'}}">
             <label class="larger">{{CPLocal "AmmoSectionAP"}}</label>
             <span class="flex-pad"></span>
         </div>
+
+        {{> (template "fields/number") label="AmmoArmorMultSoft" edit="system.armorMultSoft"}}
+        {{> (template "fields/number") label="AmmoArmorMultHard" edit="system.armorMultHard"}}
 
         {{> (template "fields/number") label="AmmoPenDamageMult" edit="system.penDamageMult"}}
         {{> (template "fields/boolean") label="AmmoPenHalvesSoft" edit="system.penHalvesSoft"}}
@@ -126,8 +137,7 @@
 
     {{!-- ===== Slug (D172) ===== --}}
     {{!-- The second carrier of armour-piercing, and exclusive with AP: `07:865-873` gives a finned
-          slug "normal AP ability vs. all armors" with the hard-armour halving dropped, which is the
-          armour multipliers plus `penHalvesHard`. --}}
+          slug "normal AP ability vs. all armors" with the hard-armour halving dropped. --}}
     {{#if (ammoHasEffect system "Slug")}}
         <div class="field span-two-cells" data-tooltip="{{CPLocal 'AmmoSlugHint'}}">
             <label class="larger">{{CPLocal "AmmoSectionSlug"}}</label>
@@ -137,7 +147,18 @@
         {{> (template "fields/number") label="AmmoArmorMultSoft" edit="system.armorMultSoft"}}
         {{> (template "fields/number") label="AmmoArmorMultHard" edit="system.armorMultHard"}}
 
+        {{> (template "fields/number") label="AmmoPenDamageMult" edit="system.penDamageMult"}}
         {{> (template "fields/boolean") label="AmmoPenHalvesHard" edit="system.penHalvesHard"}}
+    {{/if}}
+
+    {{!-- ===== Mono (D174) ===== --}}
+    {{!-- The third carrier of armour-piercing, and the only one with nothing to author: `07:1065`
+          states its own fractions, so the block is the rule written down rather than a form. --}}
+    {{#if (ammoHasEffect system "Mono")}}
+        <div class="field span-two-cells" data-tooltip="{{CPLocal 'AmmoMonoHint'}}">
+            <label class="larger">{{CPLocal "AmmoSectionMono"}}</label>
+            <span class="flex-pad"></span>
+        </div>
     {{/if}}
 
     {{!-- ===== Electroshock ===== --}}
