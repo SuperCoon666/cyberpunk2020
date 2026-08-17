@@ -1144,8 +1144,10 @@ export class CyberpunkActor extends Actor {
     // one that is not fighting joins and rolls, one that is re-rolls the initiative it already has.
     // The window opens ticked on the **clicked token's cohort**, which is the controlled token for
     // the same reason the attack dialog reads it (D157/D161) — the click is what says which mook the
-    // GM means. With none controlled there is no clicked token, so the joinable cohort ticks and the
-    // all-fighting mob falls back to the re-roll it is the only sensible reading of.
+    // GM means. With none controlled there is no clicked token, and D167 rules that case for the
+    // **fighting** cohort — reaching for initiative mid-fight is more often a re-roll of the gang
+    // than an addition to it. A mob with nobody fighting yet has no re-roll to mean, so it ticks the
+    // joiners, which is D160's initial case.
     if (this.type === "npc" && options.createCombatants && !this.token) {
       const placed = combat.scene?.tokens.filter(t => t.actorId === this.id) ?? [];
       const combatantOf = token => combat.combatants.find(c => c.tokenId === token.id) ?? null;
@@ -1156,7 +1158,7 @@ export class CyberpunkActor extends Actor {
           ?.document ?? null;
         const cohort = clicked
           ? Boolean(combatantOf(clicked))
-          : placed.every(token => combatantOf(token));
+          : placed.some(token => combatantOf(token));
 
         const picked = placed.length > 1
           ? await InitiativeTokensDialog.pick(placed.map(token => {

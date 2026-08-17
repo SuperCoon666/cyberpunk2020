@@ -709,6 +709,7 @@ async _prepareCyberware(sheet) {
     this._cpActivateCyberwareStateControls(root);
     this._cpActivateCyberwareWeaponControls(root);
     this._cpActivateAmmoControls(root);
+    this._cpActivateWeaponControls(root);
     this._cpActivateSkillItemControls(root);
     this._cpActivateArmorAblationControls(root);
   }
@@ -738,6 +739,29 @@ async _prepareCyberware(sheet) {
       if (next === (Number(cover.ablation) || 0)) return;
 
       await this.item.update({ [`system.coverage.${zone}.ablation`]: next });
+    }, true);
+  }
+
+  /**
+   * The descriptive ammunition type (`T340`). Its box renders through `CPLocal` and therefore holds
+   * translated text, so it must stay out of the framework's own submit — the input carries no
+   * `name` and this is its only writer.
+   */
+  _cpActivateWeaponControls(root) {
+    if (!root?.addEventListener) return;
+    if (this.item.type !== "weapon" || !this.isEditable) return;
+
+    if (root.dataset.cpWeaponBound === "1") return;
+    root.dataset.cpWeaponBound = "1";
+
+    root.addEventListener("change", async (event) => {
+      const input = event.target?.closest?.("input.weapon-ammo-type");
+      if (!input || !root.contains(input)) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      await this.item.update({ "system.ammoType": input.value });
     }, true);
   }
 

@@ -48,9 +48,6 @@
                   card says that instead of printing a total nothing was compared against. --}}
             {{#if defense.roll}}
             <span>{{defense.total}}</span>
-            {{#if (eq defense.action "AllOutDodge")}}
-                <span>({{CPLocal "DefenseAllOutDodgeEffect"}})</span>
-            {{/if}}
             <span class="flex-pad"></span>
             <span class="roll-results">
                 {{#each defense.roll.terms as |term|}}

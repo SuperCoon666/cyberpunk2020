@@ -71,6 +71,18 @@
             {{> (template "fields/boolean") label="WeaponMono" edit="system.mono"}}
         {{/if}}
     {{else}}
-        {{> (template "fields/string") label="AmmoType" edit="system.ammoType"}}
+        {{!-- `T340` — the box reads the way the reload families read everywhere else: `CPLocal`
+              translates a known key and echoes anything else, so a value already written as prose
+              renders unchanged. It carries **no `name`** on purpose. `submitOnChange` writes every
+              named input on this sheet whenever any one of them changes (measured: editing `cost`
+              posts `system.ammoType` with it), which would persist the *localized* text over the
+              key the next time something unrelated here was edited — and the localization would
+              then be gone from that document, per world and per language. Its own change handler
+              is the only writer. --}}
+        <div class="field">
+            <label>{{CPLocal "AmmoType"}}</label>
+            <span class="flex-pad"></span>
+            <input class="textsize weapon-ammo-type" type="text" value="{{CPLocal system.ammoType}}"/>
+        </div>
     {{/if}}
 </div>
