@@ -113,10 +113,19 @@ export async function removeInjectedUnarmedWeapons(actor) {
   // D149/`T299` — the id match cannot tell the injected copy from a Strike or Kick a GM dragged out
   // of the pack himself, and both go. So the sweep says what it took, per actor, and the re-drag is
   // the table's. Whispered because the migration runs on the GM's client and the list is his.
-  await createCyberpunkChatMessage({
-    whisper: getGMUserIds(),
-    content: localizeParamEscaped("CP.Migration.UnarmedRemoved", { actor: actor.name, items: names })
-  });
+  //
+  // `T323` — the deletion above already happened and `migrateWorld` stamps the version whether or
+  // not an actor threw, so this run is the only one there will be. A refused create — another
+  // module's `preCreateChatMessage`, a socket — would otherwise reach the caller's per-actor
+  // `catch` and take that actor's whole migration with it, silently and once.
+  try {
+    await createCyberpunkChatMessage({
+      whisper: getGMUserIds(),
+      content: localizeParamEscaped("CP.Migration.UnarmedRemoved", { actor: actor.name, items: names })
+    });
+  } catch (err) {
+    console.warn("Cyberpunk2020 | migration unarmed-sweep announcement failed", err);
+  }
 
   return ids;
 }

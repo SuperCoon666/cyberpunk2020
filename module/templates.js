@@ -59,6 +59,9 @@ export const preloadHandlebarsTemplates = async function() {
         // Combat automation settings submenu
         "systems/cyberpunk2020/templates/dialog/combat-automation.hbs",
 
+        // Which of an NPC's tokens join the encounter
+        "systems/cyberpunk2020/templates/dialog/initiative-tokens.hbs",
+
         // Program
         "systems/cyberpunk2020/templates/item/parts/program/summary.hbs",
         "systems/cyberpunk2020/templates/item/parts/program/settings.hbs",

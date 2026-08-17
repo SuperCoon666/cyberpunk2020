@@ -2469,9 +2469,11 @@ async _prepareCyberware(sheet) {
         return isNaN(n) ? 0 : n;
       };
 
-      // In Foundry v14 an ItemSheet change submit may contain only the changed
-      // input, not the complete form. Do not create missing skill fields here,
-      // or changing level will overwrite chipLevel with 0 and vice versa.
+      // A submit carries the whole form (`FormDataExtended` over `form`,
+      // `client/applications/api/application.mjs:2134-2139`, 14.365.0) — but only what the form
+      // actually holds: an input that is unrendered, unnamed or disabled is not in it. So write
+      // these two only where they arrived, or a submit from a sheet that does not carry one of them
+      // would create it as 0 and overwrite the stored level.
       if (foundry.utils.hasProperty(data, "system.level")) {
         foundry.utils.setProperty(data, "system.level", fixNum(foundry.utils.getProperty(data, "system.level")));
       }

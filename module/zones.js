@@ -932,17 +932,24 @@ function corridorReach(edges, corridor, centre, point, step) {
  * @param {{x: number, y: number}} centre
  * @param {number} radius In scene units — what `reach` is cut off against
  * @param {number} step Pixels per scene unit
- * @param {number} bound How far from `centre` to search, in scene units. The blast's own radius, and
- *   more for a corridor kind, whose band reaches back to the muzzle
+ * @param {{minX: number, maxX: number, minY: number, maxY: number}} box Where to search, in pixels.
+ *   The blast's own square, and for a corridor kind the **band's** box rather than a square on the
+ *   disc: the square scales with the shot's range instead of with the ground drawn, and a 50 m
+ *   pattern in a walled interior cost 185 ms of the applying GM's frame against the blast's 2 ms
+ *   (`T328`, measured on the sandbox at 365 walls in reach). The cells tested are the same cells
+ *   either way — the lattice is anchored on `centre` and every cell this drops fails `reach`.
  * @returns {Array<{type: string, points: number[], hole: boolean}>}
  */
-function unionOfCells(reach, centre, radius, step, bound) {
+function unionOfCells(reach, centre, radius, step, box) {
   const cell = step / ZONE_CELL_SUBDIVISION;
-  const span = Math.ceil((bound * step) / cell);
+  // One cell of slack in every direction, because the test below is on the cell's own **middle**: a
+  // cell whose middle is inside the box can be anchored just outside it.
+  const first = (min, origin) => Math.floor((min - cell - origin) / cell);
+  const last = (max, origin) => Math.ceil((max + cell - origin) / cell);
   const paths = [];
 
-  for (let i = -span; i < span; i++) {
-    for (let j = -span; j < span; j++) {
+  for (let i = first(box.minY, centre.y); i < last(box.maxY, centre.y); i++) {
+    for (let j = first(box.minX, centre.x); j < last(box.maxX, centre.x); j++) {
       const x = centre.x + (j * cell);
       const y = centre.y + (i * cell);
       const middle = { x: x + (cell / 2), y: y + (cell / 2) };
@@ -977,6 +984,22 @@ function unionOfCells(reach, centre, radius, step, bound) {
   walk(tree);
 
   return shapes;
+}
+
+/**
+ * The axis-aligned box a set of points reaches, in pixels — what `unionOfCells` searches.
+ *
+ * @param {Array<{x: number, y: number}>} points
+ * @param {number} margin In pixels
+ * @returns {{minX: number, maxX: number, minY: number, maxY: number}}
+ */
+function reachBox(points, margin) {
+  const xs = points.map(point => point.x);
+  const ys = points.map(point => point.y);
+  return {
+    minX: Math.min(...xs) - margin, maxX: Math.max(...xs) + margin,
+    minY: Math.min(...ys) - margin, maxY: Math.max(...ys) + margin
+  };
 }
 
 /**
@@ -1040,8 +1063,12 @@ function corridorShapes(scene, blast, centre, radius, step) {
   // cell union, which is the same exit `blastRegion` takes for the blast.
   if (!edges.length) return exact();
 
+  // The search follows the band, not the whole reach: a point is drawn only within `radius` of the
+  // line of fire or of the disc, so the box over those three points is where the cells can pass
+  // (`T328`).
   return unionOfCells(point => corridorReach(edges, blast.corridor, centre, point, step),
-    centre, radius, step, bound);
+    centre, radius, step,
+    reachBox([blast.corridor.from, blast.corridor.to, centre], radius * step));
 }
 
 /**
@@ -1067,7 +1094,8 @@ export function zoneShapes(blast) {
 
   const region = blastRegion(blast);
   return region
-    ? unionOfCells(point => drawnReach(region, centre, point, step), centre, radius, step, radius)
+    ? unionOfCells(point => drawnReach(region, centre, point, step), centre, radius, step,
+      reachBox([centre], radius * step))
     : [{ type: "circle", x: centre.x, y: centre.y, radius: radius * step }];
 }
 

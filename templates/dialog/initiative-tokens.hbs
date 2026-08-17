@@ -1,0 +1,33 @@
+{{!-- D159 — which of an NPC's placed tokens join the encounter. --}}
+{{!-- Not a <form>: the ApplicationV2 root element is the form, and nesting one here empties the submitted data. --}}
+<div class="cyberpunk initiative-tokens">
+    <p class="notes">{{CPLocal "InitiativeTokensHint"}}</p>
+
+    <div class="field-list">
+        {{#each rows}}
+            <div class="field full-width">
+                <label for="cp-init-token-{{this.id}}">
+                    {{this.name}}{{#if this.inCombat}} — {{CPLocal "InitiativeTokensInCombat"}}{{/if}}
+                </label>
+                <span class="flex-pad"></span>
+                {{!-- The wrapping span is the layout contract every boolean row here follows
+                      (`fields/boolean.hbs`): a checkbox directly inside a `.field` picks up the
+                      system's own `.field > input` rules and paints doubled. --}}
+                <span class="skill-mod-toggle">
+                    <input type="checkbox"
+                           id="cp-init-token-{{this.id}}"
+                           class="cp-initiative-token"
+                           data-token-id="{{this.id}}"
+                           {{#if this.inCombat}}disabled{{/if}} />
+                </span>
+            </div>
+        {{/each}}
+    </div>
+
+    <div class="flexrow" style="justify-content: flex-end; gap: 8px;">
+    {{!-- No name attribute: form.submit would shadow HTMLFormElement.prototype.submit. --}}
+    <button type="submit" autofocus>
+        {{CPLocal "InitiativeTokensConfirm"}}
+    </button>
+    </div>
+</div>

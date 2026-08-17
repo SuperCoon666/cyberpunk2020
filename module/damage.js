@@ -607,10 +607,12 @@ export async function applyHitsToActor(actor,
       zone = (await rollLocation(actor)).areaHit;
     }
     // D146 — the hit has to land on a zone that **exists**, so exhausting the throws must not leave
-    // it where it was rolled: the limb there is spent only in this attack's running tally, its
-    // persisted `sdp.current` still reads above zero, and `resolveHit` would absorb the whole hit
-    // into a pool `applyDamage` then floors at 0 (`T236`). The Torso is the deterministic answer —
-    // every target has one and it can never be a cyberlimb.
+    // it where it was rolled. `zoneIsGone` reaches here for either kind of spent limb, and they fail
+    // differently: one emptied inside this attack still reads above zero in `sdp.current`, so
+    // `resolveHit` absorbs the whole hit into a pool `applyDamage` then floors at 0 (`T236`); one
+    // emptied *before* the attack reads 0, so it absorbs nothing and the hit met the destroyed
+    // limb's own SP and could sever it a second time (`T324`). The Torso is the deterministic answer
+    // to both — every target has one and it can never be a cyberlimb.
     if (zoneIsGone(zone)) zone = "Torso";
 
     const resolved = resolveHit(

@@ -3,6 +3,7 @@ import { isFumbleRoll, buildSkillFumbleData } from "../utils.js";
 import { SortOrders, sortSkills } from "./skill-sort.js";
 import { btmFromBT, MARTIAL_ART_KEY_BY_ID, MARTIAL_ART_ID_BY_KEY, defensiveMartialActions, FNFF2_ONLY_MARTIAL_ART_IDS, getMartialActionBonus, isCombatAutomationEnabled, isFnff2Enabled, AWARENESS_NOTICE_SKILL_ID, ATHLETICS_SKILL_ID, DEMOLITIONS_SKILL_ID, MELEE_DEFENSE_SKILL_IDS, BRAWLING_SKILL_ID, DODGE_SKILL_ID, MEDICAL_TECH_SKILL_IDS, FIRST_AID_SKILL_ID, STABILIZATION_ADVANTAGES } from "../lookups.js";
 import { properCase, localize, localizeParam, displayName, getDefaultSkills, cwHasType, cwIsEnabled, withCompendiumSource } from "../utils.js"
+import { InitiativeTokensDialog } from "../dialog/initiative-tokens.js";
 
 /** The stabilization hand-off has no human in the loop — it is one flag write on the GM's client. */
 const STABILIZE_QUERY_TIMEOUT_MS = 5000;
@@ -1124,8 +1125,45 @@ export class CyberpunkActor extends Actor {
     }
 
     const combat = game.combat;
+
+    // The system formula already carries @initiativeMod, so the modifier reaches the roll by being
+    // persisted - not as an extra term, which would count it twice. The sheet's own change listener
+    // is not guaranteed to have finished by the time the row is clicked, hence the write here.
+    const persistMod = async () => {
+      const mod = Number(modificator);
+      if (Number.isFinite(mod) && mod !== this.system.initiativeMod) {
+        await this.update({ "system.initiativeMod": mod });
+      }
+    };
+
+    // D159 — one NPC sheet stands for a whole mob, so the GM is asked which of its placed tokens
+    // join: one combatant and one initiative roll each. A token already in the fight is offered but
+    // not pickable, so a second click cannot duplicate it, and a single placed token joins with no
+    // dialog at all. An unlinked token's own sheet is exactly one token and takes the path below.
+    if (this.type === "npc" && options.createCombatants && !this.token) {
+      const placed = combat.scene?.tokens.filter(t => t.actorId === this.id) ?? [];
+      const inCombat = token => combat.combatants.some(c => c.tokenId === token.id);
+      const joinable = placed.filter(token => !inCombat(token));
+
+      if (joinable.length) {
+        const picked = placed.length > 1
+          ? await InitiativeTokensDialog.pick(placed.map(token =>
+            ({ id: token.id, name: token.name, inCombat: inCombat(token) })))
+          : joinable.map(token => token.id);
+
+        // Nothing picked is an answer, not a failure: the GM closed the picker or sent nobody in.
+        if (!picked.length) return;
+
+        const created = await combat.createEmbeddedDocuments("Combatant",
+          picked.map(id => ({ actorId: this.id, tokenId: id, sceneId: combat.scene.id })));
+
+        await persistMod();
+        return combat.rollInitiative(created.map(c => c.id));
+      }
+    }
+
     let combatant = combat.combatants.find(c => c.actorId === this.id);
-  
+
     // If no combatant found and creation is allowed, add the actor to the combat
     if (!combatant && options.createCombatants) {
       // D133 — the tracker is the surface that ruling names first, and core resolves
@@ -1136,29 +1174,33 @@ export class CyberpunkActor extends Actor {
       // scene — world data — and never `getActiveTokens()`, which core scopes to the viewed scene
       // (`client/documents/actor.mjs:284`) and which answers `[]` for a GM running two scenes.
       // Naming no token stays the answer when there is none to name, as it was before.
-      const token = this.token ?? combat.scene?.tokens.find(t => t.actorId === this.id) ?? null;
+      //
+      // D157 — with several of this actor's tokens on that scene, `find` was collection order
+      // standing in for an identity nobody chose, and the combatant binds every later card to it
+      // (`T327`). The click carries the user's selection, so a controlled token of this actor on the
+      // encounter's scene answers first; `canvas.tokens` is only ever the viewed scene, which is
+      // what makes the scene test cheap and the fallback still necessary.
+      const controlled = canvas.tokens?.controlled
+        .find(t => t.document.actorId === this.id && t.document.parent?.id === combat.scene?.id)
+        ?.document ?? null;
+      const token = this.token ?? controlled
+        ?? combat.scene?.tokens.find(t => t.actorId === this.id) ?? null;
       await combat.createEmbeddedDocuments("Combatant", [token
         ? { actorId: this.id, tokenId: token.id, sceneId: token.parent.id }
         : { actorId: this.id }]);
       combatant = combat.combatants.find(c => c.actorId === this.id);
     }
-  
+
     if (!combatant) {
       ui.notifications.error(localize("NoCombatantForActor"));
       return;
     }
-  
-    // The system formula already carries @initiativeMod, so the modifier reaches the roll by being
-    // persisted - not as an extra term, which would count it twice. The sheet's own change listener
-    // is not guaranteed to have finished by the time the row is clicked, hence the write here.
-    const mod = Number(modificator);
-    if (Number.isFinite(mod) && mod !== this.system.initiativeMod) {
-      await this.update({ "system.initiativeMod": mod });
-    }
+
+    await persistMod();
 
     // Roll initiative for the combatant
     return combat.rollInitiative([combatant.id]);
-  }  
+  }
 
   /**
    * Roll one Stun or Death save and post its card.
