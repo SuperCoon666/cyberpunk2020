@@ -1,4 +1,4 @@
-{{!-- D159 — which of an NPC's placed tokens join the encounter. --}}
+{{!-- D159/D166 — which of an NPC's placed tokens roll initiative: a join, or a re-roll. --}}
 {{!-- Not a <form>: the ApplicationV2 root element is the form, and nesting one here empties the submitted data. --}}
 <div class="cyberpunk initiative-tokens">
     <p class="notes">{{CPLocal "InitiativeTokensHint"}}</p>
@@ -18,7 +18,7 @@
                            id="cp-init-token-{{this.id}}"
                            class="cp-initiative-token"
                            data-token-id="{{this.id}}"
-                           {{#if this.inCombat}}disabled{{else}}checked{{/if}} />
+                           {{#if this.checked}}checked{{/if}} />
                 </span>
             </div>
         {{/each}}

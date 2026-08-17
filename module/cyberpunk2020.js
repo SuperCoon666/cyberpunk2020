@@ -21,7 +21,7 @@ import { registerSystemSettings } from "./settings.js"
 import { getHtmlElement } from "./compat.js";
 import { ATTACK_FLAG_VERSION, SAVE_PROMPT_DEADLINE_MS, applyAttackFromMessage, rollSaveOf } from "./damage.js";
 import { CyberpunkCombat, announceTurn, applyDeclaredDodge, clearSuppressionZones, clearTurnFlags, DEFENSE_PROMPT_DEADLINE_MS } from "./combat.js";
-import { isCombatAutomationEnabled, isFnff2Enabled } from "./lookups.js";
+import { isCombatAutomationEnabled, isFnff2Enabled, martialActions } from "./lookups.js";
 import { CyberpunkTokenRuler, vetoOverspentMovement } from "./movement.js";
 import { applyBlastFromMessage, drawZone, layZoneFromMessage, SuppressiveFireBehavior, toggleZoneVisibility, zoneRegions } from "./zones.js";
 import { displayName, localize, localizeParam, localizeParamEscaped } from "./utils.js";
@@ -205,11 +205,21 @@ Hooks.once('init', async function () {
       // own bonus shown — +0 where the style has no key attack there, because `07:1004` makes key
       // attacks a bonus list and not a permission list. A skill the book gives no maneuvers to
       // (`07:982` — anything but Brawling and the arts) renders no row at all.
+      // D163 — the All-Out pair carries no bonus in either table and never will (its effect is not a
+      // number added to this roll), so the row states what it does instead of printing a `+0` that
+      // reads as "strictly worse than the Dodge above it".
+      const allOutEffects = {
+        [martialActions.allOutParry]: "DefenseAllOutParryEffect",
+        [martialActions.allOutDodge]: "DefenseAllOutDodgeEffect"
+      };
       const maneuverOptions = skillId => {
         const rows = choices.find(c => c.skillId === skillId)?.actions ?? [];
         return rows.map(row => {
           const bonus = Number(row.bonus) || 0;
-          const label = `${localize(row.action)} (${bonus >= 0 ? "+" : ""}${bonus})`;
+          const effect = allOutEffects[row.action];
+          const label = effect
+            ? `${localize(row.action)} (${localize(effect)})`
+            : `${localize(row.action)} (${bonus >= 0 ? "+" : ""}${bonus})`;
           return `<option value="${esc(row.action)}">${esc(label)}</option>`;
         }).join("");
       };
@@ -228,7 +238,9 @@ Hooks.once('init', async function () {
       // D148 — the All-Out pair the maneuver list offers under FNFF2 trades the defender's own next
       // attack for the defence, and nothing in the contest models that: the prompt says so and
       // enforces nothing, which is the table's call to make.
-      const trade = isFnff2Enabled() ? `<p class="notes">${localize("DefenseAllOutTrade")}</p>` : "";
+      const trade = isFnff2Enabled()
+        ? `<p class="notes cp-defense-trade">${localize("DefenseAllOutTrade")}</p>`
+        : "";
 
       const answer = await Promise.race([
         foundry.applications.api.DialogV2.input({
@@ -247,9 +259,16 @@ Hooks.once('init', async function () {
             const skill = root.querySelector('select[name="skillId"]');
             const action = root.querySelector('select[name="action"]');
             const row = root.querySelector(".cp-defense-action");
+            // The trade sentence names the two maneuvers, so it lives and dies with the row that
+            // offers them: the four skills `07:982` gives no maneuver list to left it on screen
+            // describing a choice that was no longer there (`T336`). Absent entirely with FNFF2
+            // off, which is the only reason for the guard.
+            const tradeLine = root.querySelector(".cp-defense-trade");
             const sync = () => {
               action.innerHTML = maneuverOptions(skill.value);
-              row.style.display = action.options.length ? "" : "none";
+              const offered = action.options.length > 0;
+              row.style.display = offered ? "" : "none";
+              if (tradeLine) tradeLine.style.display = offered ? "" : "none";
             };
             sync();
             skill.addEventListener("change", sync);

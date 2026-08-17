@@ -440,6 +440,12 @@ export function getFnff2DamageBonusSymbol(actionKey) {
  * **Dodge stays first and that is load-bearing**: `defenseOptions`' `bestOf` and `resolveDefense`'s
  * `find` both take the first of equal totals, which is how D57's Dodge-on-tie is implemented.
  *
+ * **D163's pair must stay out of both bonus tables**, and for the same two lines: All-Out Parry
+ * wins the contest outright and nothing enforces the attack it costs (D148), so an auto-defence
+ * allowed to reach it would take it every time. With no entry in either table both rows total the
+ * plain base, and `bestOf`/`find` land on the Dodge sitting above them — a silent defender and an
+ * NPC can never be given an All-Out maneuver.
+ *
  * @returns {string[]}
  */
 export function defensiveMartialActions() {

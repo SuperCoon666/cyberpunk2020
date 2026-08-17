@@ -2,7 +2,7 @@ import { MORTAL_WOUND_STATE, hiddenMessageMode, requestSave, tickDot } from "./d
 import { displayName, localizeParam, localizeParamEscaped } from "./utils.js";
 import { createCyberpunkChatMessage } from "./compat.js";
 import { BaseDie } from "./dice.js";
-import { DODGE_SKILL_ID, isCombatAutomationEnabled } from "./lookups.js";
+import { DODGE_SKILL_ID, isCombatAutomationEnabled, martialActions } from "./lookups.js";
 import { COMBAT_FLAG, SUPPRESSION_FLAG, ZONE_FLAG } from "./zones.js";
 
 /** Cumulative penalty per extra action taken in the same turn (optional rule). */
@@ -16,6 +16,9 @@ const DODGING_FLAG = "dodging";
 
 /** House rule: what a declared dodge costs a ranged attacker. */
 const DODGE_VS_RANGED_PENALTY = -2;
+
+/** FNFF2, D163: "−2 to all Attacker's strike rolls" while the defender goes all out dodging. */
+const ALL_OUT_DODGE_PENALTY = -2;
 
 /**
  * The states that cannot oppose a melee attack at all. Ch. 07:569 — a failed Stun/Shock Save
@@ -344,6 +347,13 @@ export async function resolveDefense(defender, attackTotal,
     ?? null;
   const base = maneuver?.total ?? picked?.total ?? (Number(defender.system.stats.ref.total) || 0);
 
+  // D163 — FNFF2's ALL-OUT PARRY: "you don't need to check your parry". The defender who picks it
+  // takes the exchange with no die at all, so there is nothing here for the attacker's total to
+  // beat and nothing for the card to print but the maneuver itself.
+  if (maneuver?.action === martialActions.allOutParry) {
+    return { total: null, label: picked?.label ?? "", action: maneuver.action, roll: null, hit: false };
+  }
+
   const roll = await new Roll(`${BaseDie} + @defense + @extraMod`, { defense: base, extraMod }).evaluate();
 
   // A defence built out of the Dodge maneuver takes the house rule's -2, whatever skill carried it
@@ -351,12 +361,18 @@ export async function resolveDefense(defender, attackTotal,
   const dodged = maneuver ? maneuver.action === "Dodge" : picked?.skillId === DODGE_SKILL_ID;
   if (dodged) await declareDodge(defender);
 
+  // D163 — ALL-OUT DODGE is "-2 to all Attacker's strike rolls", and only the contest being
+  // resolved takes it: the DLC's round-wide scope needs somewhere to live for a whole round and is
+  // deferred with the rest of FNFF2's combat overhaul to its own update.
+  const attack = attackTotal
+    + (maneuver?.action === martialActions.allOutDodge ? ALL_OUT_DODGE_PENALTY : 0);
+
   return {
     total: roll.total,
     label: picked?.label ?? "",
     action: maneuver?.action ?? null,
     roll,
-    hit: attackTotal > roll.total
+    hit: attack > roll.total
   };
 }
 

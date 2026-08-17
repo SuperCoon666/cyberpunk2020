@@ -1816,6 +1816,12 @@ async _prepareCyberware(sheet) {
       const pack = target.closest("input.ammo-pack");
       if (pack && root.contains(pack)) {
         await this._cpHandleAmmoPackChange(pack, event);
+        return;
+      }
+
+      const damageFormula = target.closest('input[name="system.damageFormula"]');
+      if (damageFormula && root.contains(damageFormula)) {
+        this._cpRefuseAmmoDamageFormula(damageFormula, event);
       }
     };
 
@@ -1926,6 +1932,30 @@ async _prepareCyberware(sheet) {
     // No re-render: the value lives in the input being edited, so rebuilding the form
     // would only drop focus out of it.
     await this.item.update({ "system.dotDamageFormulas": formulas }, { render: false });
+  }
+
+  /**
+   * D165 — the replacing damage formula is refused at authoring exactly as the burn tick beside it
+   * is (D128), because it is rolled at **fire** time and in two fire modes the rounds are spent
+   * before the card is awaited (`D.10.9`): an unparseable string threw with the magazine already
+   * short (`T335`).
+   *
+   * The write is not this handler's — the field carries a `name` and `submitOnChange` persists it —
+   * so refusing means stopping the event in the capture phase before the framework sees it, and
+   * letting a valid one through untouched. An empty formula stays valid: it is how a round says the
+   * weapon's own damage is rolled.
+   */
+  _cpRefuseAmmoDamageFormula(input, event) {
+    input.setCustomValidity("");
+
+    const value = String(input.value ?? "").trim();
+    if (!value || Roll.validate(value)) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+    input.setCustomValidity(localizeParam("FormulaInvalid", { formula: value }));
+    input.reportValidity();
   }
 
   async _cpHandleAmmoPackChange(input, event) {

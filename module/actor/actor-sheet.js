@@ -833,8 +833,13 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     // The **combatant's** token and never `getActiveTokens()`: that one is scoped to the viewed
     // scene (`client/documents/actor.mjs:282`, 14.365.0) and answers nothing at all for a GM
     // running two scenes — measured. Which fight an actor is in is a world fact, the `T87`
-    // resolution `declareDodge` uses next door. Read at confirm time, because the dialog outlives
-    // the click that opened it.
+    // resolution `declareDodge` uses next door.
+    //
+    // **D164 — resolved when the dialog opens, not when it is confirmed.** The combatant half is
+    // world data and could legitimately move while the dialog sits open, but the preference below
+    // reads `canvas.tokens.controlled`, which is this client's own UI state: a canvas click made
+    // between the two — checking a range, selecting the next mook — silently handed the attack back
+    // to collection order (`T333`).
     //
     // **Outside a started encounter there is no such token, and D151 accepts that**: `displayName`
     // falls back to the prototype, so a GM who renamed only the *placed* token reads the sheet's
@@ -859,14 +864,14 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     // rather than by id: `canvas.tokens` is only ever the viewed scene, and `Combatant#token` reads
     // the same scene collection (`client/documents/combatant.mjs:104-107`, 14.365.0), so the same
     // token is the same object and no scene test is needed.
-    const attackerToken = () => {
+    const attackerToken = (() => {
       if (this.actor.token) return this.actor.token;
       const mine = game.combats
         .find(c => c.started && c.combatants.some(cb => cb.actorId === this.actor.id))
         ?.combatants.filter(cb => cb.actorId === this.actor.id) ?? [];
       const controlled = canvas.tokens?.controlled.map(t => t.document) ?? [];
       return mine.find(cb => controlled.includes(cb.token))?.token ?? mine[0]?.token ?? null;
-    };
+    })();
     const system = item._getWeaponSystem?.() ?? item.system ?? {};
     const savedAttackOptions = isRanged
       ? this._cpGetSavedRangedAttackOptions(flagHolder)
@@ -928,7 +933,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
         const declaredIn = currentTurnKey();
         let attack;
         try {
-          attack = await item.__weaponRoll(fireOptions, targetTokens, attackerToken());
+          attack = await item.__weaponRoll(fireOptions, targetTokens, attackerToken);
         } finally {
           this.#attacksInFlight.delete(item.id);
         }

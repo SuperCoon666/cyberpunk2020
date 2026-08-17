@@ -1137,28 +1137,50 @@ export class CyberpunkActor extends Actor {
     };
 
     // D159 — one NPC sheet stands for a whole mob, so the GM is asked which of its placed tokens
-    // join: one combatant and one initiative roll each. A token already in the fight is offered but
-    // not pickable, so a second click cannot duplicate it, and a single placed token joins with no
-    // dialog at all. An unlinked token's own sheet is exactly one token and takes the path below.
+    // roll: one combatant and one initiative roll each. An unlinked token's own sheet is exactly one
+    // token and takes the path below.
+    //
+    // D166 — every placed token is listed and pickable, and what a pick means depends on the token:
+    // one that is not fighting joins and rolls, one that is re-rolls the initiative it already has.
+    // The window opens ticked on the **clicked token's cohort**, which is the controlled token for
+    // the same reason the attack dialog reads it (D157/D161) — the click is what says which mook the
+    // GM means. With none controlled there is no clicked token, so the joinable cohort ticks and the
+    // all-fighting mob falls back to the re-roll it is the only sensible reading of.
     if (this.type === "npc" && options.createCombatants && !this.token) {
       const placed = combat.scene?.tokens.filter(t => t.actorId === this.id) ?? [];
-      const inCombat = token => combat.combatants.some(c => c.tokenId === token.id);
-      const joinable = placed.filter(token => !inCombat(token));
+      const combatantOf = token => combat.combatants.find(c => c.tokenId === token.id) ?? null;
 
-      if (joinable.length) {
+      if (placed.length) {
+        const clicked = canvas.tokens?.controlled
+          .find(t => t.document.actorId === this.id && t.document.parent?.id === combat.scene?.id)
+          ?.document ?? null;
+        const cohort = clicked
+          ? Boolean(combatantOf(clicked))
+          : placed.every(token => combatantOf(token));
+
         const picked = placed.length > 1
-          ? await InitiativeTokensDialog.pick(placed.map(token =>
-            ({ id: token.id, name: token.name, inCombat: inCombat(token) })))
-          : joinable.map(token => token.id);
+          ? await InitiativeTokensDialog.pick(placed.map(token => {
+            const fighting = Boolean(combatantOf(token));
+            return { id: token.id, name: token.name, inCombat: fighting, checked: fighting === cohort };
+          }))
+          : placed.map(token => token.id);
 
         // Nothing picked is an answer, not a failure: the GM closed the picker or sent nobody in.
         if (!picked.length) return;
 
-        const created = await combat.createEmbeddedDocuments("Combatant",
-          picked.map(id => ({ actorId: this.id, tokenId: id, sceneId: combat.scene.id })));
+        // Both halves are read **before** the create, because a created combatant is in the
+        // collection the moment it exists and would otherwise be counted as a re-roll as well.
+        const joining = picked.filter(id => !combat.combatants.some(c => c.tokenId === id));
+        const rerolling = picked
+          .map(id => combat.combatants.find(c => c.tokenId === id)?.id)
+          .filter(Boolean);
+        const created = joining.length
+          ? await combat.createEmbeddedDocuments("Combatant",
+            joining.map(id => ({ actorId: this.id, tokenId: id, sceneId: combat.scene.id })))
+          : [];
 
         await persistMod();
-        return combat.rollInitiative(created.map(c => c.id));
+        return combat.rollInitiative([...created.map(c => c.id), ...rerolling]);
       }
     }
 

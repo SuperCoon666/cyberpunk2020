@@ -1529,8 +1529,9 @@ export class CyberpunkItem extends Item {
         .addRoll(attackRoll, { name: localize("Attack") });
 
       // One opposed check is one message with two rolls: the card draws the defense die from the
-      // template data either way, but only a message roll is animated and stored (`T40`).
-      if (defense) bigRoll.addRoll(defense.roll, { name: localize("Defense") });
+      // template data either way, but only a message roll is animated and stored (`T40`). D163's
+      // All-Out Parry is the one defence with no die to add.
+      if (defense?.roll) bigRoll.addRoll(defense.roll, { name: localize("Defense") });
 
       await bigRoll.execute(
         undefined,
@@ -1714,8 +1715,9 @@ export class CyberpunkItem extends Item {
     // built above still posts, and the contest cannot land the hit (`T276`).
     const hit = (defense ? defense.hit : true) && !fumble;
 
-    // One opposed check is one message with two rolls (`T40`).
-    if (defense) results.addRoll(defense.roll, { name: localize("Defense") });
+    // One opposed check is one message with two rolls (`T40`) — D163's All-Out Parry is the one
+    // defence with no die to add.
+    if (defense?.roll) results.addRoll(defense.roll, { name: localize("Defense") });
 
     const areaDamages = {};
     if (hit) {

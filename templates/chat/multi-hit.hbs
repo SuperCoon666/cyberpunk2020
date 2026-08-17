@@ -44,7 +44,13 @@
         {{#if defense}}
         <div class="field" style="grid-column-end: span 1">
             <span>{{CPLocal "Defense"}}{{#if defense.label}} ({{defense.label}}){{/if}}: </span>
+            {{!-- D163 — All-Out Parry is the one defence with no roll: it needs no check, so the
+                  card says that instead of printing a total nothing was compared against. --}}
+            {{#if defense.roll}}
             <span>{{defense.total}}</span>
+            {{#if (eq defense.action "AllOutDodge")}}
+                <span>({{CPLocal "DefenseAllOutDodgeEffect"}})</span>
+            {{/if}}
             <span class="flex-pad"></span>
             <span class="roll-results">
                 {{#each defense.roll.terms as |term|}}
@@ -57,6 +63,10 @@
                     {{/if}}
                 {{/each}}
             </span>
+            {{else}}
+            <span>{{CPLocal "DefenseAllOutParryEffect"}}</span>
+            <span class="flex-pad"></span>
+            {{/if}}
         </div>
         {{/if}}
     </div>
