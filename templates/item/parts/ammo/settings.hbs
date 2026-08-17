@@ -33,6 +33,11 @@
                 </label>
 
                 <label class="ammo-ms-opt">
+                    <input type="checkbox" value="Slug" {{#if (ammoHasEffect system "Slug")}}checked{{/if}}>
+                    {{CPLocal "AmmoEffect_Slug"}}
+                </label>
+
+                <label class="ammo-ms-opt">
                     <input type="checkbox" value="Electroshock" {{#if (ammoHasEffect system "Electroshock")}}checked{{/if}}>
                     {{CPLocal "AmmoEffect_Electroshock"}}
                 </label>
@@ -115,16 +120,23 @@
             <span class="flex-pad"></span>
         </div>
 
+        {{> (template "fields/number") label="AmmoPenDamageMult" edit="system.penDamageMult"}}
+        {{> (template "fields/boolean") label="AmmoPenHalvesSoft" edit="system.penHalvesSoft"}}
+    {{/if}}
+
+    {{!-- ===== Slug (D172) ===== --}}
+    {{!-- The second carrier of armour-piercing, and exclusive with AP: `07:865-873` gives a finned
+          slug "normal AP ability vs. all armors" with the hard-armour halving dropped, which is the
+          armour multipliers plus `penHalvesHard`. --}}
+    {{#if (ammoHasEffect system "Slug")}}
+        <div class="field span-two-cells" data-tooltip="{{CPLocal 'AmmoSlugHint'}}">
+            <label class="larger">{{CPLocal "AmmoSectionSlug"}}</label>
+            <span class="flex-pad"></span>
+        </div>
+
         {{> (template "fields/number") label="AmmoArmorMultSoft" edit="system.armorMultSoft"}}
         {{> (template "fields/number") label="AmmoArmorMultHard" edit="system.armorMultHard"}}
 
-        {{> (template "fields/number") label="AmmoPenDamageMult" edit="system.penDamageMult"}}
-        {{!-- A spacer, so the two «halve penetrating damage» booleans stay on one row together.
-              No `flex-pad` inside it: `.cyberpunk .field > *` fills black (`css:255`) and the pad
-              grows to the whole cell, which paints an empty row as a black bar. --}}
-        <div class="field"></div>
-
-        {{> (template "fields/boolean") label="AmmoPenHalvesSoft" edit="system.penHalvesSoft"}}
         {{> (template "fields/boolean") label="AmmoPenHalvesHard" edit="system.penHalvesHard"}}
     {{/if}}
 

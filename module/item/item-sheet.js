@@ -258,6 +258,7 @@ export class CyberpunkItemSheet extends HandlebarsApplicationMixin(ItemSheetV2) 
     const effectKeyMap = {
       Standard: "AmmoEffect_Standard",
       AP: "AmmoEffect_AP",
+      Slug: "AmmoEffect_Slug",
       Electroshock: "AmmoEffect_Electroshock",
       Incendiary: "AmmoEffect_Incendiary",
       Buckshot: "AmmoEffect_Buckshot",
@@ -1883,6 +1884,17 @@ async _prepareCyberware(sheet) {
       const other = checkbox.value === "Buckshot" ? "Blast" : "Buckshot";
       const box = boxes.find((entry) => entry.value === other);
       if (box) box.checked = false;
+    }
+
+    // D172 — AP and Slug are two carriers of one armour-piercing family, so a round takes one. Warned
+    // rather than silently swapped, unlike the pair above: the box that clears is not the one clicked.
+    if (checkbox.checked && (checkbox.value === "AP" || checkbox.value === "Slug")) {
+      const other = checkbox.value === "AP" ? "Slug" : "AP";
+      const box = boxes.find((entry) => entry.value === other);
+      if (box?.checked) {
+        box.checked = false;
+        ui.notifications.warn(localize("AmmoAPSlugExclusive"));
+      }
     }
 
     let next = boxes.filter((box) => box.checked).map((box) => box.value);
