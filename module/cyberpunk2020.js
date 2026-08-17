@@ -21,7 +21,7 @@ import { registerSystemSettings } from "./settings.js"
 import { getHtmlElement } from "./compat.js";
 import { ATTACK_FLAG_VERSION, SAVE_PROMPT_DEADLINE_MS, applyAttackFromMessage, rollSaveOf } from "./damage.js";
 import { CyberpunkCombat, announceTurn, applyDeclaredDodge, clearSuppressionZones, clearTurnFlags, DEFENSE_PROMPT_DEADLINE_MS } from "./combat.js";
-import { isCombatAutomationEnabled } from "./lookups.js";
+import { isCombatAutomationEnabled, isFnff2Enabled } from "./lookups.js";
 import { CyberpunkTokenRuler, vetoOverspentMovement } from "./movement.js";
 import { applyBlastFromMessage, drawZone, layZoneFromMessage, SuppressiveFireBehavior, toggleZoneVisibility, zoneRegions } from "./zones.js";
 import { displayName, localize, localizeParam, localizeParamEscaped } from "./utils.js";
@@ -225,12 +225,18 @@ Hooks.once('init', async function () {
             defender: esc(displayName(defender, defenderToken)), total: Number(attackTotal) || 0
           });
 
+      // D148 — the All-Out pair the maneuver list offers under FNFF2 trades the defender's own next
+      // attack for the defence, and nothing in the contest models that: the prompt says so and
+      // enforces nothing, which is the table's call to make.
+      const trade = isFnff2Enabled() ? `<p class="notes">${localize("DefenseAllOutTrade")}</p>` : "";
+
       const answer = await Promise.race([
         foundry.applications.api.DialogV2.input({
           window: { title: "CYBERPUNK.Defense" },
           content: `<p>${asked}</p>
             <label>${localize("DefenseSkill")} <select name="skillId">${options}</select></label>
             <label class="cp-defense-action">${localize("DefenseAction")} <select name="action">${maneuverOptions(choices[0]?.skillId)}</select></label>
+            ${trade}
             <label>${localize("DefenseMod")} <input type="number" name="extraMod" value="0" step="1"></label>`,
           ok: { label: "CYBERPUNK.DefenseRollButton" },
           render: (event, app) => {

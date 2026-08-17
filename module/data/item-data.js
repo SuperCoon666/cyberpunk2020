@@ -323,6 +323,12 @@ export class CyberpunkAmmoData extends CyberpunkBaseItemData {
       penHalvesSoft: booleanField(true),
       penHalvesHard: booleanField(true),
       bonusDamageFormula: stringField(""),
+      // D147 — the round's damage **replaces** the weapon's, which is the only shape the book's own
+      // shotgun table fits: `07:867-873` prints a damage per gauge, and it is not a bonus that could
+      // be added to whatever barrel it is loaded into. Separate from `bonusDamageFormula`, which
+      // stays withdrawn in 1.2.0 (D113); empty means the weapon's own formula, so no existing round
+      // changes meaning.
+      damageFormula: stringField(""),
       accuracyMod: numberField(0),
       stunSaveOnHit: booleanField(false),
       // D108 — a positive number is entered and the logic subtracts it, so the field reads as the

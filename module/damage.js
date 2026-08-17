@@ -25,8 +25,10 @@ import { Multiroll } from "./dice.js";
  * 11: the suppression payload's `behaviour` no longer carries `attackerUuid` — the shooter is read
  *     from the card's own `attackerActorUuid` instead, so nothing identifying them is written onto
  *     a world-readable Region (`T115`, D131).
+ * 12: the ammunition snapshot carries `damageFormula`, the round's own replacing damage (D147) —
+ *     a card written before this has no field to read and would silently roll the weapon's.
  */
-export const ATTACK_FLAG_VERSION = 11;
+export const ATTACK_FLAG_VERSION = 12;
 
 /** The flag a damage-over-time effect burns down from, one tick per turn. */
 const DOT_FLAG = "dot";
@@ -127,6 +129,9 @@ export function snapshotAmmo(item) {
     accuracyMod: 0,
     rawDamageMult: 1,
     bonusDamageFormula: "",
+    // D147 — the replacing formula is the one damage field a round does carry: the book's shotgun
+    // table is a damage *per gauge* and it stands in for the weapon's own (`07:867-873`).
+    damageFormula: String(a.damageFormula ?? ""),
     armorMultSoft: numberOr(a.armorMultSoft, 1),
     armorMultHard: numberOr(a.armorMultHard, 1),
     penDamageMult: numberOr(a.penDamageMult, 1),
@@ -395,9 +400,20 @@ async function armShockSave(actor, ammo, landed, sceneId = "") {
   // shot at its base number. The scene comes from the card the apply path already holds, in
   // `T114`'s shape: naming a *parallel* fight wrongly is the accepted risk (two at once are rare),
   // reading the applying client's viewport is not.
-  const combat = own ?? (sceneId
-    ? game.combats.find(c => c.active && c.started && (!c.scene || c.scene.id === sceneId))
-    : null);
+  //
+  // `zoneCombat`'s reading, one file away in `module/zones.js`, and deliberately not a fourth
+  // predicate of its own (`T318`): `active` is a **world** singleton — activating one Combat clears
+  // the flag on every other, with no scene filter (`dist/database/documents/combat.mjs`
+  // `_preUpdateOperation`, 14.365.0) — so `active &&` as a *filter* found no fight at all on the
+  // split party this ruling exists for, which is worse than the wrong-fight risk it accepted. A
+  // fight bound to the card's own scene outranks a scene-less one (D155's ordering), `active` breaks
+  // the tie inside a tier, and nothing is decided by collection order that a tier can decide.
+  const running = sceneId
+    ? game.combats.filter(c => c.started && (!c.scene || c.scene.id === sceneId))
+    : [];
+  const bound = running.filter(c => c.scene?.id === sceneId);
+  const candidates = bound.length ? bound : running;
+  const combat = own ?? candidates.find(c => c.active) ?? candidates[0] ?? null;
   if (!combat) return { threshold: base, shot: landed, stacked: false };
   const round = combat.round;
 
@@ -523,7 +539,10 @@ export async function tickDot(actor, { messageMode, token = null } = {}) {
   // Posted even for a turn that dealt nothing: the fire is still burning and the count still fell,
   // and silence reads at the table as the fire having gone out.
   await createCyberpunkChatMessage({
-    speaker: ChatMessage.getSpeaker({ actor }),
+    // The token as well as the actor (`T316`): `getSpeaker` fixes `alias` to `actor.name` before it
+    // looks for a token at all (`client/documents/chat-message.mjs:228`, 14.365.0), so this card's
+    // header carried the sheet name over a body that already names the token.
+    speaker: ChatMessage.getSpeaker({ actor, token }),
     content: localizeParamEscaped("DotTick",
       { name: displayName(actor, token), damage, turns: dot.turns - 1 }),
     rolls: roll ? [roll] : []
@@ -650,7 +669,9 @@ export async function applyHitsToActor(actor,
   );
 
   const card = await createCyberpunkChatMessage({
-    speaker: ChatMessage.getSpeaker({ actor }),
+    // The token as well as the actor (`T316`) — `targetName` in the body is already the token's, and
+    // the header printed the sheet's beside it.
+    speaker: ChatMessage.getSpeaker({ actor, token }),
     content
   }, { useDefaultRollMode: true, messageMode });
 

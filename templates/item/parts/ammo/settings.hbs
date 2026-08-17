@@ -51,6 +51,11 @@
                     <input type="checkbox" value="Blast" {{#if (ammoHasEffect system "Blast")}}checked{{/if}}>
                     {{CPLocal "AmmoEffect_Blast"}}
                 </label>
+
+                <label class="ammo-ms-opt">
+                    <input type="checkbox" value="DamageReplace" {{#if (ammoHasEffect system "DamageReplace")}}checked{{/if}}>
+                    {{CPLocal "AmmoEffect_DamageReplace"}}
+                </label>
             </div>
         </div>
     </div>
@@ -199,5 +204,15 @@
         {{> (template "fields/string") label="AmmoSpreadDamageShort" edit="system.spreadDamageShort"}}
         {{> (template "fields/string") label="AmmoSpreadDamageMedium" edit="system.spreadDamageMedium"}}
         {{> (template "fields/string") label="AmmoSpreadDamageLong" edit="system.spreadDamageLong"}}
+    {{/if}}
+
+    {{!-- Replacing damage — the round's own, in place of the weapon's (D147) --}}
+    {{#if (ammoHasEffect system "DamageReplace")}}
+        <div class="field span-two-cells" data-tooltip="{{CPLocal 'AmmoDamageFormulaHint'}}">
+            <label class="larger">{{CPLocal "AmmoSectionDamageReplace"}}</label>
+            <span class="flex-pad"></span>
+        </div>
+
+        {{> (template "fields/string") label="AmmoDamageFormula" edit="system.damageFormula"}}
     {{/if}}
 </div>

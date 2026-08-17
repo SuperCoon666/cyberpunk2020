@@ -125,8 +125,13 @@ export class CyberpunkCombat extends Combat {
     if (!actor) return;
 
     // A turn that belongs to a token the players cannot see is announced and rolled to the GMs
-    // alone; `combatant.hidden` is the combatant's own state, which a GM can set independently.
-    const messageMode = hiddenMessageMode(combatant.hidden);
+    // alone. D150 — both flags, because core copies the token's state into the combatant exactly
+    // once, when it is added (`client/documents/token.mjs:1578`, 14.365.0), and the tracker's eye is
+    // a separate control writing the combatant: the ordinary sequence — drop the ambusher in, roll
+    // initiative, then hide the token — left `combatant.hidden` false and announced it to the table
+    // (`T160`). It reads the other way too, so a combatant hidden and later revealed stops
+    // whispering.
+    const messageMode = hiddenMessageMode(combatant.hidden || combatant.token?.hidden);
 
     // The flag test alone, deliberately: a counter charged before the rule (or the master switch)
     // went off would otherwise freeze for the life of the world and be resurrected by a later
@@ -291,7 +296,12 @@ export async function resolveDefense(defender, attackTotal,
     // Nothing else is posted until the answer arrives, so without this the attacker and the GM
     // watch a blank screen for up to 30 s while the defender is the only one who can see why.
     await createCyberpunkChatMessage({
-      speaker: ChatMessage.getSpeaker({ actor: defender }),
+      // The token as well as the actor (`T316`): `getSpeaker` sets `alias = actor.name` before it
+      // ever looks for one (`client/documents/chat-message.mjs:228`, 14.365.0) and then honours the
+      // alias it was handed (`:275`), so the card's header printed the sheet name beside a body
+      // that names the token. Never an explicit `alias` — core's CASE 1 is what the two turn-start
+      // notices above already take.
+      speaker: ChatMessage.getSpeaker({ actor: defender, token: defenderToken }),
       // D31 — the notice is public, so an ambusher is not named on it either. `hideAttacker` is
       // the same flag the prompt takes, so the three surfaces move together (`T103`).
       content: hideAttacker
@@ -327,7 +337,7 @@ export async function resolveDefense(defender, attackTotal,
   // list to (Melee, Fencing, Dodge & Escape, Athletics — `07:982`) carries no `actions`, and its
   // own total is the answer. An unanswered prompt falls through to `options[0]`'s best action,
   // which is the auto-defence an NPC gets — silence must never cost the player anything.
-  // `DEFENSIVE_MARTIAL_ACTIONS` leads with Dodge and `find` takes the first match, so a Dodge/Block
+  // `defensiveMartialActions()` leads with Dodge and `find` takes the first match, so a Dodge/Block
   // tie resolves to Dodge — D57's ruling, and the same order `defenseOptions` builds `dodging` from.
   const maneuver = picked?.actions?.find(row => row.action === choice?.action)
     ?? picked?.actions?.find(row => row.total === picked.total)

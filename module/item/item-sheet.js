@@ -261,7 +261,8 @@ export class CyberpunkItemSheet extends HandlebarsApplicationMixin(ItemSheetV2) 
       Electroshock: "AmmoEffect_Electroshock",
       Incendiary: "AmmoEffect_Incendiary",
       Buckshot: "AmmoEffect_Buckshot",
-      Blast: "AmmoEffect_Blast"
+      Blast: "AmmoEffect_Blast",
+      DamageReplace: "AmmoEffect_DamageReplace"
     };
 
     sheet.ammoFx = {

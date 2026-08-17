@@ -942,9 +942,14 @@ export class CyberpunkItem extends Item {
   __ammoDamageFormula(baseFormula, ammo) {
     if (!ammo) return baseFormula;
 
+    // D147 — a round carrying its own damage replaces the weapon's rather than adding to it, which
+    // is what the book's per-gauge shotgun damage is (`07:867-873`). Empty is every other round, and
+    // the weapon's own formula.
+    const base = ammo.damageFormula || baseFormula;
+
     let formula = ammo.bonusDamageFormula
-      ? `(${baseFormula}) + (${ammo.bonusDamageFormula})`
-      : baseFormula;
+      ? `(${base}) + (${ammo.bonusDamageFormula})`
+      : base;
 
     if (ammo.rawDamageMult !== 1) formula = `(${formula}) * ${ammo.rawDamageMult}`;
     return formula;
@@ -1469,7 +1474,20 @@ export class CyberpunkItem extends Item {
               messageMode: CyberpunkItem.__targetMessageMode(targetTokens[0]),
               hideAttacker: CyberpunkItem.__attackerIsHidden(this.actor) })
         : null;
-      const hit = defense ? defense.hit : true;
+
+      let fumble = null;
+      if (game.settings.get("cyberpunk2020", "fumbleTableEnabled") && isFumbleRoll(attackRoll)) {
+        fumble = await buildSkillFumbleData({
+          skill: { system: { stat: "ref" } },
+          roll: attackRoll
+        });
+      }
+
+      // D152 — a fumbled swing misses however the contest went, the `forceMiss` the four ranged
+      // sites already take: the corebook has one REFLEX/Combat fumble table and none of its six
+      // outcomes lands the hit it was aimed at (`04:121-133`). The defender still rolls what he
+      // would have rolled, and the fumble block below still posts.
+      const hit = (defense ? defense.hit : true) && !fumble;
 
       const areaDamages = {};
       if (hit) {
@@ -1505,14 +1523,6 @@ export class CyberpunkItem extends Item {
           damage,
           damageHtml: CyberpunkItem._inlineRollHtml(damage, damageRoll, "damage")
         }];
-      }
-
-      let fumble = null;
-      if (game.settings.get("cyberpunk2020", "fumbleTableEnabled") && isFumbleRoll(attackRoll)) {
-        fumble = await buildSkillFumbleData({
-          skill: { system: { stat: "ref" } },
-          roll: attackRoll
-        });
       }
 
       let bigRoll = new Multiroll(this.name, this.system.flavor)
@@ -1700,7 +1710,9 @@ export class CyberpunkItem extends Item {
             messageMode: CyberpunkItem.__targetMessageMode(targetTokens[0]),
             hideAttacker: CyberpunkItem.__attackerIsHidden(actor) })
       : null;
-    const hit = defense ? defense.hit : true;
+    // D152 — the same forced miss the plain swing and the four ranged sites take: the fumble block
+    // built above still posts, and the contest cannot land the hit (`T276`).
+    const hit = (defense ? defense.hit : true) && !fumble;
 
     // One opposed check is one message with two rolls (`T40`).
     if (defense) results.addRoll(defense.roll, { name: localize("Defense") });

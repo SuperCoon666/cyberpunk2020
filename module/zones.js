@@ -257,25 +257,58 @@ export const ZONE_FLAG = "zone";
 export const COMBAT_FLAG = "combat";
 
 /**
- * The encounter a zone on this scene belongs to — what it is stamped with when it is laid (D141),
- * and what a crossing keys its one-save-per-turn guard on (`T313`).
+ * The encounter a zone belongs to — what it is stamped with when it is laid (D141), and what a
+ * crossing keys its one-save-per-turn guard on (`T313`).
+ *
+ * **D155: it is the shooter's own fight**, whichever scene that fight is bound to. The zone is his
+ * doing, and the resolution is the one `attackerToken()` already models one file away
+ * (`module/actor/actor-sheet.js`). The scene's own fight answers only when he is in none — a
+ * bystander's crater, or a zone laid outside any encounter at all.
  *
  * Never `game.combat`: that getter is the reading client's own tracker selection
  * (`client/game.mjs:1692-1696`, 14.365.0), which is the coupling `T114`/`T290` were fixed to
  * remove. A scene-less encounter applies everywhere, a bound one only to its own scene.
  *
- * **`active` is a tie-break, not the filter**, and that is measured rather than preferred: the
- * server keeps exactly one active Combat in the whole world — activating one clears the flag on
- * every other, with no scene filter (`dist/database/documents/combat.mjs`
- * `_preUpdateOperation`) — so a split party's second fight, which is the case both callers exist
- * for, is never the active one.
+ * **`active` is a tie-break behind scene specificity, never the filter**, and that is measured
+ * rather than preferred: the server keeps exactly one active Combat in the whole world — activating
+ * one clears the flag on every other, with no scene filter (`dist/database/documents/combat.mjs`
+ * `_preUpdateOperation`) — so a split party's second fight, which is the case every caller exists
+ * for, is never the active one, and a scene-less fight that happens to be active must not outrank
+ * the fight standing on the zone's own scene (`T320`).
  *
  * @param {Scene} scene
+ * @param {Actor|null} [attacker] The shooter the zone's card names
  * @returns {Combat|null}
  */
-function zoneCombat(scene) {
-  const running = game.combats.filter(c => c.started && (!c.scene || c.scene === scene));
-  return running.find(c => c.active) ?? running[0] ?? null;
+function zoneCombat(scene, attacker = null) {
+  const running = game.combats.filter(c => c.started);
+
+  const own = attacker
+    ? running.find(c => c.combatants.some(combatant => combatant.actorId === attacker.id))
+    : null;
+  if (own) return own;
+
+  const here = running.filter(c => !c.scene || c.scene === scene);
+  const bound = here.filter(c => c.scene === scene);
+  // Two fights on one scene are decided by `active` and not by collection order; `here` is only
+  // reached when none of them is bound to this scene at all.
+  const candidates = bound.length ? bound : here;
+  return candidates.find(c => c.active) ?? candidates[0] ?? null;
+}
+
+/**
+ * The shooter a zone's own card names, for `zoneCombat` (D155). Off the **card**, never off the
+ * Region: a Region is world data at `visibility: ALWAYS`, so a uuid persisted there would name the
+ * ambusher to any player with a console (`T115`, D131).
+ *
+ * @param {string} messageId
+ * @returns {Promise<Actor|null>} null for a card that is gone, or one that names no shooter
+ */
+async function zoneAttacker(messageId) {
+  const uuid = game.messages.get(String(messageId ?? ""))
+    ?.flags?.cyberpunk2020?.attack?.attackerActorUuid;
+  const attacker = uuid ? await fromUuid(String(uuid)) : null;
+  return attacker?.documentName === "Actor" ? attacker : null;
 }
 
 /**
@@ -315,8 +348,17 @@ async function resolveZoneCrossing(zone, token) {
   // `zoneCombat` and not a second predicate of its own: this asked for `active && started` and the
   // server keeps exactly one active Combat in the **world**, so of two fights on two scenes only one
   // could ever answer and the other one's zone fell back to the `"once"` constant for ever — one
-  // save per token per zone in a running fight (`T313`). The two lookups are now one reading.
-  const combat = zoneCombat(zone.scene);
+  // save per token per zone in a running fight (`T313`). The two lookups are now one reading, and
+  // D155 makes that reading the shooter's own fight — so the turn a crossing resets on is a turn of
+  // the fight the zone belongs to, whichever scene that fight is bound to (`T320`).
+  //
+  // The shooter is read off the **card** the zone was laid from, never off the Region: a Region is
+  // world data at `visibility: ALWAYS`, so a persisted uuid there named the ambusher to any player
+  // who opened a console — defeating the very suppression D31 pays for (`T115`). The Region keeps
+  // only the link, and a Region that outlives its card resolves nothing.
+  const messageId = String(zone.behavior.region?.getFlag("cyberpunk2020", ZONE_FLAG) ?? "");
+  const attacker = await zoneAttacker(messageId);
+  const combat = zoneCombat(zone.scene, attacker);
   const crossing = combat ? `${combat.id}.${combat.round}.${combat.turn}` : "once";
   const saved = zone.behavior.getFlag("cyberpunk2020", CROSSED_FLAG) ?? {};
   if (saved[token.id] === crossing) return;
@@ -329,14 +371,8 @@ async function resolveZoneCrossing(zone, token) {
   await zone.behavior.setFlag("cyberpunk2020", CROSSED_FLAG, { ...saved, [token.id]: crossing });
 
   // The save card that follows says nothing about why it is being rolled, so this is what makes the
-  // crossing legible. The shooter is read off the **card** the zone was laid from, never off the
-  // Region: a Region is world data at `visibility: ALWAYS`, so a persisted uuid there named the
-  // ambusher to any player who opened a console — defeating the very suppression D31 pays for
-  // (`T115`). The Region keeps only the link, and a Region that outlives its card resolves nothing.
-  const card = game.messages.get(
-    String(zone.behavior.region?.getFlag("cyberpunk2020", ZONE_FLAG) ?? ""));
-  const attackerUuid = card?.flags?.cyberpunk2020?.attack?.attackerActorUuid;
-  const attacker = attackerUuid ? await fromUuid(attackerUuid) : null;
+  // crossing legible.
+  const card = game.messages.get(messageId);
   // The shooter's own token, off the card's speaker — D133 wants the token's name, and the
   // speaker is where the shooter's client recorded which token fired. Without it a linked actor
   // would fall back to its prototype and show the sheet name the players are not meant to see.
@@ -354,7 +390,10 @@ async function resolveZoneCrossing(zone, token) {
       : localizeParamEscaped("ZoneCrossing",
         { target: token.name, attacker: displayName(attacker, attackerToken) });
   await createCyberpunkChatMessage({
-    speaker: ChatMessage.getSpeaker({ actor }),
+    // The crossing token as well as its actor (`T316`): `getSpeaker` sets `alias` from the actor
+    // before it looks for a token (`client/documents/chat-message.mjs:228`, 14.365.0), so the header
+    // carried the sheet name while the body already named the token.
+    speaker: ChatMessage.getSpeaker({ actor, token }),
     content
   }, { messageMode: hiddenMessageMode(token.hidden) });
 
@@ -454,6 +493,7 @@ export async function createSuppressionZone(zone, behaviour, messageId = "") {
   const scene = game.scenes.get(String(zone?.sceneId ?? ""));
   if (!scene) return null;
 
+  const attacker = await zoneAttacker(messageId);
   const { name, ...system } = behaviour;
   const [region] = await scene.createEmbeddedDocuments("Region", [{
     name,
@@ -468,7 +508,7 @@ export async function createSuppressionZone(zone, behaviour, messageId = "") {
       cyberpunk2020: {
         [SUPPRESSION_FLAG]: true,
         [ZONE_FLAG]: messageId,
-        [COMBAT_FLAG]: zoneCombat(scene)?.id ?? ""
+        [COMBAT_FLAG]: zoneCombat(scene, attacker)?.id ?? ""
       }
     },
     behaviors: [{ type: "suppressiveFire", name, system }]
@@ -1070,9 +1110,13 @@ export async function drawZone(blast, kind, messageId) {
   // an empty set is core's own "everywhere" (`common/data/fields.mjs`, SceneLevelsSetField).
   const levels = blast.levelId ? [blast.levelId] : [];
   // D141 — every Region this system lays names its own encounter, the highlights included: they are
-  // swept by the same filter as the zone they belong to.
+  // swept by the same filter as the zone they belong to. D155 — that encounter is the shooter's,
+  // and this path reaches him the same way the suppression zone does, through the card.
   const flags = {
-    cyberpunk2020: { [ZONE_FLAG]: messageId, [COMBAT_FLAG]: zoneCombat(scene)?.id ?? "" }
+    cyberpunk2020: {
+      [ZONE_FLAG]: messageId,
+      [COMBAT_FLAG]: zoneCombat(scene, await zoneAttacker(messageId))?.id ?? ""
+    }
   };
   const ZONE_NAMES = { spread: "ZoneRegionSpread", sweep: "ZoneRegionSweep" };
   const drawing = [{

@@ -428,12 +428,25 @@ export function getFnff2DamageBonusSymbol(actionKey) {
 }
 
 /**
- * The maneuvers that answer an attack rather than make one, in `martialActionBonuses*` keys. The
- * same two are `martialOptions`' own "Defensive" group under both rule sets; FNFF2's All-Out pair
- * is deliberately absent, because trading one side of the exchange for the other is a choice the
- * defender makes and not a bonus the style always carries.
+ * The maneuvers that answer an attack rather than make one, in `martialActionBonuses*` keys — the
+ * same set `martialOptions` offers in its own "Defensive" group under each rule set.
+ *
+ * D148 — FNFF2's All-Out pair is **offered**: it was left out while the code picked the defence
+ * itself, because trading one side of the exchange for the other is the defender's choice and not a
+ * bonus the style always carries — and since `T232`/D58 the defender does the picking, which turns
+ * that reason into the reason to offer them. The trade is stated on the prompt and enforced nowhere
+ * (the no-hard-limits shape); the table decides what it costs the defender's own attack.
+ *
+ * **Dodge stays first and that is load-bearing**: `defenseOptions`' `bestOf` and `resolveDefense`'s
+ * `find` both take the first of equal totals, which is how D57's Dodge-on-tie is implemented.
+ *
+ * @returns {string[]}
  */
-export const DEFENSIVE_MARTIAL_ACTIONS = ["Dodge", "BlockParry"];
+export function defensiveMartialActions() {
+  return isFnff2Enabled()
+    ? ["Dodge", "BlockParry", "AllOutParry", "AllOutDodge"]
+    : ["Dodge", "BlockParry"];
+}
 
 export function getMartialActionBonus(martialKey, actionKey) {
   const fnff2 = isFnff2Enabled();
