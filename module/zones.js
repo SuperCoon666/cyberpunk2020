@@ -39,41 +39,60 @@ export function metresToPixels(metres) {
 }
 
 /**
+ * How far apart two chained autoshotgun patterns may be and still count as adjacent, in metres.
+ *
+ * D192 — **centre to centre**, not edge to edge. `07:861-863`'s own worked example settles it: five
+ * shots *"spacing his shots in 1 meter intervals"* down a 5 m hallway is a chain of centres 1 m
+ * apart, so N patterns lay a gapless carpet N+1 m long at medium range. The edge-to-edge reading
+ * this shipped with would have let a 2 m pattern's centres sit 3 m apart, which the example
+ * contradicts.
+ */
+export const PATTERN_ADJACENCY_METRES = 1;
+
+/**
+ * The colours a chained pattern's preview takes while it follows the cursor (D195) — green inside
+ * the previous pattern's ring, red beyond it. Display only; a red pattern places exactly as a
+ * green one does (D54).
+ */
+export const PATTERN_TINT_ADJACENT = 0x33bb55;
+export const PATTERN_TINT_WALKED = 0xcc3333;
+
+/**
+ * Whether a pattern centre is inside the previous pattern's adjacency ring.
+ *
+ * @param {{x: number, y: number}} centre In pixels
+ * @param {{x: number, y: number}} previous The previous pattern's snapped centre, in pixels
+ * @returns {boolean}
+ */
+function patternsAreAdjacent(centre, previous) {
+  const gap = Math.hypot(centre.x - previous.x, centre.y - previous.y);
+  return gap <= metresToPixels(PATTERN_ADJACENCY_METRES);
+}
+
+/**
  * Where one of an autoshotgun's chained patterns actually lands.
  *
  * Ch. 07:861-863 fires up to ROF patterns on one trigger pull, *"all within 1 m of each other"*.
- * Two things happen to a placed centre. It is snapped to the metre lattice, because the book counts
- * this rule in whole metres and a pointer does not. And when the previous pattern is close enough to
- * have been meant, it is pulled onto that pattern's 1 m adjacency ring.
+ * The placed centre is snapped to the metre lattice, because the book counts this rule in whole
+ * metres and a pointer does not, and then measured against the previous pattern's ring.
  *
  * **Never a veto** (D54, and the project rule it follows): a centre the shooter puts beyond the ring
- * is returned exactly where they put it, with `adjacent: false` for the card to say so. The book's
- * rule is shown, not enforced — a table running the patterns wide is running its own game.
- *
- * Adjacency is measured edge to edge rather than centre to centre: *"within 1 m of each other"* is
- * said of the patterns, and two 2 m patterns whose centres were 1 m apart would be all but the same
- * pattern.
+ * is returned exactly where they put it, with `adjacent: false` — which the card then says in so
+ * many words. The book's rule is shown, not enforced; a table running the patterns wide is running
+ * its own game.
  *
  * @param {{x: number, y: number}} centre Where the placement left it, in pixels
  * @param {{x: number, y: number}|null} previous The previous pattern's snapped centre, or null
- * @param {number} width The pattern's width in scene units
- * @returns {{x: number, y: number, adjacent: boolean}}
+ * @returns {{x: number, y: number, adjacent: boolean}} `adjacent` is true for the first pattern,
+ *   which has nothing to be adjacent to — the caller prints no caption for it
  */
-export function snapPatternCentre(centre, previous, width) {
+export function snapPatternCentre(centre, previous) {
   const perMetre = canvas.dimensions.distancePixels;
   const snap = v => Math.round((Number(v) || 0) / perMetre) * perMetre;
   const point = { x: snap(centre?.x), y: snap(centre?.y) };
   if (!previous) return { ...point, adjacent: true };
 
-  const dx = point.x - previous.x;
-  const dy = point.y - previous.y;
-  const gap = Math.hypot(dx, dy);
-  // Edge to edge: the centres may be a pattern's width apart before the 1 m gap even opens.
-  const reach = metresToPixels(Math.max(0, Number(width) || 0) + 1);
-  if (gap <= reach) return { ...point, adjacent: true };
-
-  // Beyond the ring the shooter is taken at their word, and the card says the burst walked.
-  return { ...point, adjacent: false };
+  return { ...point, adjacent: patternsAreAdjacent(point, previous) };
 }
 
 /**
@@ -202,6 +221,54 @@ export function spreadProfileFor(range, ammo) {
 }
 
 /**
+ * The stepped cone a shotgun pattern lays between the muzzle and its centre (D193).
+ *
+ * `07:838-853` gives a pattern a width per band and says nothing at all about the strip between
+ * shooter and target, which is what the uniform strip was reading into it: one width, the attack's
+ * declared band, muzzle to centre — so a bystander standing 1 m beside the muzzle of a *long* shot
+ * was caught by a 3 m strip that has not opened up yet at that distance. D193 rules the physical
+ * cone, quantised by the table's own bands: the round's own width for Short out to the weapon's
+ * close boundary, Medium out to its medium boundary, Long from there on. `0-1 m` is inside Short
+ * and gets no ray segment of its own.
+ *
+ * The widths are the **round's**, never constants: the six per-band inputs already exist on the
+ * ammunition and PB folds into Short and Extreme into Long, exactly as `SPREAD_BANDS` does.
+ *
+ * @param {number} weaponRange The weapon's own range in scene units, from `effectiveRange`
+ * @param {object|null} ammo A snapshot from snapshotAmmo
+ * @returns {Array<{limit: number, halfWidth: number}>|null} ascending by `limit`, the last entry
+ *   applying beyond every limit; null when there is no range to band it by
+ */
+export function spreadCorridorBands(weaponRange, ammo) {
+  const range = Number(weaponRange) || 0;
+  if (range <= 0) return null;
+
+  const half = band => Math.max(0, Number(ammo?.[`spreadWidth${band}`]) || 0) / 2;
+  return [
+    { limit: range / 4, halfWidth: half("Short") },
+    { limit: range / 2, halfWidth: half("Medium") },
+    { limit: range, halfWidth: half("Long") }
+  ];
+}
+
+/**
+ * How wide the corridor is where a point projects onto it.
+ *
+ * @param {object} corridor The payload's own corridor
+ * @param {number} fromMuzzle Distance along the line of fire, in scene units
+ * @param {number} fallback The uniform half-width to use where no band table travelled — a
+ *   flamethrower sweep, and any pattern card written before D193
+ * @returns {number} In scene units
+ */
+function corridorHalfWidth(corridor, fromMuzzle, fallback) {
+  const bands = corridor?.bands;
+  if (!Array.isArray(bands) || !bands.length) return fallback;
+  for (const band of bands) if (fromMuzzle <= band.limit) return band.halfWidth;
+  // Past every boundary is the Extreme band, which folds into Long.
+  return bands.at(-1).halfWidth;
+}
+
+/**
  * Whether this shot spreads into a pattern rather than landing on one target.
  *
  * @param {object|null} ammo A snapshot from snapshotAmmo
@@ -209,20 +276,14 @@ export function spreadProfileFor(range, ammo) {
  * @returns {boolean}
  */
 export function isSpreadAttack(ammo, range) {
-  return ammo?.spreadMode === "spread" && spreadProfileFor(range, ammo).width > 0;
+  if (ammo?.spreadMode !== "spread") return false;
+  // D196 — under automatic range there is no band yet: the pattern's own placement is what measures
+  // one, so the width test waits until it has (`T373`). The mode half of the test is band-free and
+  // still answers here, which is what lets the dispatch reach the pattern attack at all.
+  if (range === ranges.auto) return true;
+  return spreadProfileFor(range, ammo).width > 0;
 }
 
-/**
- * Let the acting client put the blast where they mean it, without writing anything.
- *
- * `create: false` returns the preview document itself and never touches the database, which is why
- * this works for a player and is not blocked by a paused world — only creation is gated
- * (`client/canvas/layers/regions.mjs:738`, 14.365.0).
- *
- * @param {number} radius In scene units
- * @param {string} name The region's label while it is being placed
- * @returns {Promise<{x: number, y: number}|null>} null when the placement was dismissed
- */
 /**
  * Arm an interactive canvas placement and tell the shooter the map is waiting for them.
  *
@@ -241,7 +302,24 @@ function armPlacement(name) {
   return () => ui.notifications.remove(cue);
 }
 
-export async function pickBlastCentre(radius, name) {
+/**
+ * Let the acting client put the blast where they mean it, without writing anything.
+ *
+ * `create: false` returns the preview document itself and never touches the database, which is why
+ * this works for a player and is not blocked by a paused world — only creation is gated
+ * (`client/canvas/layers/regions.mjs:738`, 14.365.0).
+ *
+ * @param {number} radius In scene units
+ * @param {string} name The region's label while it is being placed
+ * @param {object} [options]
+ * @param {((args: {preview: Region, document: RegionDocument, shape: object}) => void)|null}
+ *   [options.onPlacementChange] Live feedback while the preview follows the cursor: the tint a
+ *   chained pattern takes (D195) and the width an auto-range one takes (D194). Core's own
+ *   `onChange`, which fires **after** the shape has settled into its snapped position — the raw
+ *   `onMove` position is pre-snap and would disagree with what the card later reports.
+ * @returns {Promise<{x: number, y: number}|null>} null when the placement was dismissed
+ */
+export async function pickBlastCentre(radius, name, { onPlacementChange = null } = {}) {
   const disarm = armPlacement(name);
   let region;
   try {
@@ -250,7 +328,7 @@ export async function pickBlastCentre(radius, name) {
       shapes: [{ type: "circle", x: 0, y: 0, radius: metresToPixels(radius) }],
       levels: [canvas.level.id],
       visibility: CONST.REGION_VISIBILITY.ALWAYS
-    }, { create: false });
+    }, { create: false, ...(onPlacementChange ? { onChange: onPlacementChange } : {}) });
   } finally {
     disarm();
   }
@@ -819,10 +897,14 @@ export function blastCoverage(scene, region, blast, point, isShooter = false, is
     const nearest = corridorPoint(blast.corridor, point);
     if (nearest) {
       const along = scene.grid.measurePath([nearest, point]).distance;
+      // D193 — the strip takes the width of the band the bystander's own projection falls in, so
+      // the cone is narrow at the muzzle and opens out towards the target; a payload with no band
+      // table (a sweep, or a pattern card written before D193) keeps the uniform width.
+      const down = scene.grid.measurePath([blast.corridor.from, nearest]).distance;
       // Ch. 07:843 — a target in the straight path between attacker and intended target is in the
       // area of effect too, at the pattern's own width. Full damage: the book gives the corridor
       // no falloff of its own, and the ring table belongs to the circle.
-      if (along <= blast.radius) {
+      if (along <= corridorHalfWidth(blast.corridor, down, blast.radius)) {
         distance = along;
         multiplier = 1;
       }
@@ -910,9 +992,11 @@ function corridorPoint({ from, to }, point) {
  *
  * @param {Token|undefined} shooter The attacker's token on the current scene
  * @param {{x: number, y: number}} target The pattern's centre, in pixels
+ * @param {Array<{limit: number, halfWidth: number}>|null} [bands] D193's stepped widths, from
+ *   `spreadCorridorBands`. Omitted by the flamethrower sweep, which is one stream of one width.
  * @returns {{from: {x: number, y: number}, to: {x: number, y: number}}|null} null with no shooter
  */
-export function fireCorridor(shooter, target) {
+export function fireCorridor(shooter, target, bands = null) {
   if (!shooter) return null;
 
   const from = shooter.center;
@@ -928,7 +1012,11 @@ export function fireCorridor(shooter, target) {
   return {
     from: { x: from.x, y: from.y },
     to: { x: to.x, y: to.y },
-    shooterTokenUuid: shooter.document?.uuid ?? ""
+    shooterTokenUuid: shooter.document?.uuid ?? "",
+    // Frozen onto the card with everything else: the apply path must not re-read a weapon or a
+    // round the shooter may have edited since (the `snapshotAmmo` rule). `null` is not written —
+    // the payload travels as JSON and the readers treat an absent table as the uniform width.
+    ...(bands ? { bands } : {})
   };
 }
 
@@ -976,7 +1064,7 @@ function drawnReach(region, centre, point, step) {
  * @param {number} step Pixels per scene unit
  * @returns {number} Infinity when the muzzle cannot reach the point in a straight line
  */
-function corridorReach(edges, corridor, centre, point, step) {
+function corridorReach(edges, corridor, centre, point, step, radius) {
   if (wallBetween(edges, corridor.from, point)) return Infinity;
 
   const direct = Math.hypot(point.x - centre.x, point.y - centre.y) / step;
@@ -985,7 +1073,13 @@ function corridorReach(edges, corridor, centre, point, step) {
   const nearest = corridorPoint(corridor, point);
   if (!nearest) return direct;
 
-  return Math.min(direct, Math.hypot(point.x - nearest.x, point.y - nearest.y) / step);
+  const off = Math.hypot(point.x - nearest.x, point.y - nearest.y) / step;
+  const down = Math.hypot(nearest.x - corridor.from.x, nearest.y - corridor.from.y) / step;
+  // D193's cone has a width of its own per band, so "inside the strip" can no longer be expressed
+  // as a distance measured against the disc's single radius: a point within its own band's
+  // half-width reads 0 — reached — and one outside it is left to the disc alone.
+  const inBand = off <= corridorHalfWidth(corridor, down, radius);
+  return Math.min(direct, inBand ? 0 : Infinity);
 }
 
 /**
@@ -1093,6 +1187,50 @@ function corridorBand({ from, to }, halfWidth) {
 }
 
 /**
+ * The corridor drawn as D193 leaves it: one rectangle per band the line of fire crosses, each at
+ * that band's own half-width, so the paint is the same stepped cone the membership rule resolves.
+ *
+ * The single uniform rectangle is still what a payload with no band table draws — the sweep's, and
+ * any pattern card written before D193.
+ *
+ * @param {object} corridor The payload's own corridor
+ * @param {number} radius The disc's radius in scene units, the uniform fallback
+ * @param {number} step Pixels per scene unit
+ * @returns {object[]} region shape data
+ */
+function corridorBands(corridor, radius, step) {
+  const bands = corridor?.bands;
+  if (!Array.isArray(bands) || !bands.length) {
+    const band = corridorBand(corridor, radius * step);
+    return band ? [band] : [];
+  }
+
+  const { from, to } = corridor;
+  const length = Math.hypot(to.x - from.x, to.y - from.y);
+  if (!length) return [];
+
+  const ux = (to.x - from.x) / length;
+  const uy = (to.y - from.y) / length;
+  const shapes = [];
+  let start = 0;
+  for (const [index, band] of bands.entries()) {
+    // The last band runs to the end of the corridor whatever its own limit says — beyond it is
+    // Extreme, which folds into Long.
+    const end = index === bands.length - 1 ? length : Math.min(length, band.limit * step);
+    if (end <= start) continue;
+
+    const segment = corridorBand({
+      from: { x: from.x + (ux * start), y: from.y + (uy * start) },
+      to: { x: from.x + (ux * end), y: from.y + (uy * end) }
+    }, band.halfWidth * step);
+    if (segment) shapes.push(segment);
+    start = end;
+    if (start >= length) break;
+  }
+  return shapes;
+}
+
+/**
  * The shapes a shotgun pattern or a flamethrower sweep is drawn as, as D115's wall gate leaves them.
  *
  * `blastRegion` refuses a corridor payload outright, because D115 rules that a pattern never wraps —
@@ -1111,12 +1249,10 @@ function corridorBand({ from, to }, halfWidth) {
  */
 function corridorShapes(scene, blast, centre, radius, step) {
   // Ch. 07:843's corridor is part of what the pattern catches, so it is part of what it draws.
-  const exact = () => {
-    const shapes = [{ type: "circle", x: centre.x, y: centre.y, radius: radius * step }];
-    const band = corridorBand(blast.corridor, radius * step);
-    if (band) shapes.push(band);
-    return shapes;
-  };
+  const exact = () => [
+    { type: "circle", x: centre.x, y: centre.y, radius: radius * step },
+    ...corridorBands(blast.corridor, radius, step)
+  ];
 
   // A payload naming no level meets no wall in `blastCoverage` either, so the two agree by saying
   // nothing about walls.
@@ -1134,7 +1270,7 @@ function corridorShapes(scene, blast, centre, radius, step) {
   // The search follows the band, not the whole reach: a point is drawn only within `radius` of the
   // line of fire or of the disc, so the box over those three points is where the cells can pass
   // (`T328`).
-  return unionOfCells(point => corridorReach(edges, blast.corridor, centre, point, step),
+  return unionOfCells(point => corridorReach(edges, blast.corridor, centre, point, step, radius),
     centre, radius, step,
     reachBox([blast.corridor.from, blast.corridor.to, centre], radius * step));
 }

@@ -1,6 +1,6 @@
 import { weaponTypes, meleeAttackTypes, rangedAttackTypes, attackSkills, concealability, availability, reliability, getStatNames, programTypes, effectiveRange, AMMO_ROUNDS_PER_BOX } from "../lookups.js";
 import { formulaHasDice } from "../dice.js";
-import { deleteFieldUpdate, localize, localizeParam, localizeParamEscaped, cwHasType, getSkillIndex } from "../utils.js";
+import { deleteFieldUpdate, localize, localizeParam, localizeParamEscaped, cwHasType, getSkillIndex, zeroEmptyNumberFields } from "../utils.js";
 import { createCyberpunkChatMessage, getHtmlElement, getPublicMessageMode, getRichEditorHTML, saveRichEditorHTML, rollToCyberpunkChatMessage } from "../compat.js";
 
 const { HandlebarsApplicationMixin } = foundry.applications.api;
@@ -785,13 +785,19 @@ async _prepareCyberware(sheet) {
    * property of one blade and `resolveHit` reads them as alternatives, the mono fractions replacing
    * the √ halving rather than stacking with it. Refused at authoring, the way D71's ammunition pairs
    * are, and warned because the box that clears is not the one clicked.
+   *
+   * D191 — «кибероружие работает по идентичным правилам с обычным», so the cyberware weapon block is the
+   * same refusal on a second pair of boxes (`T367`). The sibling is found by swapping the trailing
+   * segment rather than by a fixed name, which is what lets one handler serve both surfaces.
    */
   async _cpHandleWeaponEdgeChange(checkbox, event, root) {
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation?.();
 
-    const otherName = checkbox.name === "system.ap" ? "system.mono" : "system.ap";
+    const otherName = checkbox.name.endsWith(".ap")
+      ? checkbox.name.replace(/\.ap$/, ".mono")
+      : checkbox.name.replace(/\.mono$/, ".ap");
     const other = root.querySelector(`input[name="${otherName}"]`);
 
     const update = { [checkbox.name]: checkbox.checked };
@@ -803,7 +809,8 @@ async _prepareCyberware(sheet) {
 
     // No re-render: both boxes render unconditionally on a melee weapon now, so nothing changes
     // shape and a rebuild would only drop focus out of the control just used.
-    await this.item.update(update, { render: false });
+    if (this.item.type === "cyberware") await this._cpUpdateCyberwareDocument(update, { render: false });
+    else await this.item.update(update, { render: false });
   }
 
   /** The header image carries `data-edit="img"`, which ApplicationV2 does not wire up on its own. */
@@ -1786,6 +1793,12 @@ async _prepareCyberware(sheet) {
     const weaponControlSelector = "select[name='system.CyberWorkType.Weapon.ammoItemId']";
 
     const changeHandler = async (event) => {
+      // D191 — the AP/Mono pair refuses itself here exactly as it does on the weapon sheet, and
+      // this capture handler is then the only persistence path for the two boxes (`T367`).
+      const edge = event.target?.closest?.(
+        "input[name='system.CyberWorkType.Weapon.ap'], input[name='system.CyberWorkType.Weapon.mono']");
+      if (edge && root.contains(edge)) return this._cpHandleWeaponEdgeChange(edge, event, root);
+
       const control = event.target?.closest?.(weaponControlSelector);
       if (!control || !root.contains(control)) return;
 
@@ -2526,7 +2539,7 @@ async _prepareCyberware(sheet) {
 
   /** @override */
   _processFormData(event, form, formData) {
-    const data = super._processFormData(event, form, formData);
+    const data = zeroEmptyNumberFields(form, super._processFormData(event, form, formData));
 
     if (this.item.type === "cyberware") {
       const pickLastString = (v) => {

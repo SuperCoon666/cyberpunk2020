@@ -1,10 +1,10 @@
-import { weaponTypes, rangedAttackTypes, meleeAttackTypes, fireModes, ranges, rangeDCs, rangeResolve, effectiveRange, strengthDamageBonus, getMartialActionBonus, martialActions, isCombatAutomationEnabled, isFnff2Enabled, getFnff2DamageBonusSymbol, unarmedManeuverDamage, UNARMED_STRIKE_ID } from "../lookups.js"
+import { weaponTypes, rangedAttackTypes, meleeAttackTypes, fireModes, ranges, rangeBandFor, rangeDCs, rangeResolve, effectiveRange, strengthDamageBonus, getMartialActionBonus, martialActions, isCombatAutomationEnabled, isFnff2Enabled, getFnff2DamageBonusSymbol, unarmedManeuverFormula, JUMP_KICK_TO_HIT, UNARMED_STRIKE_ID } from "../lookups.js"
 import { Multiroll, makeD10Roll } from "../dice.js"
 import { displayName, localize, localizeParam, rollLocation, cwHasType, cwIsEnabled, isFumbleRoll, buildRangedCombatFumbleData, buildSkillFumbleData, clamp, isRollableFormula } from "../utils.js";
 import { createCyberpunkChatMessage, createCyberpunkRollCard, renderCyberpunkTemplate } from "../compat.js";
 import { ATTACK_FLAG_VERSION, attackerIsHidden, hiddenMessageMode, snapshotAmmo } from "../damage.js";
 import { declareDodge, dodgeRangedPenalty, resolveDefense } from "../combat.js";
-import { blastProfile, blastRings, fireCorridor, isBlastAttack, isSpreadAttack, pickBlastCentre, placeSuppressionZone, scatterCentre, snapPatternCentre, spreadProfileFor } from "../zones.js";
+import { blastProfile, blastRings, fireCorridor, isBlastAttack, isSpreadAttack, metresToPixels, PATTERN_TINT_ADJACENT, PATTERN_TINT_WALKED, pickBlastCentre, placeSuppressionZone, scatterCentre, snapPatternCentre, spreadCorridorBands, spreadProfileFor } from "../zones.js";
 /** @extends {Item} */
 export class CyberpunkItem extends Item {
 
@@ -316,7 +316,13 @@ export class CyberpunkItem extends Item {
     // Friend's copy of the rulebook states penalties/bonus for all except point blank
     if(fireMode === fireModes.fullAuto) {
       const bullets = CyberpunkItem._resolveFullAutoRounds({ fullAutoRoundsFired }, sys);
-      if (sys.attackType === rangedAttackTypes.autoshotgun) {
+      // **The same gate `__weaponRoll` dispatches on.** The ladder prices the pattern attack, so it
+      // applies exactly where that attack runs: an autoshotgun loaded with slugs, one with nothing
+      // loaded, and any autoshotgun in a world with automation off all resolve through
+      // `__fullAuto`'s bullet hose, where `roundsHit = total - DC` would spend the penalty a second
+      // time — three states each strictly worse than before the ladder existed (`T377`).
+      if (sys.attackType === rangedAttackTypes.autoshotgun
+        && isCombatAutomationEnabled() && isSpreadAttack(snapshotAmmo(this), range)) {
         // Ch. 07:861-863 — an autoshotgun's full auto is N *patterns* on one trigger pull, not a
         // hose of bullets, and it climbs a flat -2 per shot past the first: the book's own CAWS
         // example is five shots at -8. The ±1-per-10-rounds rule below is the bullet weapon's and
@@ -417,6 +423,22 @@ export class CyberpunkItem extends Item {
     // modifiers every branch already receives.
     const mods = { ...attackMods, targetActor: CyberpunkItem.__targetActor(targets[0]) };
 
+    // D196 — «Автоопределение дистанции» is an instruction, not a band, so it is spent here:
+    // everything downstream reads `rangeDCs` and `rangeResolve` and must never see the option
+    // itself. A target is the measure where there is one; an attack that puts its own centre on
+    // the map measures from that centre instead and resolves further down.
+    if (mods.range === ranges.auto) {
+      const measured = this.__distanceTo(targets[0], attackerToken);
+      if (measured !== null) mods.range = this.__bandAt(measured);
+      else if (!this.__placesOwnCentre(system, mods)) {
+        // D199, an approved hard restriction of the empty-weapon shape: nothing to measure and
+        // nothing to measure it to, so the shot does not happen — the player selects a target or
+        // deliberately picks a constant band. Nothing is spent and no card is posted.
+        ui.notifications.warn(localize("AutoRangeNoTarget"));
+        return false;
+      }
+    }
+
     if (!isRanged) {
       // The attacker's own token rides through to the contest: only the acting client knows which
       // token it is firing as, and the notice and the prompt name it (`T296`, D133).
@@ -471,6 +493,80 @@ export class CyberpunkItem extends Item {
     else if(mods.fireMode === fireModes.suppressive) {
       return this.__suppressiveFire(mods);
     }
+  }
+
+  /**
+   * How far this attack actually travels, in scene units, or null when there is nothing to measure.
+   *
+   * The attacker's own token where the caller knows it — a linked actor carries no `token`, and
+   * `getActiveTokens` is scoped to the *viewed* scene (`client/documents/actor.mjs:282`, 14.365.0),
+   * which answers nothing for a GM running two of them. This is the same resolution the melee
+   * notice takes (`T296`, D133).
+   *
+   * @param {object} [target] One entry of the sheet's target snapshot
+   * @param {TokenDocument} [attackerToken]
+   * @returns {number|null}
+   */
+  __distanceTo(target, attackerToken = null) {
+    if (!target?.tokenUuid || !canvas?.ready) return null;
+
+    const from = attackerToken?.object ?? this.actor?.getActiveTokens?.()[0];
+    const to = fromUuidSync(target.tokenUuid)?.object;
+    if (!from || !to) return null;
+
+    return canvas.grid.measurePath([from.center, to.center]).distance;
+  }
+
+  /**
+   * How far a point on the map is from the shooter, in scene units — the measure D199 leaves for a
+   * splash attack, whose centre is chosen rather than targeted.
+   *
+   * @param {{x: number, y: number}} point In pixels
+   * @param {Token} [shooterToken] The attacker's placed token
+   * @returns {number|null}
+   */
+  __distanceToPoint(point, shooterToken = null) {
+    const from = shooterToken ?? this.actor?.getActiveTokens?.()[0];
+    if (!from || !point || !canvas?.ready) return null;
+    return canvas.grid.measurePath([from.center, point]).distance;
+  }
+
+  /**
+   * The band a measured distance falls in.
+   *
+   * A weapon with no usable range of its own reads the band the dialog itself would have opened on
+   * — `rangedModifiers` takes the same fallback, so auto and manual agree about that weapon.
+   *
+   * @param {number} distance In scene units
+   * @returns {string} One of the five `ranges` bands
+   */
+  __bandAt(distance) {
+    return rangeBandFor(distance, effectiveRange(this)) ?? ranges.close;
+  }
+
+  /**
+   * Whether this attack will put its own centre on the map, which is then what auto range measures
+   * to (D199 — *"the placed centre is the measure"*).
+   *
+   * The canvas is part of the test: every one of these falls back to a mapless path when there is
+   * no canvas, and a mapless path has no centre to measure from either — so auto has nothing at
+   * all and the attack is refused rather than guessed at.
+   *
+   * @param {object} system From `_getWeaponSystem`
+   * @param {object} mods
+   * @returns {boolean}
+   */
+  __placesOwnCentre(system, mods) {
+    if (!isCombatAutomationEnabled() || !canvas?.ready) return false;
+    if (this.isPlanted() || system.attackType === rangedAttackTypes.flamethrow) return true;
+
+    const ammo = snapshotAmmo(this);
+    if (isBlastAttack(ammo)) return true;
+    if (mods.fireMode === fireModes.suppressive) return true;
+    // The autoshotgun's chained patterns — the same test its own dispatch takes.
+    return system.attackType === rangedAttackTypes.autoshotgun
+      && mods.fireMode === fireModes.fullAuto
+      && isSpreadAttack(ammo, mods.range);
   }
 
   /** An unlinked token owns its own delta actor, so the token document is what gets resolved. */
@@ -611,7 +707,7 @@ export class CyberpunkItem extends Item {
    * @param {object|null} card.blast The same geometry with a centre, or null when none was placed
    */
   async __zoneCard({ title, kind, attackMods, attackRoll, ammo, profile, blast, damage, damageRoll,
-    onTarget, scatter, target, fumble }) {
+    onTarget, scatter, target, fumble, adjacency = "" }) {
     const system = this._getWeaponSystem();
     const roll = new Multiroll(title).addRoll(attackRoll, { name: localize("Attack") });
 
@@ -642,6 +738,11 @@ export class CyberpunkItem extends Item {
         // went unmentioned entirely, so *Apply over zone* damaged victims the card never described
         // (`T162`). `T252` widened the shape to a second kind, so the caption and the width's own
         // label are resolved here rather than hard-coded to the shotgun's wording.
+        // `T100`'s eighth clause, D192's ring stated rather than enforced: a chained pattern says
+        // on its own card whether it landed inside the previous one's 1 m ring or the burst walked
+        // (`T379`). Empty for everything that is not a chained pattern, the first one included —
+        // it has nothing to be adjacent to.
+        adjacency,
         isCorridor: kind === "spread" || kind === "sweep",
         corridorWidthLabel: localize(kind === "sweep" ? "SweepWidth" : "SpreadWidth"),
         corridorCaption: localize(kind === "sweep" ? "SweepCorridor" : "SpreadCorridor"),
@@ -828,6 +929,13 @@ export class CyberpunkItem extends Item {
       if (!centre) return null;
     }
 
+    // D199 — a splash placement always knows its distance, so auto range is answered by the centre
+    // the shooter chose rather than by a target they never selected. Resolved before the roll,
+    // because `__shootModTerms` and the DC both read the band.
+    if (attackMods.range === ranges.auto) {
+      attackMods = { ...attackMods, range: this.__bandAt(this.__distanceToPoint(centre) ?? 0) };
+    }
+
     const attackRoll = await this.attackRoll(attackMods);
     const rangedFumble = await this._maybeApplyRangedFumble(attackRoll);
     const onTarget = attackRoll.total >= rangeDCs[attackMods.range] && !rangedFumble?.forceMiss;
@@ -900,6 +1008,11 @@ export class CyberpunkItem extends Item {
       if (!start) return null;
       end = await pickBlastCentre(profile.radius, localizeParam("SweepEndPoint", { weapon: this.name }));
       if (!end) return null;
+    }
+
+    // D199 again: the stream's own far point is what auto range measures to.
+    if (attackMods.range === ranges.auto) {
+      attackMods = { ...attackMods, range: this.__bandAt(this.__distanceToPoint(end) ?? 0) };
     }
 
     const attackRoll = await this.attackRoll(attackMods);
@@ -1082,7 +1195,14 @@ export class CyberpunkItem extends Item {
   async __autoshotgunFullAuto(attackMods, targetTokens = []) {
     const system = this._getWeaponSystem();
     const ammo = snapshotAmmo(this);
-    const spread = spreadProfileFor(attackMods.range, ammo);
+    const autoRange = attackMods.range === ranges.auto;
+    // D194/D196 — under automatic range each pattern is played at the band its **own** placed
+    // centre falls in, so the width, the damage and the DC are all decided by where the shooter
+    // put it. Before the first drag there is nothing to measure, so the preview opens at the band
+    // the shooter is standing in and resizes as the cursor crosses each boundary (`T371`).
+    const shooterToken = this.actor.getActiveTokens()[0];
+    const bandAtPoint = point => this.__bandAt(this.__distanceToPoint(point, shooterToken) ?? 0);
+    const spread = spreadProfileFor(autoRange ? this.__bandAt(0) : attackMods.range, ammo);
     const patterns = CyberpunkItem._resolveFullAutoRounds(attackMods, system);
 
     // The dialog already clamps the shooter's number to 1..min(ROF, magazine); this is the same
@@ -1105,36 +1225,62 @@ export class CyberpunkItem extends Item {
     for (let i = 0; i < patterns; i++) {
       const placed = await pickBlastCentre(spread.width / 2, localizeParam("SpreadPatternName", {
         weapon: this.name, index: i + 1, count: patterns
-      }));
+      }), {
+        onPlacementChange: this.__patternPlacementFeedback(previous,
+          autoRange ? point => spreadProfileFor(bandAtPoint(point), ammo).width / 2 : null)
+      });
       // Dismissed: nothing is spent, nothing is rolled, no card is posted.
       if (!placed) return null;
 
-      const snapped = snapPatternCentre(placed, previous, spread.width);
+      const snapped = snapPatternCentre(placed, previous);
+      // The band this pattern was actually laid at, frozen now: the apply path must not re-measure
+      // against a token that has moved since.
+      snapped.range = autoRange ? bandAtPoint(snapped) : attackMods.range;
       centres.push(snapped);
       previous = snapped;
     }
 
-    await this.__setWeaponField("shotsLeft", Math.max(0, Number(system.shotsLeft) - patterns));
-
-    const rollData = this.actor?.getRollData?.() ?? {};
-    const shooterToken = this.actor.getActiveTokens()[0];
-    const damageFormula = this.__ammoDamageFormula(spread.damage || system.damage, ammo);
-    const maximizeDamage = this._shouldMaximizePointBlankDamage(attackMods);
-    const profile = { radius: spread.width / 2, fullDamageWithin: spread.width / 2, multipliers: [] };
-
-    let last = null;
-    for (const [index, centre] of centres.entries()) {
+    // Every pattern is rolled **before** the magazine is written, which is what lets a fumbled
+    // discharge empty it — the order `__semiAuto` and `__threeRoundBurst` both take. The cards
+    // still come after the write, so the rounds are gone whether or not chat renders (`D.10.9`).
+    const shots = [];
+    for (let i = 0; i < patterns; i++) {
       // Every pattern of the burst carries the same penalty — `-2 x (N-1)`, not a ladder that
       // climbs within the trigger pull: `07:863` prices the whole burst by how many shots are in
       // it. `__shootModTerms` reads it off the same `fullAutoRoundsFired` the dialog wrote.
       const attackRoll = await this.attackRoll(attackMods);
-      const damageRoll = await new Roll(damageFormula, rollData).evaluate({ maximize: maximizeDamage });
+      shots.push({ attackRoll, fumble: await this._maybeApplyRangedFumble(attackRoll) });
+    }
+
+    const discharged = shots.some(shot => shot.fumble?.outcome?.discharge);
+    await this.__setWeaponField("shotsLeft",
+      discharged ? 0 : Math.max(0, Number(system.shotsLeft) - patterns));
+
+    const rollData = this.actor?.getRollData?.() ?? {};
+    const maximizeDamage = this._shouldMaximizePointBlankDamage(attackMods);
+
+    let last = null;
+    for (const [index, centre] of centres.entries()) {
+      const { attackRoll, fumble } = shots[index];
+      // Per pattern, because under auto range each one was laid at its own distance: the width it
+      // covers, the damage the table gives that band and the DC on its card all follow the same
+      // measurement (D196). With a band picked by hand every pattern reads the declared one.
+      const mods = { ...attackMods, range: centre.range };
+      const patternSpread = spreadProfileFor(mods.range, ammo);
+      const profile = {
+        radius: patternSpread.width / 2,
+        fullDamageWithin: patternSpread.width / 2,
+        multipliers: []
+      };
+      const damageRoll = await new Roll(
+        this.__ammoDamageFormula(patternSpread.damage || system.damage, ammo), rollData)
+        .evaluate({ maximize: maximizeDamage });
       const damage = CyberpunkItem._floorDamageTotal(damageRoll.total);
 
       last = await this.__zoneCard({
         title: localizeParam("SpreadPatternTitle", { index: index + 1, count: patterns }),
         kind: "spread",
-        attackMods,
+        attackMods: mods,
         attackRoll,
         ammo,
         profile,
@@ -1145,8 +1291,12 @@ export class CyberpunkItem extends Item {
           damage,
           sceneId: canvas.scene.id,
           levelId: canvas.level.id,
-          corridor: fireCorridor(shooterToken, centre),
-          aimedTokenUuid: targetTokens[index]?.tokenUuid ?? "",
+          corridor: fireCorridor(shooterToken, centre, spreadCorridorBands(effectiveRange(this), ammo)),
+          // **No aimed token.** D17's wall exemption is for *"the shot's designated target"*, and on
+          // this path the shooter designated a point rather than a body — pairing pattern *i* with
+          // the *i*-th targeted token exempted whoever happened to sit at that index from the wall
+          // gate, wherever they were standing (`T380`).
+          aimedTokenUuid: "",
           aimedZone: ""
         },
         damage,
@@ -1155,12 +1305,71 @@ export class CyberpunkItem extends Item {
         // roll decides is what the ground does to whoever is standing on it.
         onTarget: true,
         scatter: null,
-        target: targetTokens[index],
-        fumble: null
+        // D192's ring, stated and never enforced (D54). The first pattern has nothing to be
+        // adjacent to, so it carries no caption at all (`T379`).
+        adjacency: index === 0
+          ? ""
+          : localize(centre.adjacent ? "SpreadPatternAdjacent" : "SpreadPatternWalked"),
+        fumble: fumble?.fumble ?? null
       });
     }
 
     return last;
+  }
+
+  /**
+   * The live feedback a chained pattern gives while it follows the cursor (D195).
+   *
+   * Green inside the previous pattern's 1 m ring, red beyond it — **display only**, never a veto:
+   * a red pattern places exactly as a green one does, and the card then says the burst walked
+   * (`T372`). The first pattern of a burst has no previous centre and is never tinted at all.
+   *
+   * Measured off the **settled** shape rather than the raw cursor, because that is the point
+   * `snapPatternCentre` will judge — the tint and the caption cannot disagree that way.
+   *
+   * @param {{x: number, y: number}|null} previous The previous pattern's snapped centre
+   * @returns {((args: object) => void)|null} null for the first pattern
+   */
+  __patternPlacementFeedback(previous, radiusAt = null) {
+    if (!previous && !radiusAt) return null;
+
+    let lit = null;
+    return ({ document, preview, shape }) => {
+      const changes = {};
+      let resized = false;
+
+      // D194 — the disc widens and narrows live as the cursor crosses the weapon's own band
+      // boundaries, so what the shooter is about to place is what they are looking at (`T371`).
+      //
+      // Written **on the shape**, not only onto the document: `shape` is the placement context's
+      // own object, core mutates it through `shape.move()` and re-applies it to the document on
+      // every pointer move (`client/canvas/layers/regions.mjs:1043-1044`, 14.365.0), so a radius
+      // written to the document alone would be undone by the next move — a flicker rather than a
+      // resize.
+      if (radiusAt) {
+        const radius = metresToPixels(radiusAt(shape));
+        if (radius !== shape.radius) {
+          shape.updateSource({ radius });
+          changes.shapes = [...document.shapes.slice(0, -1), shape];
+          resized = true;
+        }
+      }
+
+      if (previous) {
+        const near = snapPatternCentre(shape, previous).adjacent;
+        if (near !== lit) {
+          lit = near;
+          changes.color = near ? PATTERN_TINT_ADJACENT : PATTERN_TINT_WALKED;
+        }
+      }
+
+      if (foundry.utils.isEmpty(changes)) return;
+      document.updateSource(changes);
+      if (resized) document.updateShapeConstraints();
+      // `_refreshState` reads `document.color` onto the highlight and `refreshShapes` redraws the
+      // geometry (`client/canvas/placeables/region.mjs:386-409`, 14.365.0).
+      preview.renderFlags.set({ refreshState: !!changes.color, refreshShapes: resized });
+    };
   }
 
   /**
@@ -1181,15 +1390,15 @@ export class CyberpunkItem extends Item {
     const share = Math.floor(patterns / targetCount);
     const surplus = patterns - (share * targetCount);
 
-    await this.__setWeaponField("shotsLeft", Math.max(0, Number(system.shotsLeft) - patterns));
-
     const rollData = this.actor?.getRollData?.() ?? {};
     const DC = rangeDCs[attackMods.range];
     const actualRangeBracket = rangeResolve[attackMods.range](effectiveRange(this));
     const damageFormula = this.__ammoDamageFormula(spread.damage || system.damage, ammo);
     const maximizeDamage = this._shouldMaximizePointBlankDamage(attackMods);
 
-    let last = null;
+    // Rolled before the magazine is written so a fumbled discharge can empty it, the order the
+    // canvas arm and `__semiAuto` both take.
+    const shots = [];
     for (let t = 0; t < targetCount; t++) {
       // The surplus rides on the last target rather than going unfired, which is where this parts
       // company with `07:712`'s bullet burst (`T147`).
@@ -1201,35 +1410,57 @@ export class CyberpunkItem extends Item {
 
       for (let i = 0; i < mine; i++) {
         const attackRoll = await this.attackRoll(mods);
-        const damageRoll = await new Roll(damageFormula, rollData).evaluate({ maximize: maximizeDamage });
-        const damage = CyberpunkItem._floorDamageTotal(damageRoll.total);
-        const hit = attackRoll.total >= DC;
-        const location = (await rollLocation(mods.targetActor, attackMods.targetArea)).areaHit;
-
-        const areaDamages = {};
-        if (hit) {
-          areaDamages[location] = [{
-            damage,
-            damageHtml: CyberpunkItem._inlineRollHtml(damage, damageRoll, "damage")
-          }];
-        }
-
-        last = await new Multiroll(localizeParam("SpreadPatternTitle",
-          { index: (t * share) + i + 1, count: patterns }))
-          .addRoll(attackRoll, { name: localize("Attack") })
-          .execute(undefined, "systems/cyberpunk2020/templates/chat/multi-hit.hbs", {
-            target: targetTokens[t],
-            range: attackMods.range,
-            toHit: DC,
-            attackRoll,
-            fired: 1,
-            hits: hit ? 1 : 0,
-            hit,
-            areaDamages,
-            fumble: null,
-            locals: { range: { range: actualRangeBracket } }
-          });
+        shots.push({ t, mods, attackRoll, fumble: await this._maybeApplyRangedFumble(attackRoll) });
       }
+    }
+
+    const discharged = shots.some(shot => shot.fumble?.outcome?.discharge);
+    await this.__setWeaponField("shotsLeft",
+      discharged ? 0 : Math.max(0, Number(system.shotsLeft) - patterns));
+
+    let last = null;
+    // Numbered off the flat list rather than off `(t * share) + i`, which repeats and skips as soon
+    // as the shares are uneven — the surplus is on the last target by construction.
+    for (const [index, { t, mods, attackRoll, fumble }] of shots.entries()) {
+      const damageRoll = await new Roll(damageFormula, rollData).evaluate({ maximize: maximizeDamage });
+      const damage = CyberpunkItem._floorDamageTotal(damageRoll.total);
+      const hit = attackRoll.total >= DC && !fumble?.forceMiss;
+      const location = (await rollLocation(mods.targetActor, attackMods.targetArea)).areaHit;
+
+      const areaDamages = {};
+      if (hit) {
+        areaDamages[location] = [{
+          damage,
+          damageHtml: CyberpunkItem._inlineRollHtml(damage, damageRoll, "damage")
+        }];
+      }
+
+      last = await new Multiroll(localizeParam("SpreadPatternTitle",
+        { index: index + 1, count: patterns }))
+        .addRoll(attackRoll, { name: localize("Attack") })
+        .execute(undefined, "systems/cyberpunk2020/templates/chat/multi-hit.hbs", {
+          target: targetTokens[t],
+          range: attackMods.range,
+          toHit: DC,
+          attackRoll,
+          fired: 1,
+          hits: hit ? 1 : 0,
+          hit,
+          areaDamages,
+          fumble: fumble?.fumble ?? null,
+          locals: { range: { range: actualRangeBracket } }
+        },
+        // Without these the card carries no `flags.cyberpunk2020.attack` at all, so the version
+        // gate rejects it, no *apply damage* button is rendered and the auto-apply hook never
+        // fires — the one arm written for a table with no map was the one whose damage a GM had to
+        // enter by hand (`T378`). The three fire modes beside it pass exactly this.
+        this.__attackFlags({
+          target: targetTokens[t],
+          areaDamages,
+          ammo,
+          fireMode: attackMods.fireMode,
+          range: attackMods.range
+        }));
     }
 
     return last;
@@ -1478,7 +1709,14 @@ export class CyberpunkItem extends Item {
     if (rounds > 0 && canvas.ready && isCombatAutomationEnabled()) {
       // The corridor covers the band being fired at; the shooter places and rotates it. A weapon
       // with no range falls back to a square, which is the zone the book's own examples describe.
-      const reach = Math.round(rangeResolve[mods.range]?.(effectiveRange(this)) || 0);
+      //
+      // A suppression zone is laid **before** anything is measured and is a corridor rather than a
+      // centre, so D199's *"the placed centre is the measure"* has nothing to bite on: under auto
+      // range the zone takes the weapon's whole reach, which is the longest corridor it can lay and
+      // never shorter than a band the shooter could have declared (`BZ-Q2`).
+      const reach = Math.round(mods.range === ranges.auto
+        ? effectiveRange(this)
+        : (rangeResolve[mods.range]?.(effectiveRange(this)) || 0));
       zone = await placeSuppressionZone(width, Math.max(width, reach),
         localizeParam("ZoneName", { weapon: this.name }));
       // Dismissing the placement takes the burst back: nothing has been rolled or spent yet.
@@ -1513,7 +1751,7 @@ export class CyberpunkItem extends Item {
 
     const html = await renderCyberpunkTemplate(
       "systems/cyberpunk2020/templates/chat/suppressive.hbs",
-      { weaponName: this.name, rounds, width, saveDC, dmgFormula, results, placed: !!zone,
+      { weaponName: CyberpunkItem.__weaponLabel(this.name, this.actor), rounds, width, saveDC, dmgFormula, results, placed: !!zone,
         noRounds: rounds <= 0 }
     );
 
@@ -1644,7 +1882,8 @@ export class CyberpunkItem extends Item {
             // Which level's walls the pattern meets, taken where it was fired from — D115's gate
             // reads it the same way a blast's does (`T284`).
             levelId: canvas.level.id,
-            corridor: fireCorridor(this.actor.getActiveTokens()[0], patternCentre),
+            corridor: fireCorridor(this.actor.getActiveTokens()[0], patternCentre,
+              spreadCorridorBands(effectiveRange(this), ammo)),
             aimedTokenUuid: targetTokens[0]?.tokenUuid ?? "",
             aimedZone: location
           },
@@ -1829,8 +2068,13 @@ export class CyberpunkItem extends Item {
     // one builds its own Roll and used to skip it (`T146`).
     const actionPenalty = Number(attackMods?.actionPenalty) || 0;
 
+    // D200 — Pacific Rim p.144 makes the Jump Kick's -5 automatic, and it ships with the
+    // maneuver's own `1D6+5` rather than after it (`T368`). Only under FNFF2, which is the only
+    // rule set that offers the maneuver at all.
+    const jumpKickMod = (fnff2 && action === martialActions.jumpKick) ? JUMP_KICK_TO_HIT : 0;
+
     let attackRoll = new Roll(
-            `1d10x10 + @stats.ref.total + @attackBonus + @keyTechniqueBonus + @actionBonus + @extraMod + @targetAreaMod${weaponAccuracy !== 0 ? " + @weaponAccuracy" : ""}${actionPenalty !== 0 ? " + @actionPenalty" : ""}`,
+            `1d10x10 + @stats.ref.total + @attackBonus + @keyTechniqueBonus + @actionBonus + @extraMod + @targetAreaMod${weaponAccuracy !== 0 ? " + @weaponAccuracy" : ""}${actionPenalty !== 0 ? " + @actionPenalty" : ""}${jumpKickMod !== 0 ? " + @jumpKickMod" : ""}`,
       {
         stats: system.stats,
         attackBonus: martialSkillLevel,
@@ -1839,7 +2083,8 @@ export class CyberpunkItem extends Item {
         extraMod: extraMod,
         targetAreaMod,
         weaponAccuracy,
-        actionPenalty
+        actionPenalty,
+        jumpKickMod
       }
     );
 
@@ -1878,7 +2123,11 @@ export class CyberpunkItem extends Item {
     // from the maneuver rather than from the Strike document it borrows its data from: a Kick did
     // half what `07:985` prints. Identified by `_id` because the melee packs carry this weapon under
     // a translated name. A real melee weapon is untouched and rolls its own DAM.
-    const maneuverDamage = this.id === UNARMED_STRIKE_ID ? unarmedManeuverDamage[action] : null;
+    //
+    // D200 adds FNFF2's four, Ram's off a chart on the attacker's own BODY (`T368`).
+    const maneuverDamage = this.id === UNARMED_STRIKE_ID
+      ? unarmedManeuverFormula(action, system.stats.bt.total)
+      : null;
     const damageDie = maneuverDamage ?? baseWeaponDamage;
 
     if (canDealDamage && damageDie) {

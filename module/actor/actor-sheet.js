@@ -1,7 +1,7 @@
 import { martialOptions, meleeAttackTypes, meleeBonkOptions, rangedModifiers, stabilizationOptions, weaponTypes, FNFF2_ONLY_MARTIAL_ART_IDS, isCombatAutomationEnabled, isFnff2Enabled, COMBAT_SENSE_SKILL_IDS, INTERFACE_SKILL_IDS, UNARMED_STRIKE_ID, programTypes } from "../lookups.js";
 import { CyberpunkItem } from "../item/item.js";
 import { CyberpunkActor } from "./actor.js";
-import { deleteFieldUpdate, localize, localizeParamEscaped, cwHasType, cwIsEnabled, refusedWhilePaused, withCompendiumSource } from "../utils.js"
+import { deleteFieldUpdate, localize, localizeParamEscaped, cwHasType, cwIsEnabled, refusedWhilePaused, withCompendiumSource, zeroEmptyNumberFields } from "../utils.js"
 import { ModifiersDialog } from "../dialog/modifiers.js"
 import { SortOrders, sortSkills } from "./skill-sort.js";
 import { getHtmlElement, getRichEditorHTML, itemFromDropData, saveRichEditorHTML } from "../compat.js";
@@ -304,7 +304,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
   /** @override */
   _processFormData(event, form, formData) {
-    const data = super._processFormData(event, form, formData);
+    const data = zeroEmptyNumberFields(form, super._processFormData(event, form, formData));
 
     // `sdp.current` is the player's note of what is left in a zone, and 0 is a value they can
     // legitimately write there. Marking the zone on the same write is what lets the rules engine

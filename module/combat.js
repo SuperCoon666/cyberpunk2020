@@ -223,10 +223,13 @@ export function actionPenaltyFor(actor) {
  * two separate documents with two separate counters.
  *
  * @param {Actor} actor
+ * @param {Combat} [combat] The encounter to resolve in. Defaults to the viewing client's tracker
+ *   selection; `declareDodge` passes the encounter it named itself, because `game.combat` is UI
+ *   state and the declaration crosses clients (`T87`).
  * @returns {Combatant|null}
  */
-function combatantFor(actor) {
-  const combatants = game.combat?.combatants;
+function combatantFor(actor, combat = game.combat) {
+  const combatants = combat?.combatants;
   if (!combatants) return null;
   return combatants.find(c => c.actor?.uuid === actor?.uuid)
     ?? combatants.find(c => c.actorId === actor?.id)
@@ -430,7 +433,11 @@ export async function declareDodge(actor) {
   if (!combat) return;
 
   if (actor.isOwner) {
-    await actor.setFlag("cyberpunk2020", DODGING_FLAG, true);
+    // The document the turn start will clear, not the one the sheet was opened from: `T289`'s
+    // split reaches this flag identically, and both its clearing sites read `combatant.actor`
+    // (`T383`).
+    await (combatantFor(actor, combat)?.actor ?? actor)
+      .setFlag("cyberpunk2020", DODGING_FLAG, true);
     return;
   }
 
@@ -475,7 +482,8 @@ export async function applyDeclaredDodge({ actorUuid, combatId } = {}) {
   if (!combat?.started) return false;
   if (!combat.combatants.some(combatant => combatant.actorId === actor.id)) return false;
 
-  await actor.setFlag("cyberpunk2020", DODGING_FLAG, true);
+  await (combatantFor(actor, combat)?.actor ?? actor)
+    .setFlag("cyberpunk2020", DODGING_FLAG, true);
   return true;
 }
 

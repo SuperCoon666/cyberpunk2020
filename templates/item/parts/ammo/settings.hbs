@@ -96,7 +96,7 @@
 
     {{> (template "fields/number") label="AmmoPerBox" edit="system.perBox"}}
 
-    {{> (template "fields/number") label="AmmoQuantity" edit="system.quantity" readOnly=true}}
+    {{> (template "fields/number") label="AmmoQuantity" edit="system.quantity" readOnly=true tooltip="AmmoQuantityHint"}}
 
     <div class="field" data-tooltip="{{CPLocal 'AmmoLooseHint'}}">
         <label>{{CPLocal "AmmoLoose"}}</label>
@@ -234,9 +234,9 @@
             {{> (template "fields/number") label="AmmoSpreadWidthMedium" edit="system.spreadWidthMedium"}}
             {{> (template "fields/number") label="AmmoSpreadWidthLong" edit="system.spreadWidthLong"}}
         {{/if}}
-        {{> (template "fields/string") label="AmmoSpreadDamageShort" edit="system.spreadDamageShort"}}
-        {{> (template "fields/string") label="AmmoSpreadDamageMedium" edit="system.spreadDamageMedium"}}
-        {{> (template "fields/string") label="AmmoSpreadDamageLong" edit="system.spreadDamageLong"}}
+        {{> (template "fields/string") label="AmmoSpreadDamageShort" edit="system.spreadDamageShort" tooltip="AmmoSpreadDamageHint"}}
+        {{> (template "fields/string") label="AmmoSpreadDamageMedium" edit="system.spreadDamageMedium" tooltip="AmmoSpreadDamageHint"}}
+        {{> (template "fields/string") label="AmmoSpreadDamageLong" edit="system.spreadDamageLong" tooltip="AmmoSpreadDamageHint"}}
     {{/if}}
 
     {{!-- Replacing damage — the round's own, in place of the weapon's (D147) --}}

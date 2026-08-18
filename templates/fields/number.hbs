@@ -1,4 +1,4 @@
-<div class="field{{#if extraClasses}} {{extraClasses}}{{/if}}" data-path="{{edit}}">
+<div class="field{{#if extraClasses}} {{extraClasses}}{{/if}}" data-path="{{edit}}"{{#if tooltip}} data-tooltip="{{CPLocal tooltip}}"{{/if}}>
     <label for="{{edit}}">{{CPLocal label}}</label>
     <span class="flex-pad"></span>
 
@@ -11,10 +11,21 @@
         data-max="{{max}}"
         {{#if step}}step="{{step}}"{{/if}}
 
-        {{!-- A zero must render as `value="0"`, never as an empty box: an empty number input
-              submits no key at all, so `submitOnChange` drops the field and the DataModel refills
-              it with its initial — a spent magazine silently reloading itself (`T355`). --}}
-        value="{{deepLookup . edit}}"
-        {{#unless readOnly}}placeholder="0"{{/unless}}
+        {{!-- D198 — a stored 0 shows as an empty cell with the grey `0` placeholder, which is the
+              rendering the sheet is meant to have. The data-loss half of `T355` is held on the
+              submit side instead: an empty number input submits its key carrying `null`
+              (`FormDataExtended#_getFieldValue`, `client/applications/ux/form-data-extended.mjs:200`,
+              14.365.0), and a non-nullable `NumberField` cleans that to its `initial` — the refill
+              `T355` measured. `zeroEmptyNumberFields` puts the 0 back before the update, so
+              emptying a box stores 0 rather than the schema default (`T375`).
+
+              A readOnly box keeps rendering its value, zero included: it is not a box anyone can
+              empty, and D198 leaves that rendering where it is. --}}
+        {{#if readOnly}}
+            value="{{deepLookup . edit}}"
+        {{else}}
+            {{#unless (eq (deepLookup . edit) 0)}}value="{{deepLookup . edit}}"{{/unless}}
+            placeholder="0"
+        {{/if}}
     />
 </div>

@@ -95,6 +95,12 @@
     <p><em>{{corridorCaption}}</em></p>
     {{/if}}
 
+    {{!-- D192's ring, said rather than enforced (D54): only a chained autoshotgun pattern past the
+          first one carries this, so the line is absent from every other card. --}}
+    {{#if adjacency}}
+    <p><em>{{adjacency}}</em></p>
+    {{/if}}
+
     {{#if rings}}
     <div class="damage-tally">
         <label><b>{{CPLocal "BlastFalloff"}}</b></label>

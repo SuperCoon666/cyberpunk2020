@@ -181,6 +181,39 @@ export function deepSet(startObject, path, value, overwrite=true) {
     return startObject;
 }
 
+/**
+ * Write back the zero an empty number box stands for.
+ *
+ * D198 renders a stored 0 as an empty cell with a grey `0` placeholder, and an empty
+ * `type="number"` **does** submit its key — carrying `null` (`FormDataExtended#_getFieldValue`,
+ * `client/applications/ux/form-data-extended.mjs:200`, 14.365.0). A non-nullable `NumberField`
+ * then cleans that `null` to its `initial`, which is the refill `T355` measured: a spent magazine
+ * reloading itself on an edit of a sibling field. Restoring the 0 before the update keeps both
+ * halves of D198 — the empty look and the stored value (`T375`).
+ *
+ * The consequence D198 accepts and flags: emptying a box stores 0, not the schema default.
+ *
+ * Scoped by the control rather than by the value, so a `null` from any other kind of input is left
+ * alone; a readOnly box still renders its own zero and is never rewritten.
+ *
+ * @param {HTMLFormElement|null} form The submitted form. Null where `_processFormData` is called
+ *   without one — the sheets' own contract check drives it that way against an unrendered sheet
+ *   (`G.16`), and with no controls to read there is no empty box to interpret.
+ * @param {object} data Expanded submit data, modified in place
+ * @returns {object} data
+ */
+export function zeroEmptyNumberFields(form, data) {
+    if (!form?.querySelectorAll) return data;
+
+    for (const input of form.querySelectorAll('input[type="number"][name]')) {
+        if (input.readOnly || input.disabled) continue;
+        if (input.value !== "") continue;
+        if (foundry.utils.getProperty(data, input.name) !== null) continue;
+        foundry.utils.setProperty(data, input.name, 0);
+    }
+    return data;
+}
+
 // Clamp x to be between min and max inclusive
 export function clamp(x, min, max) {
     return Math.min(Math.max(x, min), max);

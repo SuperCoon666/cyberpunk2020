@@ -338,6 +338,70 @@ export const unarmedManeuverDamage = {
   Choke: "1D6"
 };
 
+/**
+ * FNFF2's four extra unarmed maneuvers (D200). The authority is the Pacific Rim sourcebook,
+ * transcribed and primary-verified at `dev/docs/cp2020_pacific_rim_FNFF2_verified_v2.md` — code
+ * against that file and not its superseded v1 sibling. No corebook line covers any of them, so
+ * they sit behind the same gate `martialActionBonusesFNFF2` does.
+ *
+ * Ram is absent because its damage is a chart on the attacker's own BODY — `ramDamageFormula`.
+ * Cast is the Throw analogue: RAW Cast is weapon-based and has no bare-hand form, so the weapon
+ * path defers with the rest of FNFF2 (TODO `T-41`), as do HH(BODY), MA-on-Key, Dash and the
+ * cyberleg Jump Kick columns.
+ */
+export const unarmedManeuverDamageFNFF2 = {
+  Punch: "1D6/2",
+  JumpKick: "1D6+5",
+  Cast: "1D6"
+};
+
+/**
+ * Pacific Rim p.144 — *"You get a -5 penalty to Hit automatically"* on a Jump Kick. D200 ships it
+ * with the maneuver's `1D6+5` rather than after it: the damage alone would strictly dominate a
+ * plain Kick, and the book prices the two together.
+ */
+export const JUMP_KICK_TO_HIT = -5;
+
+/**
+ * Ram's damage, read off the Pacific Rim chart on p.143 by the attacker's own BODY.
+ *
+ * The one stat-dependent entry in the unarmed table, and deliberately so: the chart has BODY
+ * built into it, so the separate HH(BODY) modifier is **not** added on top (D200). The chart's
+ * last printed row is *"each + : each +1D6"*, which is why a BODY past its top band keeps
+ * gaining dice rather than flattening.
+ *
+ * @param {number} body The attacker's BODY total
+ * @returns {string} A rollable formula
+ */
+export function ramDamageFormula(body) {
+  const bod = Math.max(2, Math.floor(Number(body) || 0));
+  if (bod <= 2) return "1D6-2";
+  if (bod <= 4) return "1D6-1";
+  if (bod <= 5) return "1D6";
+  if (bod <= 7) return "2D6";
+  if (bod <= 9) return "2D6+1";
+  if (bod <= 10) return "2D6+2";
+  if (bod <= 12) return "3D6+4";
+  if (bod <= 14) return "3D6+6";
+  if (bod <= 15) return "3D6+8";
+  return `${4 + Math.max(0, bod - 20)}D6+8`;
+}
+
+/**
+ * What the combat tab's unarmed stand-in rolls for one maneuver, or undefined where neither table
+ * gives it a formula — which leaves the stand-in's own damage, exactly as before D90.
+ *
+ * @param {string} action A `martialActions` value
+ * @param {number} body The attacker's BODY total, for the one entry that reads it
+ * @returns {string|undefined}
+ */
+export function unarmedManeuverFormula(action, body) {
+  if (unarmedManeuverDamage[action]) return unarmedManeuverDamage[action];
+  if (!isFnff2Enabled()) return undefined;
+  if (action === martialActions.ram) return ramDamageFormula(body);
+  return unarmedManeuverDamageFNFF2[action];
+}
+
 // CORE set rules martial action bonuses. The authority is the corebook's *Martial Arts Forms &
 // Specialization Bonuses* table (`07-friday-night-firefight.md:313-325`), transcribed at
 // `dev/docs/RULES-MARTIAL-TABLES.md` — code against that file, not memory (`T145`, D42).
@@ -499,6 +563,9 @@ export function getMartialActionBonus(martialKey, actionKey) {
 
 // Be warned that the localisations of these take a range parameter
 export let ranges = {
+    // D196 — not a band but the instruction to measure one. Nothing downstream ever sees it:
+    // `__weaponRoll` resolves it to one of the five below, or refuses the attack (D199).
+    auto: "RangeAuto",
     pointBlank: "RangePointBlank",
     close: "RangeClose",
     medium: "RangeMedium",
@@ -584,6 +651,7 @@ export function rangedModifiers(weapon, targetTokens = [], savedOptions = {}, me
     // that branch on exactly this condition (`T69`). With a zone on the map every crossing rolls
     // its own hits and the number would be a control that changes nothing.
     const abstractSuppression = !(canvas?.ready && isCombatAutomationEnabled());
+    const autoRange = isCombatAutomationEnabled();
     return [
         [{
             localKey: "FireMode",
@@ -594,8 +662,12 @@ export function rangedModifiers(weapon, targetTokens = [], savedOptions = {}, me
         {
             localKey: "Range",
             dataPath: "range",
-            defaultValue: rangeBandFor(measuredDistance, range) ?? "RangeClose",
+            // D196 — automatic measurement is the default for every ranged weapon, and it is
+            // offered only while the automation master is on: with it off the selector is exactly
+            // what it was, and a deliberately picked band is played entirely as declared.
+            defaultValue: autoRange ? ranges.auto : (rangeBandFor(measuredDistance, range) ?? "RangeClose"),
             choices: [
+                ...(autoRange ? [{value: ranges.auto}] : []),
                 {value:"RangePointBlank", localData: {range: 1}},
                 {value:"RangeClose", localData: {range: range/4}},
                 {value:"RangeMedium", localData: {range: range/2}},

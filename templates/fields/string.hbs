@@ -1,4 +1,4 @@
-<div class="field">
+<div class="field"{{#if tooltip}} data-tooltip="{{CPLocal tooltip}}"{{/if}}>
     <label for="{{edit}}">{{CPLocal label}}</label>
     <span class="flex-pad"></span>
     <input {{#if readOnly}}readonly{{/if}} class="textsize" name="{{edit}}" 

@@ -708,9 +708,19 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
       // placement inside `onConfirm` while `closeOnSubmit: false` keeps the dialog across the middle
       // of the viewport (`T353`). Minimized rather than closed, because a refusal — no ammunition, a
       // disabled cyberweapon — has to hand the shooter their choices back.
-      this.minimize();
-      const fired = await this.options.onConfirm(formData);
-      if (fired !== false) this.close();
-      else await this.maximize();
+      // Awaited, so the placement preview arms after the window has left the map, not during it.
+      await this.minimize();
+      try {
+        const fired = await this.options.onConfirm(formData);
+        if (fired !== false) this.close();
+        else await this.maximize();
+      } catch (err) {
+        // `onConfirm` can throw — a bad formula reaching a `Roll`, or a chat failure now that
+        // decision 6(b) propagates one. Without this the window stays collapsed to its header with
+        // the shooter's whole modifier set behind it and no way back but a reload (`T384`). The
+        // error still propagates; only the window is handed back.
+        await this.maximize();
+        throw err;
+      }
     }
  }
