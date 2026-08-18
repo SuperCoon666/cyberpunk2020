@@ -513,16 +513,18 @@ export class CyberpunkActor extends Actor {
     return Math.ceil(damage/4);
   }
 
-
   stunThreshold() {
     const body = this.system.stats.bt.total;
-    // +1 as Light has no penalty, but is 1 from woundState()
-    return body - this.woundState() + 1; 
+    // Light is woundState 1 but has no penalty, so offset woundState by -1
+    const woundPenalty = Math.max(0, this.woundState() - 1);
+    return body - woundPenalty;
   }
 
   deathThreshold() {
-    // The first wound state to penalise is Mortal 1 instead of Serious.
-    return this.stunThreshold() + 3;
+    const body = this.system.stats.bt.total;
+    // Offset by -4 because Mortal 0 is woundState 4 but has no Death penalty
+    const deathPenalty = Math.max(0, this.woundState() - 4);
+    return body - deathPenalty;
   }
 
   trainedMartials() {
