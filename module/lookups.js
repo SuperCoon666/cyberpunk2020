@@ -666,6 +666,11 @@ export function rangedModifiers(weapon, targetTokens = [], savedOptions = {}, me
             // offered only while the automation master is on: with it off the selector is exactly
             // what it was, and a deliberately picked band is played entirely as declared.
             defaultValue: autoRange ? ranges.auto : (rangeBandFor(measuredDistance, range) ?? "RangeClose"),
+            // D204 — suppressive fire is off the auto option: it lays its corridor before anything
+            // is measured, so its selector keeps the constant bands. The dialog swaps to this the
+            // moment that fire mode is picked, and it is the same band the field opens on with the
+            // automation master off, so auto and manual still agree about this weapon.
+            constantDefault: rangeBandFor(measuredDistance, range) ?? "RangeClose",
             choices: [
                 ...(autoRange ? [{value: ranges.auto}] : []),
                 {value:"RangePointBlank", localData: {range: 1}},

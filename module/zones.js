@@ -1267,12 +1267,21 @@ function corridorShapes(scene, blast, centre, radius, step) {
   // cell union, which is the same exit `blastRegion` takes for the blast.
   if (!edges.length) return exact();
 
-  // The search follows the band, not the whole reach: a point is drawn only within `radius` of the
-  // line of fire or of the disc, so the box over those three points is where the cells can pass
-  // (`T328`).
+  // The search follows the band, not the whole reach: a point is drawn only within one half-width
+  // of the line of fire or of the disc, so the box over those three points is where the cells can
+  // pass (`T328`).
+  //
+  // Margined by the **corridor's widest half-width**, not the disc's: since D193 the stepped cone
+  // can be wider than the pattern at its far end, and `radius` stopped being an upper bound on it —
+  // so the box clipped the drawing wherever walls put this on the cell-union path, while
+  // `blastCoverage` went on applying the full width (`T393`). `radius` is still the floor, because
+  // a payload carrying no band table is the uniform width by design.
+  const margin = Math.max(radius, ...(Array.isArray(blast.corridor?.bands)
+    ? blast.corridor.bands.map(band => Number(band.halfWidth) || 0)
+    : []));
   return unionOfCells(point => corridorReach(edges, blast.corridor, centre, point, step, radius),
     centre, radius, step,
-    reachBox([blast.corridor.from, blast.corridor.to, centre], radius * step));
+    reachBox([blast.corridor.from, blast.corridor.to, centre], margin * step));
 }
 
 /**

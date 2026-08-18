@@ -437,6 +437,15 @@ export class CyberpunkItem extends Item {
         ui.notifications.warn(localize("AutoRangeNoTarget"));
         return false;
       }
+      // D205 — a placed centre is still measured **from the shooter**, so an attacker with no token
+      // on the viewed scene has nothing to measure from either. Refused here rather than coalesced
+      // to 0: `?? 0` read as point blank, the most generous band in the table, for a state D199
+      // refuses on the other side. Ahead of the placement, so nothing is spent and no card is
+      // posted — the shape D199's own refusal takes (`T394`).
+      else if (!this.__attackerToken(attackerToken)) {
+        ui.notifications.warn(localize("AutoRangeNoAttackerToken"));
+        return false;
+      }
     }
 
     if (!isRanged) {
@@ -499,7 +508,7 @@ export class CyberpunkItem extends Item {
    * How far this attack actually travels, in scene units, or null when there is nothing to measure.
    *
    * The attacker's own token where the caller knows it — a linked actor carries no `token`, and
-   * `getActiveTokens` is scoped to the *viewed* scene (`client/documents/actor.mjs:282`, 14.365.0),
+   * `getActiveTokens` is scoped to the *viewed* scene (`client/documents/actor.mjs:284`, 14.365.0),
    * which answers nothing for a GM running two of them. This is the same resolution the melee
    * notice takes (`T296`, D133).
    *
@@ -526,9 +535,21 @@ export class CyberpunkItem extends Item {
    * @returns {number|null}
    */
   __distanceToPoint(point, shooterToken = null) {
-    const from = shooterToken ?? this.actor?.getActiveTokens?.()[0];
+    const from = shooterToken ?? this.__attackerToken();
     if (!from || !point || !canvas?.ready) return null;
     return canvas.grid.measurePath([from.center, point]).distance;
+  }
+
+  /**
+   * The attacker's own placed token, or null when they have none on the viewed scene. The one
+   * answer D205's refusal and every placed-centre measurement both read, so the two cannot
+   * disagree about whether there is anything to measure from.
+   *
+   * @param {TokenDocument} [attackerToken] The acting client's own token, where the caller knows it
+   * @returns {Token|null}
+   */
+  __attackerToken(attackerToken = null) {
+    return attackerToken?.object ?? this.actor?.getActiveTokens?.()[0] ?? null;
   }
 
   /**
@@ -562,7 +583,9 @@ export class CyberpunkItem extends Item {
 
     const ammo = snapshotAmmo(this);
     if (isBlastAttack(ammo)) return true;
-    if (mods.fireMode === fireModes.suppressive) return true;
+    // Suppressive fire is deliberately absent (D204): it places a corridor rather than a centre and
+    // is off the auto option altogether, so an auto that somehow reached it has nothing to measure
+    // and must take the D199 refusal rather than resolve to a corridor of length zero.
     // The autoshotgun's chained patterns — the same test its own dispatch takes.
     return system.attackType === rangedAttackTypes.autoshotgun
       && mods.fireMode === fireModes.fullAuto
@@ -721,16 +744,18 @@ export class CyberpunkItem extends Item {
         toHit: rangeDCs[attackMods.range],
         attackRoll,
         onTarget,
-        // "The charge lands where it was aimed" is wrong for a stream — resolved per kind rather
-        // than hard-coding the grenade's own wording.
-        onTargetCaption: localize(kind === "sweep" ? "SweepOnTarget" : "BlastOnTarget"),
+        // "The charge lands where it was aimed" is wrong for a stream and wrong for a shotgun
+        // pattern — resolved per kind rather than hard-coding the grenade's own wording.
+        onTargetCaption: localize(kind === "sweep" ? "SweepOnTarget"
+          : kind === "spread" ? "SpreadOnTarget" : "BlastOnTarget"),
         scatter,
         // The miss needs the same split since D140: the Grenade Table's second die is a landing
         // distance for a thrown charge (`07:839`, *"how many meters away it hit"*) and the blast
         // still honours it, but a stream **pivots** about the muzzle, so the die supplies a bearing
-        // and nothing travelled that far (`T308`).
+        // and nothing travelled that far (`T308`). A pattern slides like the charge (D201).
         scatterCaption: scatter
-          ? localizeParam(kind === "sweep" ? "SweepScattered" : "BlastScattered", scatter)
+          ? localizeParam(kind === "sweep" ? "SweepScattered"
+              : kind === "spread" ? "SpreadScattered" : "BlastScattered", scatter)
           : "",
         placed: !!blast,
         // A shotgun pattern (and now a flamethrower sweep) shares this template with a grenade but
@@ -933,7 +958,7 @@ export class CyberpunkItem extends Item {
     // the shooter chose rather than by a target they never selected. Resolved before the roll,
     // because `__shootModTerms` and the DC both read the band.
     if (attackMods.range === ranges.auto) {
-      attackMods = { ...attackMods, range: this.__bandAt(this.__distanceToPoint(centre) ?? 0) };
+      attackMods = { ...attackMods, range: this.__bandAt(this.__distanceToPoint(centre)) };
     }
 
     const attackRoll = await this.attackRoll(attackMods);
@@ -1012,7 +1037,7 @@ export class CyberpunkItem extends Item {
 
     // D199 again: the stream's own far point is what auto range measures to.
     if (attackMods.range === ranges.auto) {
-      attackMods = { ...attackMods, range: this.__bandAt(this.__distanceToPoint(end) ?? 0) };
+      attackMods = { ...attackMods, range: this.__bandAt(this.__distanceToPoint(end)) };
     }
 
     const attackRoll = await this.attackRoll(attackMods);
@@ -1201,7 +1226,7 @@ export class CyberpunkItem extends Item {
     // put it. Before the first drag there is nothing to measure, so the preview opens at the band
     // the shooter is standing in and resizes as the cursor crosses each boundary (`T371`).
     const shooterToken = this.actor.getActiveTokens()[0];
-    const bandAtPoint = point => this.__bandAt(this.__distanceToPoint(point, shooterToken) ?? 0);
+    const bandAtPoint = point => this.__bandAt(this.__distanceToPoint(point, shooterToken));
     const spread = spreadProfileFor(autoRange ? this.__bandAt(0) : attackMods.range, ammo);
     const patterns = CyberpunkItem._resolveFullAutoRounds(attackMods, system);
 
@@ -1257,7 +1282,6 @@ export class CyberpunkItem extends Item {
       discharged ? 0 : Math.max(0, Number(system.shotsLeft) - patterns));
 
     const rollData = this.actor?.getRollData?.() ?? {};
-    const maximizeDamage = this._shouldMaximizePointBlankDamage(attackMods);
 
     let last = null;
     for (const [index, centre] of centres.entries()) {
@@ -1272,10 +1296,31 @@ export class CyberpunkItem extends Item {
         fullDamageWithin: patternSpread.width / 2,
         multipliers: []
       };
+      // Per pattern, off the band this one was laid at — the same measurement its width, damage
+      // and DC already follow. Read once off `attackMods` it saw `ranges.auto`, so auto and a
+      // hand-declared point blank disagreed at 1 m on the same shot (`T395`).
       const damageRoll = await new Roll(
         this.__ammoDamageFormula(patternSpread.damage || system.damage, ammo), rollData)
-        .evaluate({ maximize: maximizeDamage });
+        .evaluate({ maximize: this._shouldMaximizePointBlankDamage(mods) });
       const damage = CyberpunkItem._floorDamageTotal(damageRoll.total);
+
+      // D201 — what the pattern's roll decides is *where the carpet goes down*, not whether it goes
+      // down at all: a shotgun is an area weapon (`07:837`) and a missed area attack is re-centred
+      // off the Grenade Table (`07:839`). Until this the roll was printed and read by nothing, so
+      // the `-2 x (N-1)` ladder the same burst adds was inert in both directions (`T376`).
+      //
+      // The band is **not** re-measured at the scattered point: `mods.range` decided this pattern's
+      // DC before it was rolled, so re-reading it afterwards would settle the to-hit against a
+      // distance that did not exist when the shot was taken.
+      const onTarget = attackRoll.total >= rangeDCs[mods.range] && !fumble?.forceMiss;
+      let landed = centre;
+      let scatter = null;
+      if (!onTarget) {
+        const direction = await new Roll("1d10").evaluate();
+        const distance = await new Roll("1d10").evaluate();
+        scatter = { direction: direction.total, distance: distance.total };
+        landed = scatterCentre(centre, scatter.direction, scatter.distance);
+      }
 
       last = await this.__zoneCard({
         title: localizeParam("SpreadPatternTitle", { index: index + 1, count: patterns }),
@@ -1285,13 +1330,13 @@ export class CyberpunkItem extends Item {
         ammo,
         profile,
         blast: {
-          x: centre.x,
-          y: centre.y,
+          x: landed.x,
+          y: landed.y,
           ...profile,
           damage,
           sceneId: canvas.scene.id,
           levelId: canvas.level.id,
-          corridor: fireCorridor(shooterToken, centre, spreadCorridorBands(effectiveRange(this), ammo)),
+          corridor: fireCorridor(shooterToken, landed, spreadCorridorBands(effectiveRange(this), ammo)),
           // **No aimed token.** D17's wall exemption is for *"the shot's designated target"*, and on
           // this path the shooter designated a point rather than a body — pairing pattern *i* with
           // the *i*-th targeted token exempted whoever happened to sit at that index from the wall
@@ -1301,12 +1346,12 @@ export class CyberpunkItem extends Item {
         },
         damage,
         damageRoll,
-        // The pattern is ground the shooter chose, so it always lands where they put it; what the
-        // roll decides is what the ground does to whoever is standing on it.
-        onTarget: true,
-        scatter: null,
+        onTarget,
+        scatter,
         // D192's ring, stated and never enforced (D54). The first pattern has nothing to be
-        // adjacent to, so it carries no caption at all (`T379`).
+        // adjacent to, so it carries no caption at all (`T379`). Read off the centres the shooter
+        // *chained*, not off where they landed: the ring is a statement about how the burst was
+        // walked, and a scatter is the dice answering afterwards (`CA-Q1`).
         adjacency: index === 0
           ? ""
           : localize(centre.adjacent ? "SpreadPatternAdjacent" : "SpreadPatternWalked"),
@@ -1396,13 +1441,24 @@ export class CyberpunkItem extends Item {
     const damageFormula = this.__ammoDamageFormula(spread.damage || system.damage, ammo);
     const maximizeDamage = this._shouldMaximizePointBlankDamage(attackMods);
 
+    // D202 — with fewer patterns than targets the share rounds to zero, and D54's
+    // surplus-on-the-last then fired the whole burst at the *last* target while every other one got
+    // an inner loop that ran zero times: no roll, no card, no notice. Each pattern is its own
+    // complete attack (`07:861-863`), so they go one per target in target order until they run out;
+    // `__fullAuto`'s D59 refusal is not borrowed, because there the burst is one ROF being divided
+    // and here it is not (`T382`). Whoever the patterns never reach is named on the card.
+    const uncovered = share < 1 ? targetTokens.slice(surplus, targetCount) : [];
+    const uncoveredNames = uncovered.map(token => token?.name).filter(Boolean).join(", ");
+
     // Rolled before the magazine is written so a fumbled discharge can empty it, the order the
     // canvas arm and `__semiAuto` both take.
     const shots = [];
     for (let t = 0; t < targetCount; t++) {
       // The surplus rides on the last target rather than going unfired, which is where this parts
-      // company with `07:712`'s bullet burst (`T147`).
-      const mine = share + (t === targetCount - 1 ? surplus : 0);
+      // company with `07:712`'s bullet burst (`T147`) — but only once every target has one.
+      const mine = share >= 1
+        ? share + (t === targetCount - 1 ? surplus : 0)
+        : (t < surplus ? 1 : 0);
       const mods = {
         ...attackMods,
         targetActor: CyberpunkItem.__targetActor(targetTokens[t]) ?? attackMods.targetActor
@@ -1448,6 +1504,9 @@ export class CyberpunkItem extends Item {
           hit,
           areaDamages,
           fumble: fumble?.fumble ?? null,
+          // On the burst's last card only: the allocation is one event, and repeating the list on
+          // every pattern reads as several separate misses.
+          uncoveredTargets: index === shots.length - 1 ? uncoveredNames : "",
           locals: { range: { range: actualRangeBracket } }
         },
         // Without these the card carries no `flags.cyberpunk2020.attack` at all, so the version
@@ -1710,13 +1769,12 @@ export class CyberpunkItem extends Item {
       // The corridor covers the band being fired at; the shooter places and rotates it. A weapon
       // with no range falls back to a square, which is the zone the book's own examples describe.
       //
-      // A suppression zone is laid **before** anything is measured and is a corridor rather than a
-      // centre, so D199's *"the placed centre is the measure"* has nothing to bite on: under auto
-      // range the zone takes the weapon's whole reach, which is the longest corridor it can lay and
-      // never shorter than a band the shooter could have declared (`BZ-Q2`).
-      const reach = Math.round(mods.range === ranges.auto
-        ? effectiveRange(this)
-        : (rangeResolve[mods.range]?.(effectiveRange(this)) || 0));
+      // D204 — a suppression zone is laid **before** anything is measured and is a corridor rather
+      // than a centre, so D199's *"the placed centre is the measure"* has nothing to bite on. The
+      // mode is off the auto option entirely and the shooter declares the corridor's reach with a
+      // constant band, which is the book's own shape: `07:726-749` prices the width and says
+      // nothing about measuring a distance.
+      const reach = Math.round(rangeResolve[mods.range]?.(effectiveRange(this)) || 0);
       zone = await placeSuppressionZone(width, Math.max(width, reach),
         localizeParam("ZoneName", { weapon: this.name }));
       // Dismissing the placement takes the burst back: nothing has been rolled or spent yet.
@@ -1860,12 +1918,23 @@ export class CyberpunkItem extends Item {
       // Ch. 07:855 — a 2 m pattern caught a booster standing 1 m from the one it was aimed at, so
       // the pattern is half its width around the target; ch. 07:843 adds the straight path from the
       // shooter at the same width, and everything caught takes the same damage.
-      const targetToken = spread && attackHits && canvas.ready
+      const targetToken = spread && canvas.ready
         ? canvas.tokens.get(targetTokens[0]?.id)
         : null;
       if (targetToken) {
         const profile = { radius: spread.width / 2, fullDamageWithin: spread.width / 2, multipliers: [] };
-        const patternCentre = targetToken.center;
+        let patternCentre = targetToken.center;
+        let scatter = null;
+        if (!attackHits) {
+          // D201 — a shotgun is one of the book's own area weapons (`07:837`), so a missed pattern
+          // is re-centred off the Grenade Table (`07:839`) rather than disappearing: the pellets
+          // went somewhere. Gating the zone card on `attackHits` was the divergence from the
+          // autoshotgun and from every other splash path, not the baseline (`T376`).
+          const direction = await new Roll("1d10").evaluate();
+          const distance = await new Roll("1d10").evaluate();
+          scatter = { direction: direction.total, distance: distance.total };
+          patternCentre = scatterCentre(patternCentre, scatter.direction, scatter.distance);
+        }
         return this.__zoneCard({
           title: localize("SpreadTitle"),
           kind: "spread",
@@ -1884,13 +1953,17 @@ export class CyberpunkItem extends Item {
             levelId: canvas.level.id,
             corridor: fireCorridor(this.actor.getActiveTokens()[0], patternCentre,
               spreadCorridorBands(effectiveRange(this), ammo)),
-            aimedTokenUuid: targetTokens[0]?.tokenUuid ?? "",
-            aimedZone: location
+            // D17's wall exemption is for *"the shot's designated target"*, and a scattered pattern
+            // is no longer aimed at anybody — exempting the token it missed would carry the
+            // exemption to ground they are not standing on, which is `T380`'s reasoning on the
+            // autoshotgun's own patterns.
+            aimedTokenUuid: attackHits ? (targetTokens[0]?.tokenUuid ?? "") : "",
+            aimedZone: attackHits ? location : ""
           },
           damage: dmg,
           damageRoll,
           onTarget: attackHits,
-          scatter: null,
+          scatter,
           target: targetTokens[0],
           fumble: rangedFumble?.fumble
         });
@@ -2130,8 +2203,16 @@ export class CyberpunkItem extends Item {
       : null;
     const damageDie = maneuverDamage ?? baseWeaponDamage;
 
+    // `T392` — Ram's p.143 chart is the **only** maneuver damage that already has the attacker's
+    // BODY built into it: its additive column is `strengthDamageBonus(BODY)` at every printed row,
+    // so appending `@strengthBonus` here counted BODY twice. Every other maneuver, FNFF2's three
+    // included, is a flat die that RAW does add HH(BODY) to.
+    const carriesBodyAlready = maneuverDamage !== null && action === martialActions.ram;
+
     if (canDealDamage && damageDie) {
-      damageFormula = `${damageDie}+@strengthBonus+@martialDamageBonus`;
+      damageFormula = carriesBodyAlready
+        ? `${damageDie}+@martialDamageBonus`
+        : `${damageDie}+@strengthBonus+@martialDamageBonus`;
     }
 
     // CyberTerminus modifier

@@ -74,6 +74,13 @@
     </div>
     {{/unless}}
 
+    {{!-- D202 — an autoshotgun burst with fewer patterns than targets covers them one apiece and
+          runs out. The targets it never reached get no card of their own to be absent from, so the
+          burst's last card names them. Empty for every other fire mode. --}}
+    {{#if uncoveredTargets}}
+    <p><em>{{CPLocalParam "SpreadUncovered" this}}</em></p>
+    {{/if}}
+
     {{#if hit}}
         <h3>{{CPLocal "Damage"}}</h3>
         <div class="damage-tally">

@@ -1,5 +1,5 @@
 import { deepSet, localize, localizeParam, localizeParamEscaped, refusedWhilePaused } from "../utils.js"
-import { fireModes, rangedAttackTypes, getMartialActionBonus, allOutEffectKeys } from "../lookups.js"
+import { fireModes, ranges, rangedAttackTypes, getMartialActionBonus, allOutEffectKeys } from "../lookups.js"
 import { createCyberpunkChatMessage, getGMUserIds, getHtmlElement } from "../compat.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
@@ -364,6 +364,15 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
       const weaponSys = this.options.weapon?._getWeaponSystem?.() ?? this.options.weapon?.system ?? {};
       const isFlamethrow = weaponSys.attackType === rangedAttackTypes.flamethrow;
 
+      // D204 — the range selector is fire-mode dependent for exactly one mode: suppressive fire
+      // declares the corridor's reach off a constant band, so «auto» is not on offer while it is
+      // selected. Hidden rather than removed, so switching back to another mode restores it.
+      const rangeSelect = root.querySelector('select[name="fields.range"], select[name="range"]');
+      const autoRangeOption = rangeSelect?.querySelector(`option[value="${ranges.auto}"]`);
+      const constantRange = (this.options.modifierGroups ?? [])
+        .flat()
+        .find(mod => mod?.dataPath === "range")?.constantDefault;
+
       const fullAutoRows = rowsFor([
         '.field.full-auto-rounds',
         '.field[data-path="fullAutoRoundsFired"]',
@@ -526,6 +535,16 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
         for (const row of supRows) row.style.display = isSup ? "" : "none";
         for (const row of widthRows) row.style.display = (isSup || isFlamethrow) ? "" : "none";
         for (const row of fullAutoRows) row.style.display = isFullAuto ? "" : "none";
+
+        if (autoRangeOption) {
+          autoRangeOption.hidden = isSup;
+          autoRangeOption.disabled = isSup;
+          // Only the option the shooter never chose is replaced: a band they picked by hand stands,
+          // and switching away from suppression does not put «auto» back over it.
+          if (isSup && constantRange && rangeSelect.value === ranges.auto) {
+            rangeSelect.value = constantRange;
+          }
+        }
 
         const fullAutoInput = getFullAutoRoundsInput();
         if (fullAutoInput && !isFullAuto) fullAutoInput.setCustomValidity("");
