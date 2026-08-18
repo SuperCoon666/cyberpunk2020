@@ -738,10 +738,10 @@ export async function applyHitsToActor(actor,
   const atMortal = wound > 0 && actor.woundState() >= MORTAL_WOUND_STATE;
 
   // Ch. 07:530 — a severed limb means *"an immediate Death Save at Mortal 0"*: the Save number with
-  // no mortality penalty, which is `stunThreshold() + 3` evaluated at wound state 4, i.e. BT — not
-  // the victim's own current, harsher threshold (`T144`). The head case never reaches here; it
-  // killed outright above. D57 — when the same hit also reached Mortal the roll is at the victim's
-  // own post-hit mortality instead, the stricter of the two, and it is the only one asked.
+  // no mortality penalty, i.e. BT itself (`07:435`) — not the victim's own current, harsher
+  // threshold (`T144`). The head case never reaches here; it killed outright above. D57 — when the
+  // same hit also reached Mortal the roll is at the victim's own post-hit mortality instead, the
+  // stricter of the two, and it is the only one asked.
   if (severedLimbs.length) {
     const death = await requestSave(actor, "death",
       { dc: atMortal ? null : actor.system.stats.bt.total, messageMode, token });

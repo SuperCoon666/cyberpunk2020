@@ -544,8 +544,9 @@ export class CyberpunkActor extends Actor {
 
   stunThreshold() {
     const body = this.system.stats.bt.total;
-    // +1 as Light has no penalty, but is 1 from woundState()
-    return body - this.woundState() + 1; 
+    // Light is woundState 1 but has no penalty, so offset woundState by -1
+    const woundPenalty = Math.max(0, this.woundState() - 1);
+    return body - woundPenalty;
   }
 
   deathThreshold() {
