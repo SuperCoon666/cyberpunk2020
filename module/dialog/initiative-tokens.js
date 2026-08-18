@@ -123,8 +123,8 @@ export class InitiativeTokensDialog extends HandlebarsApplicationMixin(Applicati
     }
     else {
       // The set is updated **before** the call, never after: `_onHoverOut` fires `hoverToken`
-      // synchronously (`placeable-object.mjs:1198`, 14.365.0) and the re-assert would read an id
-      // that is still lit as far as this window is concerned.
+      // synchronously (the `Hooks.callAll` that closes it, `placeable-object.mjs`, 14.365.0) and
+      // the re-assert would read an id that is still lit as far as this window is concerned.
       this.#lit.delete(tokenId);
       token._onHoverOut(new Event("pointerout"));
     }

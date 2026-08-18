@@ -228,6 +228,20 @@ export let martialActions = {
   escape: "Escape"
 };
 
+/**
+ * The two maneuvers whose effect is not a number added to the roll (D163), keyed to the string that
+ * says what they do instead.
+ *
+ * Both lists that show a maneuver read this one map: the defence prompt and the attack dialog's own
+ * Defensive group. A bare `(+0)` beside a bonused row reads as "strictly worse than the Dodge above
+ * it", which is the opposite of what All-Out does — and the pair sits *above* the bonused rows, so
+ * it is the first thing a player compares (`T354`).
+ */
+export const allOutEffectKeys = {
+  [martialActions.allOutParry]: "DefenseAllOutParryEffect",
+  [martialActions.allOutDodge]: "DefenseAllOutDodgeEffect"
+};
+
 export const MARTIAL_ART_ID_BY_KEY = {
   "Martial Arts: Aikido": "oeXfrhKtdtuxn5dx",
   "Martial Arts: AnimalKungFu": "x5mxWMFyRWHg5lEV",
@@ -306,6 +320,23 @@ export function isFnff2Enabled() {
 export function isCombatAutomationEnabled() {
   return Boolean(game?.settings?.get("cyberpunk2020", "combatAutomation"));
 }
+
+/**
+ * Ch. 07:984-992 — unarmed damage is stated per **maneuver**, not per weapon: Strike `1D6/2`, Kick
+ * and Throw `1D6`, Choke `1D6` per turn. The *Damage Modifier* the book adds to each is the
+ * strength bonus the damage formula already appends, so only the die belongs here.
+ *
+ * D90 — read for the combat tab's unarmed stand-in alone. A real melee weapon rolls its own DAM
+ * whatever maneuver is chosen; the book gives a maneuver a formula only where the fist is the
+ * weapon. A maneuver absent from this table (the FNFF2 additions, which no corebook line covers)
+ * keeps the stand-in's own formula, as before.
+ */
+export const unarmedManeuverDamage = {
+  Strike: "1D6/2",
+  Kick: "1D6",
+  Throw: "1D6",
+  Choke: "1D6"
+};
 
 // CORE set rules martial action bonuses. The authority is the corebook's *Martial Arts Forms &
 // Specialization Bonuses* table (`07-friday-night-firefight.md:313-325`), transcribed at

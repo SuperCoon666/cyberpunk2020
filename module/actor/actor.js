@@ -4,6 +4,7 @@ import { SortOrders, sortSkills } from "./skill-sort.js";
 import { btmFromBT, MARTIAL_ART_KEY_BY_ID, MARTIAL_ART_ID_BY_KEY, defensiveMartialActions, FNFF2_ONLY_MARTIAL_ART_IDS, getMartialActionBonus, isCombatAutomationEnabled, isFnff2Enabled, AWARENESS_NOTICE_SKILL_ID, ATHLETICS_SKILL_ID, DEMOLITIONS_SKILL_ID, MELEE_DEFENSE_SKILL_IDS, BRAWLING_SKILL_ID, DODGE_SKILL_ID, MEDICAL_TECH_SKILL_IDS, FIRST_AID_SKILL_ID, STABILIZATION_ADVANTAGES } from "../lookups.js";
 import { properCase, localize, localizeParam, displayName, getDefaultSkills, cwHasType, cwIsEnabled, withCompendiumSource } from "../utils.js"
 import { InitiativeTokensDialog } from "../dialog/initiative-tokens.js";
+import { evaluateCyberpunkRoll } from "../compat.js";
 
 /** The stabilization hand-off has no human in the loop — it is one flag write on the GM's client. */
 const STABILIZE_QUERY_TIMEOUT_MS = 5000;
@@ -1126,6 +1127,15 @@ export class CyberpunkActor extends Actor {
 
     const combat = game.combat;
 
+    // `Combat#scene` is a `ForeignDocumentField` a GM opts into through the tracker's *Link to
+    // Viewed Scene*; **core never sets it on its own** — the tracker's own Create Combat button is
+    // `Combat.implementation.create()` with no data and `TokenDocument.createCombatants` is
+    // `cls.create({active: true})` (`combat-tracker.mjs`, `token.mjs`, 14.365.0), and combatants
+    // carry their own `sceneId` instead. Reading it unguarded made the whole mob path below
+    // unreachable in the default flow — no picker, one combatant for the gang (`T356`). The viewed
+    // scene is what the GM is looking at and is where the tokens they mean are placed.
+    const scene = combat.scene ?? canvas.scene;
+
     // The system formula already carries @initiativeMod, so the modifier reaches the roll by being
     // persisted - not as an extra term, which would count it twice. The sheet's own change listener
     // is not guaranteed to have finished by the time the row is clicked, hence the write here.
@@ -1149,12 +1159,12 @@ export class CyberpunkActor extends Actor {
     // than an addition to it. A mob with nobody fighting yet has no re-roll to mean, so it ticks the
     // joiners, which is D160's initial case.
     if (this.type === "npc" && options.createCombatants && !this.token) {
-      const placed = combat.scene?.tokens.filter(t => t.actorId === this.id) ?? [];
+      const placed = scene?.tokens.filter(t => t.actorId === this.id) ?? [];
       const combatantOf = token => combat.combatants.find(c => c.tokenId === token.id) ?? null;
 
       if (placed.length) {
         const clicked = canvas.tokens?.controlled
-          .find(t => t.document.actorId === this.id && t.document.parent?.id === combat.scene?.id)
+          .find(t => t.document.actorId === this.id && t.document.parent?.id === scene?.id)
           ?.document ?? null;
         const cohort = clicked
           ? Boolean(combatantOf(clicked))
@@ -1178,7 +1188,7 @@ export class CyberpunkActor extends Actor {
           .filter(Boolean);
         const created = joining.length
           ? await combat.createEmbeddedDocuments("Combatant",
-            joining.map(id => ({ actorId: this.id, tokenId: id, sceneId: combat.scene.id })))
+            joining.map(id => ({ actorId: this.id, tokenId: id, sceneId: scene.id })))
           : [];
 
         await persistMod();
@@ -1205,10 +1215,10 @@ export class CyberpunkActor extends Actor {
       // encounter's scene answers first; `canvas.tokens` is only ever the viewed scene, which is
       // what makes the scene test cheap and the fallback still necessary.
       const controlled = canvas.tokens?.controlled
-        .find(t => t.document.actorId === this.id && t.document.parent?.id === combat.scene?.id)
+        .find(t => t.document.actorId === this.id && t.document.parent?.id === scene?.id)
         ?.document ?? null;
       const token = this.token ?? controlled
-        ?? combat.scene?.tokens.find(t => t.actorId === this.id) ?? null;
+        ?? scene?.tokens.find(t => t.actorId === this.id) ?? null;
       await combat.createEmbeddedDocuments("Combatant", [token
         ? { actorId: this.id, tokenId: token.id, sceneId: token.parent.id }
         : { actorId: this.id }]);
@@ -1254,14 +1264,21 @@ export class CyberpunkActor extends Actor {
       localize("UnderThresholdMessage"),
       { messageMode }
     );
-    rolls.addRoll(new Roll(formula), { name: localize("Save") });
-    rolls.addRoll(new Roll(`${threshold}`), {
-      name: localize(death ? "SaveDeathThreshold" : "SaveStunThreshold")
-    });
-    await rolls.defaultExecute();
+    const saveRoll = new Roll(formula);
+    const thresholdLabel = localize(death ? "SaveDeathThreshold" : "SaveStunThreshold");
+    rolls.addRoll(saveRoll, { name: localize("Save") });
+    rolls.addRoll(new Roll(`${threshold}`), { name: thresholdLabel });
 
-    const total = rolls.rolls[0].total;
-    return { total, threshold, success: total <= threshold };
+    // D186 — the card says whether the save was made. Evaluated here rather than left to `execute`
+    // because the outcome has to travel *with* the card: the reader was given two numbers, a hint
+    // about which direction to read them in, and a status the automation had already applied, and a
+    // Stun save reads *under* while a zone save reads *over* (`T360`). Re-evaluation is a no-op.
+    await evaluateCyberpunkRoll(saveRoll);
+    const total = saveRoll.total;
+    const success = total <= threshold;
+    await rolls.defaultExecute({ saveOutcome: { success, total, threshold, thresholdLabel } });
+
+    return { total, threshold, success };
   }
 
   /**

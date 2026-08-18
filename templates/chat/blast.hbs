@@ -111,6 +111,9 @@
         <button type="button" class="cp-apply-zone" data-action="applyZone">
             {{CPLocal "ApplyZone"}}
         </button>
+        {{!-- Decided per client by the hook, which removes it when it does not apply: the drawing is
+              laid by the active GM, and with none connected it waits here for one (`T305`). --}}
+        <button type="button" class="cp-draw-zone" data-action="drawZone">{{CPLocal "DrawZone"}}</button>
         {{!-- Labelled by the hook, not here: it says which way the zone is about to be flipped. --}}
         <button type="button" class="cp-toggle-zone" data-action="toggleZone"></button>
     </div>

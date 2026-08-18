@@ -32,7 +32,21 @@
         </div>
     {{/each}}
     </div>
-    
+
+    {{!-- D186 — a save card states its own result. Rendered only when the caller supplies the
+          outcome, so every other roll that shares this template is untouched. --}}
+    {{#if saveOutcome}}
+    <div class="cp-save-outcome {{#if saveOutcome.success}}is-success{{else}}is-failure{{/if}}">
+        {{#if saveOutcome.success}}
+        <span class="cp-save-verdict">{{CPLocal "SaveSuccess"}}</span>
+        {{else}}
+        <span class="cp-save-verdict">{{CPLocal "SaveFailure"}}</span>
+        {{/if}}
+        <span class="cp-save-total">{{saveOutcome.total}}</span>
+        <span class="cp-save-threshold">{{saveOutcome.thresholdLabel}}: {{saveOutcome.threshold}}</span>
+    </div>
+    {{/if}}
+
     {{#if fumble}}
         <hr/>
         <div class="fumble-block">

@@ -11,14 +11,10 @@
         data-max="{{max}}"
         {{#if step}}step="{{step}}"{{/if}}
 
-        {{#if readOnly}}
-            value="{{deepLookup . edit}}"
-
-        {{else}}
-            {{#unless (eq (deepLookup . edit) 0)}}
-                value="{{deepLookup . edit}}"
-            {{/unless}}
-            placeholder="0"
-        {{/if}}
+        {{!-- A zero must render as `value="0"`, never as an empty box: an empty number input
+              submits no key at all, so `submitOnChange` drops the field and the DataModel refills
+              it with its initial — a spent magazine silently reloading itself (`T355`). --}}
+        value="{{deepLookup . edit}}"
+        {{#unless readOnly}}placeholder="0"{{/unless}}
     />
 </div>

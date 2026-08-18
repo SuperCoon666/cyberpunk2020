@@ -149,14 +149,15 @@ export class CyberpunkCombat extends Combat {
       await actor.unsetFlag("cyberpunk2020", DODGING_FLAG);
     }
 
-    await tickDot(actor, { messageMode, token: combatant.token });
-
-    // A corpse is asked for nothing: the Death Save at the bottom of this function is what writes
-    // `dead`, and without this gate it kept asking every turn for ever — a success against the
-    // threshold changed nothing, because no code reads the result of a save by an actor that is
-    // already dead (`T116`). `resolveDefense` reads the same status list for the same reason
-    // (`T43`). The burn above is deliberately outside the gate: a body still burns.
+    // A corpse is asked for nothing and does nothing: the Death Save at the bottom of this function
+    // is what writes `dead`, and without this gate it kept asking every turn for ever — a success
+    // against the threshold changed nothing, because no code reads the result of a save by an actor
+    // that is already dead (`T116`). `resolveDefense` reads the same status list for the same reason
+    // (`T43`). D55 widened `T116` to every active effect, the burn included, so the tick below sits
+    // **inside** the gate: a corpse stops burning rather than ticking down for ever (`T230`).
     if (actor.statuses.has("dead")) return;
+
+    await tickDot(actor, { messageMode, token: combatant.token });
 
     // Both turn-start saves split the same way with the master switch off, which is D22's own
     // worked example: the notice is management and stays, the roll and the status it writes are
@@ -203,11 +204,33 @@ export function actionPenaltyFor(actor) {
   // only when both are on". The dialog and the roll both reach this, so the AND lives here.
   if (!isCombatAutomationEnabled()) return null;
   if (!game.settings.get("cyberpunk2020", "actionEconomy")) return null;
-  if (!game.combat?.combatants.some(c => c.actorId === actor.id)) return null;
+  const combatant = combatantFor(actor);
+  if (!combatant) return null;
 
-  const taken = Number(actor.getFlag("cyberpunk2020", ACTIONS_TAKEN_FLAG)) || 0;
+  const taken = Number(combatant.actor.getFlag("cyberpunk2020", ACTIONS_TAKEN_FLAG)) || 0;
   // Not `STEP * taken`: at zero that is -0, which the dialog would render as "-0".
   return taken ? ACTION_PENALTY_STEP * taken : 0;
+}
+
+/**
+ * The combatant an actor is fighting as, or null when it is not in the encounter.
+ *
+ * An unlinked token's synthetic actor and the world actor it derives from share an `id` but **not**
+ * a flag store, so which of the two carries the per-turn counter decides whether the turn start can
+ * ever clear it: firing from the directory sheet charged the world actor while `_onStartTurn` unset
+ * `combatant.actor`, and the phantom -3xN then grew for the life of the encounter (`T289`). The uuid
+ * pass comes first because two unlinked tokens of one base actor share an `actorId` and are still
+ * two separate documents with two separate counters.
+ *
+ * @param {Actor} actor
+ * @returns {Combatant|null}
+ */
+function combatantFor(actor) {
+  const combatants = game.combat?.combatants;
+  if (!combatants) return null;
+  return combatants.find(c => c.actor?.uuid === actor?.uuid)
+    ?? combatants.find(c => c.actorId === actor?.id)
+    ?? null;
 }
 
 /**
@@ -235,8 +258,11 @@ export async function chargeAction(actor, declaredIn = currentTurnKey()) {
   if (actionPenaltyFor(actor) === null) return;
   if (declaredIn !== currentTurnKey()) return;
 
-  const taken = Number(actor.getFlag("cyberpunk2020", ACTIONS_TAKEN_FLAG)) || 0;
-  await actor.setFlag("cyberpunk2020", ACTIONS_TAKEN_FLAG, taken + 1);
+  // Charge the document the turn start will clear, not the one the sheet happened to be opened
+  // from (`T289`).
+  const combatant = combatantFor(actor);
+  const taken = Number(combatant.actor.getFlag("cyberpunk2020", ACTIONS_TAKEN_FLAG)) || 0;
+  await combatant.actor.setFlag("cyberpunk2020", ACTIONS_TAKEN_FLAG, taken + 1);
 }
 
 /**

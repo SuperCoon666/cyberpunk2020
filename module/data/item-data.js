@@ -73,6 +73,11 @@ const DEFAULT_WEAPON = {
   damage: "2d6+1",
   rangeDamages: DEFAULT_RANGE_DAMAGES,
   ap: false,
+  // Declared here rather than only on `CyberpunkWeaponData`, which is what kept the mono edge out of
+  // cyberweapons entirely: `CyberWorkType.Weapon` is spread from this object, `resolveHit` reads
+  // `mono` through `_getWeaponSystem()` — the abstraction that exists so a cyberweapon reuses the
+  // whole weapon pipeline — and the key was simply absent there, so it read `undefined` (`T269`).
+  mono: false,
   shotsLeft: 12,
   shots: 12,
   rof: 2,
@@ -253,7 +258,7 @@ export class CyberpunkWeaponData extends CyberpunkBaseItemData {
       // Ch. 07:1065 — a mono edge is a property of the blade, not a kind of attack, so a martial
       // weapon can carry one too. Read on a striking weapon only (D174): a thrown or shot blade
       // carries its edge on the round instead, as the `Mono` ammunition effect.
-      mono: booleanField(false),
+      mono: booleanField(DEFAULT_WEAPON.mono),
       shotsLeft: numberField(DEFAULT_WEAPON.shotsLeft),
       shots: numberField(DEFAULT_WEAPON.shots),
       rof: numberField(DEFAULT_WEAPON.rof),
@@ -283,6 +288,12 @@ export class CyberpunkWeaponData extends CyberpunkBaseItemData {
       source.mono = true;
     }
     if (REMOVED_ATTACK_TYPES.has(source.attackType)) source.attackType = "";
+    // D181 — a blade a world authored before D174 can still carry both flags, and the sheet then
+    // renders two ticked boxes for a pair it now refuses to create, so the next edit of either one
+    // silently clears the other. Lossless: `mono` already wins every branch in `resolveHit`, so no
+    // arithmetic moves. Gated on the pair actually being in `source` (partial diffs) and on the
+    // sheet's own reading of melee — `weaponType` — which is the surface the defect shows on.
+    if (source.weaponType === "Melee" && source.mono === true && source.ap === true) source.ap = false;
     return super.migrateData(source);
   }
 }
@@ -499,6 +510,7 @@ export class CyberpunkCyberwareData extends CyberpunkBaseItemData {
         }
         if (hasOwn(weapon, "rangeDamages")) weapon.rangeDamages = normalizeRangeDamages(weapon.rangeDamages);
         normalizeBooleanIfPresent(weapon, "ap", false);
+        normalizeBooleanIfPresent(weapon, "mono", false);
         if (REMOVED_ATTACK_TYPES.has(weapon.attackType)) weapon.attackType = "";
         cwt.Weapon = weapon;
       }

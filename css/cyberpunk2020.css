@@ -505,6 +505,18 @@ input.cyberware-humanity-locked {
   flex-grow: 2;
   flex-shrink: 2;
 }
+/* `T362` — humanity is the one **value** on this row rather than a label, and it is a whole `X/Y`.
+   The rule above lets every input shrink, and the wider `ru` neighbours (Переноска, Подъём, Прыжок,
+   Бег) took the last field down to an 18px content box for text needing 36px, so it rendered «50/»
+   on all six tabs — the header sits outside the tab body. Sized in `ch` and refused a shrink rather
+   than given a pixel width: the box then follows whatever font and whatever locale it is handed,
+   which is what the next language will need of it. 7ch is `100/100`, the widest value it can hold. */
+.stats > .derivedrow > .field.humanity input {
+  width: auto;
+  min-width: 7ch;
+  flex-shrink: 0;
+}
+
 .stats > .derivedrow > .field.ma {
   align-self: flex-end;
 }
@@ -730,6 +742,42 @@ div.statderive .value.rightborder {
 .cyberpunk-card .part-total.fumble {
   background-color: rgba(209, 80, 47, 0.7215686275);
 }
+/* D186 — a save card states its own verdict, on the greens and reds this same card already uses for
+   a crit and a fumble. Both are laid over the chat background at 0.72 alpha rather than painted
+   opaque, and the text colour is inherited: that is what keeps the strip legible under either of
+   core's themes without a second palette (`T360`). The threshold badge draws its outline from
+   `currentColor` for the same reason. */
+.cyberpunk-card .cp-save-outcome {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5em;
+  margin-top: 4px;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+.cyberpunk-card .cp-save-outcome.is-success {
+  background-color: rgba(119, 185, 104, 0.7215686275);
+}
+.cyberpunk-card .cp-save-outcome.is-failure {
+  background-color: rgba(209, 80, 47, 0.7215686275);
+}
+.cyberpunk-card .cp-save-outcome .cp-save-verdict {
+  font-variant: small-caps;
+  font-weight: bold;
+}
+.cyberpunk-card .cp-save-outcome .cp-save-total {
+  font-size: 1.2em;
+  font-weight: bold;
+}
+.cyberpunk-card .cp-save-outcome .cp-save-threshold {
+  margin-left: auto;
+  padding: 0 5px;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  font-size: 0.9em;
+  white-space: nowrap;
+}
+
 .cyberpunk-card.autofire .damage-tally {
   margin-left: 3em;
 }
@@ -844,9 +892,6 @@ div.statderive .value.rightborder {
   border-left: 2px solid black;
   padding-left: 10px;
 }
-.combat-tab .armor-section .armors-mockup .field label {
-  min-width: 3em;
-}
 .combat-tab .combat-rolls {
   grid-area: rolls;
   display: flex;
@@ -900,7 +945,6 @@ div.statderive .value.rightborder {
   grid-template-rows: auto auto auto !important;
 }
 
-.combat-tab .combat-rolls .flexrow .field + .field { margin-left: 5px; }
 /* The rolls split into as many columns as fit, on the same measure as the weapons below them, so
    the two lists line up column for column. */
 .combat-tab .combat-rolls .field-list {
@@ -1701,6 +1745,18 @@ div.statderive .value.rightborder {
   height: 1.5em;
   width: 1.5em;
   background-image: url("../img/chip.png");
+}
+
+/* `T262` — an unchecked box was invisible on these rows. Core paints it with
+   `--checkbox-background-color` (`--color-cool-4`, #302831) and the rows are black, which measures
+   at **1.5:1** — so the control could not be seen at all until it was ticked, and the tick itself
+   was never the problem (the orange `--checkbox-checked-color` reads at ~9:1 on the same black).
+   The variable is raised rather than the widget redrawn: nothing here may re-enable the native
+   control (see the block below), and core goes on painting with ::before/::after exactly as it did.
+   Deliberately every `.cyberpunk` checkbox and not just the combat tab's Stabilized — the same
+   partial serves the item sheets, which is why the row was filed rather than fixed in place. */
+.cyberpunk input[type="checkbox"] {
+  --checkbox-background-color: #7a7a7a;
 }
 
 /* Generic booleans: same native checkbox pattern as .skill-mod-toggle in actor skill rows. */

@@ -21,7 +21,7 @@ import { registerSystemSettings } from "./settings.js"
 import { getHtmlElement } from "./compat.js";
 import { ATTACK_FLAG_VERSION, SAVE_PROMPT_DEADLINE_MS, applyAttackFromMessage, rollSaveOf } from "./damage.js";
 import { CyberpunkCombat, announceTurn, applyDeclaredDodge, clearSuppressionZones, clearTurnFlags, DEFENSE_PROMPT_DEADLINE_MS } from "./combat.js";
-import { isCombatAutomationEnabled, isFnff2Enabled, martialActions } from "./lookups.js";
+import { allOutEffectKeys, isCombatAutomationEnabled, isFnff2Enabled } from "./lookups.js";
 import { CyberpunkTokenRuler, vetoOverspentMovement } from "./movement.js";
 import { applyBlastFromMessage, drawZone, layZoneFromMessage, SuppressiveFireBehavior, toggleZoneVisibility, zoneRegions } from "./zones.js";
 import { displayName, localize, localizeParam, localizeParamEscaped } from "./utils.js";
@@ -208,15 +208,11 @@ Hooks.once('init', async function () {
       // D163 — the All-Out pair carries no bonus in either table and never will (its effect is not a
       // number added to this roll), so the row states what it does instead of printing a `+0` that
       // reads as "strictly worse than the Dodge above it".
-      const allOutEffects = {
-        [martialActions.allOutParry]: "DefenseAllOutParryEffect",
-        [martialActions.allOutDodge]: "DefenseAllOutDodgeEffect"
-      };
       const maneuverOptions = skillId => {
         const rows = choices.find(c => c.skillId === skillId)?.actions ?? [];
         return rows.map(row => {
           const bonus = Number(row.bonus) || 0;
-          const effect = allOutEffects[row.action];
+          const effect = allOutEffectKeys[row.action];
           const label = effect
             ? `${localize(row.action)} (${localize(effect)})`
             : `${localize(row.action)} (${bonus >= 0 ? "+" : ""}${bonus})`;
@@ -511,6 +507,37 @@ Hooks.once('init', async function () {
       button.addEventListener("click", async () => {
         await layZoneFromMessage(message);
         laid();
+      });
+    });
+
+    // `T305` — the same offer `T125` gave the fire zone, one line apart in the same hook branch:
+    // a splash resolved with no GM connected (or with automation off at the moment of firing) posts
+    // a card describing a crater nobody painted, and the only other control on it — the visibility
+    // toggle — answers `ZoneNotDrawn`. The drawn state is read off the Region rather than recorded
+    // on the card, which is also what makes the click idempotent against the active GM's own hook
+    // finishing between this render and it.
+    Hooks.on("renderChatMessageHTML", (message, html) => {
+      const root = getHtmlElement(html);
+      const button = root?.querySelector?.('button[data-action="drawZone"]');
+      if (!button || button.dataset.cpDrawBound === "1") return;
+      button.dataset.cpDrawBound = "1";
+
+      const attack = message.flags?.cyberpunk2020?.attack;
+      if (!game.user.isGM || !isCombatAutomationEnabled()
+        || attack?.version !== ATTACK_FLAG_VERSION || !attack.blast) {
+        button.remove();
+        return;
+      }
+
+      const drawn = () => {
+        button.disabled = true;
+        button.textContent = localize("ZoneDrawn");
+      };
+      if (zoneRegions(message).length) return drawn();
+
+      button.addEventListener("click", async () => {
+        if (!zoneRegions(message).length) await drawZone(attack.blast, attack.kind, message.id);
+        drawn();
       });
     });
 

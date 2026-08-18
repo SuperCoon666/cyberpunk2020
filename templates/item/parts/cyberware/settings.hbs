@@ -351,8 +351,13 @@
           {{/if}}
         </div>
 
+        {{!-- D180 — the mono edge reaches a cyberweapon: `07:288` prints Slice n' Dice as
+              *"2D6 (mono)"*, and `resolveHit` reads the flag through `_getWeaponSystem()` for a
+              cyberweapon exactly as it does for a weapon. Beside `AP` and gated the same way, so
+              the block reads like the weapon sheet's (`T269`). --}}
         {{#if cwWeaponIsMelee}}
             {{> (template "fields/boolean") label="AP" edit="system.CyberWorkType.Weapon.ap"}}
+            {{> (template "fields/boolean") label="WeaponMono" edit="system.CyberWorkType.Weapon.mono"}}
         {{else}}
             {{> (template "fields/string") label="AmmoType" edit="system.CyberWorkType.Weapon.ammoType"}}
         {{/if}}

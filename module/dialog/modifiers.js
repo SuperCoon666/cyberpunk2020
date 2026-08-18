@@ -1,5 +1,5 @@
 import { deepSet, localize, localizeParam, localizeParamEscaped, refusedWhilePaused } from "../utils.js"
-import { fireModes, rangedAttackTypes, getMartialActionBonus } from "../lookups.js"
+import { fireModes, rangedAttackTypes, getMartialActionBonus, allOutEffectKeys } from "../lookups.js"
 import { createCyberpunkChatMessage, getGMUserIds, getHtmlElement } from "../compat.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
@@ -157,6 +157,12 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
           // The label the template localized, kept aside on the first pass: repainting from the
           // rendered text would append a second bonus to the first.
           option.dataset.cpLabel ??= option.textContent;
+          // D163's pair state their effect rather than a bonus, on this list as on the prompt's.
+          const effect = allOutEffectKeys[option.value];
+          if (effect) {
+            option.textContent = `${option.dataset.cpLabel} (${localize(effect)})`;
+            continue;
+          }
           const bonus = getMartialActionBonus(martialArt.value, option.value);
           option.textContent = `${option.dataset.cpLabel} (${bonus >= 0 ? "+" : ""}${bonus})`;
         }
@@ -697,7 +703,14 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
         }
       }
 
+      // D183 — the map is behind this window, and the area fire modes ask the shooter to click it:
+      // suppressive fire, the thrown grenade and the planted charge all await an interactive
+      // placement inside `onConfirm` while `closeOnSubmit: false` keeps the dialog across the middle
+      // of the viewport (`T353`). Minimized rather than closed, because a refusal — no ammunition, a
+      // disabled cyberweapon — has to hand the shooter their choices back.
+      this.minimize();
       const fired = await this.options.onConfirm(formData);
       if (fired !== false) this.close();
+      else await this.maximize();
     }
  }

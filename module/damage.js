@@ -1,4 +1,4 @@
-import { createCyberpunkChatMessage, renderCyberpunkTemplate } from "./compat.js";
+import { createCyberpunkChatMessage, evaluateCyberpunkRoll, renderCyberpunkTemplate } from "./compat.js";
 import { displayName, localize, localizeParam, localizeParamEscaped, rollLocation, isRollableFormula } from "./utils.js";
 import { CyberpunkActor } from "./actor/actor.js";
 import { ATHLETICS_SKILL_ID, isCombatAutomationEnabled } from "./lookups.js";
@@ -54,9 +54,13 @@ const BURN_ARMOR_WEAR = 2;
 /** Only a cyberlimb absorbs a hit into its own SDP; Head and Torso implants do not. */
 const LIMB_ZONES = new Set(["lArm", "rArm", "lLeg", "rLeg"]);
 
-/** Ch. 06: a cyberlimb is useless at 20 points of damage and destroyed at 30. */
-const LIMB_USELESS_AT = 20;
-const LIMB_DESTROYED_AT = 30;
+/**
+ * D52 — a cyberlimb's condition derives from the zone's **own** SDP pool rather than from a flat
+ * count of damage taken: destroyed when the pool is gone, useless at 10 or fewer left. The 20/30
+ * of `06:687` describe a stock limb, and installed options move the pool — Hydraulic Rams alone
+ * raise it by 10 (`06:697-701`) — so a rammed limb read "useless" a full 10 SDP early (`T97`).
+ */
+const LIMB_USELESS_AT_OR_BELOW = 10;
 
 /** How many times a hit into a zone that no longer exists re-rolls its location (D38). */
 const REDERIVE_ATTEMPTS = 6;
@@ -233,12 +237,11 @@ export function resolveHit({ damage = 0, zone = "Torso", ap = false, mono = fals
   } else if (melee && ap) {
     // Ch. 07:462 — an edged weapon meets half SP from armour the table marks √, and full SP from
     // everything else. `edgedSp` is that stack, derived on the actor because the layers are
-    // collapsed to one number long before this runs.
+    // collapsed to one number long before this runs. D177 — this melee gate is the **only**
+    // weapon-side armour-piercing left: a ranged weapon's `ap` selects nothing, because after
+    // D169/D173 armour-piercing belongs to the round (`armorMultSoft`/`armorMultHard`, applied
+    // above) and a weapon-side half would have been the one AP effect a homebrew flag still got.
     effSp = Math.floor(numberOr(location.edgedSp, sp) * armorMult);
-  } else if (ap) {
-    // RAW armour-piercing halves the armour whatever it is made of — ch. 07:865's *"normal AP
-    // ability vs. all armors"* is stated of the slug too, so this half never branches on hardness.
-    effSp = Math.floor(effSp / 2);
   }
 
   let penetrating = Math.max(0, Math.floor(damage) - effSp);
@@ -336,12 +339,19 @@ export async function rollZoneSave(actor, threshold, { mod = 0, messageMode } = 
     + (Number(mod) || 0);
 
   const rolls = new Multiroll(localize("SaveZone"), localize("OverThresholdMessage"), { messageMode });
-  rolls.addRoll(new Roll(bonus ? `1d10 + ${bonus}` : "1d10"), { name: localize("Save") });
-  rolls.addRoll(new Roll(`${threshold}`), { name: localize("SaveZoneThreshold") });
-  await rolls.defaultExecute();
+  const saveRoll = new Roll(bonus ? `1d10 + ${bonus}` : "1d10");
+  const thresholdLabel = localize("SaveZoneThreshold");
+  rolls.addRoll(saveRoll, { name: localize("Save") });
+  rolls.addRoll(new Roll(`${threshold}`), { name: thresholdLabel });
 
-  const total = rolls.rolls[0].total;
-  return { total, threshold, success: total >= threshold };
+  // D186 — as on the other save card, and the direction is why it matters here: a zone save reads
+  // **over** its threshold while Stun and Death read under (`T360`).
+  await evaluateCyberpunkRoll(saveRoll);
+  const total = saveRoll.total;
+  const success = total >= threshold;
+  await rolls.defaultExecute({ saveOutcome: { success, total, threshold, thresholdLabel } });
+
+  return { total, threshold, success };
 }
 
 /** The roll behind one save, whoever ends up asking for it. */
@@ -677,12 +687,12 @@ export async function applyHitsToActor(actor,
   if (game.settings.get("cyberpunk2020", "armorAblation")) await ablateArmor(actor, penetratedZones);
 
   const limbs = Object.keys(sdp).map(zone => {
-    const taken = numberOr(actor.system.sdp?.sum?.[zone], 0) - numberOr(actor.system.sdp?.current?.[zone], 0);
+    const current = numberOr(actor.system.sdp?.current?.[zone], 0);
     return {
       zone,
-      current: numberOr(actor.system.sdp?.current?.[zone], 0),
-      destroyed: taken >= LIMB_DESTROYED_AT,
-      useless: taken >= LIMB_USELESS_AT && taken < LIMB_DESTROYED_AT
+      current,
+      destroyed: current <= 0,
+      useless: current > 0 && current <= LIMB_USELESS_AT_OR_BELOW
     };
   });
 
@@ -722,13 +732,19 @@ export async function applyHitsToActor(actor,
     await startDot(actor, ammo, ignitionZone);
   }
 
+  // The mortality state is read once, before either Death Save below, because D57 makes them one
+  // roll rather than two: a hit that both severs a limb and drives the victim to Mortal asks for a
+  // single save, and each branch needs to know whether the other has a claim on it (`T231`).
+  const atMortal = wound > 0 && actor.woundState() >= MORTAL_WOUND_STATE;
+
   // Ch. 07:530 — a severed limb means *"an immediate Death Save at Mortal 0"*: the Save number with
   // no mortality penalty, which is `stunThreshold() + 3` evaluated at wound state 4, i.e. BT — not
   // the victim's own current, harsher threshold (`T144`). The head case never reaches here; it
-  // killed outright above.
+  // killed outright above. D57 — when the same hit also reached Mortal the roll is at the victim's
+  // own post-hit mortality instead, the stricter of the two, and it is the only one asked.
   if (severedLimbs.length) {
     const death = await requestSave(actor, "death",
-      { dc: actor.system.stats.bt.total, messageMode, token });
+      { dc: atMortal ? null : actor.system.stats.bt.total, messageMode, token });
     if (!death.success) await actor.toggleStatusEffect("dead", { active: true, overlay: true });
   }
 
@@ -742,8 +758,9 @@ export async function applyHitsToActor(actor,
   }
 
   // The mortality check reads a state rather than a delta, so it stays under the wound: an
-  // electroshock hit that changed nothing must not ask a Mortal character to die again.
-  if (wound > 0 && actor.woundState() >= MORTAL_WOUND_STATE) {
+  // electroshock hit that changed nothing must not ask a Mortal character to die again. D57 — and
+  // a severing hit has already asked, at this same threshold, so it is not asked twice.
+  if (atMortal && !severedLimbs.length) {
     const death = await requestSave(actor, "death", { messageMode, token });
     if (!death.success) await actor.toggleStatusEffect("dead", { active: true, overlay: true });
   }

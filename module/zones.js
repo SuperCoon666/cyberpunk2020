@@ -39,6 +39,44 @@ export function metresToPixels(metres) {
 }
 
 /**
+ * Where one of an autoshotgun's chained patterns actually lands.
+ *
+ * Ch. 07:861-863 fires up to ROF patterns on one trigger pull, *"all within 1 m of each other"*.
+ * Two things happen to a placed centre. It is snapped to the metre lattice, because the book counts
+ * this rule in whole metres and a pointer does not. And when the previous pattern is close enough to
+ * have been meant, it is pulled onto that pattern's 1 m adjacency ring.
+ *
+ * **Never a veto** (D54, and the project rule it follows): a centre the shooter puts beyond the ring
+ * is returned exactly where they put it, with `adjacent: false` for the card to say so. The book's
+ * rule is shown, not enforced — a table running the patterns wide is running its own game.
+ *
+ * Adjacency is measured edge to edge rather than centre to centre: *"within 1 m of each other"* is
+ * said of the patterns, and two 2 m patterns whose centres were 1 m apart would be all but the same
+ * pattern.
+ *
+ * @param {{x: number, y: number}} centre Where the placement left it, in pixels
+ * @param {{x: number, y: number}|null} previous The previous pattern's snapped centre, or null
+ * @param {number} width The pattern's width in scene units
+ * @returns {{x: number, y: number, adjacent: boolean}}
+ */
+export function snapPatternCentre(centre, previous, width) {
+  const perMetre = canvas.dimensions.distancePixels;
+  const snap = v => Math.round((Number(v) || 0) / perMetre) * perMetre;
+  const point = { x: snap(centre?.x), y: snap(centre?.y) };
+  if (!previous) return { ...point, adjacent: true };
+
+  const dx = point.x - previous.x;
+  const dy = point.y - previous.y;
+  const gap = Math.hypot(dx, dy);
+  // Edge to edge: the centres may be a pattern's width apart before the 1 m gap even opens.
+  const reach = metresToPixels(Math.max(0, Number(width) || 0) + 1);
+  if (gap <= reach) return { ...point, adjacent: true };
+
+  // Beyond the ring the shooter is taken at their word, and the card says the burst walked.
+  return { ...point, adjacent: false };
+}
+
+/**
  * The unit vector a Grenade Table result points along. Normalised, so a diagonal lands the rolled
  * number of metres away rather than 1.41 times it.
  *
@@ -185,13 +223,37 @@ export function isSpreadAttack(ammo, range) {
  * @param {string} name The region's label while it is being placed
  * @returns {Promise<{x: number, y: number}|null>} null when the placement was dismissed
  */
+/**
+ * Arm an interactive canvas placement and tell the shooter the map is waiting for them.
+ *
+ * D183 — `placeRegion` is a silent preview. The shooter clicked OK and got no card, no cursor hint
+ * and no notification, so the fire modes that need a second gesture were the ones that looked as
+ * though the button had done nothing; measured on suppressive fire, the thrown grenade and the
+ * planted charge alike (`T353`). The cue is `permanent` because the placement has no deadline and
+ * core retires an ordinary notification after a few seconds — it is cleared by the returned undo,
+ * on the cancelled path as well as the completed one.
+ *
+ * @param {string} name What is being placed, as the region is labelled while it is placed
+ * @returns {() => void} Clears the cue
+ */
+function armPlacement(name) {
+  const cue = ui.notifications.info(localizeParam("PlacementPending", { name }), { permanent: true });
+  return () => ui.notifications.remove(cue);
+}
+
 export async function pickBlastCentre(radius, name) {
-  const region = await canvas.regions.placeRegion({
-    name,
-    shapes: [{ type: "circle", x: 0, y: 0, radius: metresToPixels(radius) }],
-    levels: [canvas.level.id],
-    visibility: CONST.REGION_VISIBILITY.ALWAYS
-  }, { create: false });
+  const disarm = armPlacement(name);
+  let region;
+  try {
+    region = await canvas.regions.placeRegion({
+      name,
+      shapes: [{ type: "circle", x: 0, y: 0, radius: metresToPixels(radius) }],
+      levels: [canvas.level.id],
+      visibility: CONST.REGION_VISIBILITY.ALWAYS
+    }, { create: false });
+  } finally {
+    disarm();
+  }
   if (!region) return null;
 
   const { x, y } = region.shapes[0];
@@ -432,20 +494,26 @@ async function resolveZoneCrossing(zone, token) {
  * @returns {Promise<object|null>} the placed geometry, or null when the placement was dismissed
  */
 export async function placeSuppressionZone(width, length, name) {
-  const region = await canvas.regions.placeRegion({
-    name,
-    shapes: [{
-      type: "rectangle",
-      x: 0,
-      y: 0,
-      width: metresToPixels(length),
-      height: metresToPixels(width),
-      anchorX: 0,
-      anchorY: 0.5
-    }],
-    levels: [canvas.level.id],
-    visibility: CONST.REGION_VISIBILITY.ALWAYS
-  }, { create: false });
+  const disarm = armPlacement(name);
+  let region;
+  try {
+    region = await canvas.regions.placeRegion({
+      name,
+      shapes: [{
+        type: "rectangle",
+        x: 0,
+        y: 0,
+        width: metresToPixels(length),
+        height: metresToPixels(width),
+        anchorX: 0,
+        anchorY: 0.5
+      }],
+      levels: [canvas.level.id],
+      visibility: CONST.REGION_VISIBILITY.ALWAYS
+    }, { create: false });
+  } finally {
+    disarm();
+  }
   if (!region) return null;
 
   const { shapes, levels } = region.toObject();
