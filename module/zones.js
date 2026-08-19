@@ -295,10 +295,13 @@ export function isSpreadAttack(ammo, range) {
  * on the cancelled path as well as the completed one.
  *
  * @param {string} name What is being placed, as the region is labelled while it is placed
+ * @param {string|null} [hint] A localized sentence the cue carries after the prompt: the rule this
+ *   placement is governed by, for the placements that have one (D215)
  * @returns {() => void} Clears the cue
  */
-function armPlacement(name) {
-  const cue = ui.notifications.info(localizeParam("PlacementPending", { name }), { permanent: true });
+function armPlacement(name, hint = null) {
+  const prompt = localizeParam("PlacementPending", { name });
+  const cue = ui.notifications.info(hint ? `${prompt} ${hint}` : prompt, { permanent: true });
   return () => ui.notifications.remove(cue);
 }
 
@@ -317,10 +320,11 @@ function armPlacement(name) {
  *   chained pattern takes (D195) and the width an auto-range one takes (D194). Core's own
  *   `onChange`, which fires **after** the shape has settled into its snapped position — the raw
  *   `onMove` position is pre-snap and would disagree with what the card later reports.
+ * @param {string|null} [options.hint] A localized sentence the cue carries after the prompt (D215)
  * @returns {Promise<{x: number, y: number}|null>} null when the placement was dismissed
  */
-export async function pickBlastCentre(radius, name, { onPlacementChange = null } = {}) {
-  const disarm = armPlacement(name);
+export async function pickBlastCentre(radius, name, { onPlacementChange = null, hint = null } = {}) {
+  const disarm = armPlacement(name, hint);
   let region;
   try {
     region = await canvas.regions.placeRegion({

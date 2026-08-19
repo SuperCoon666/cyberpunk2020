@@ -427,6 +427,7 @@
     "CYBERPUNK.DefensePending": "{attacker} attacks {defender} — waiting for the defense.",
     "CYBERPUNK.SpreadPatternName": "{weapon} — pattern {index} of {count}",
     "CYBERPUNK.SpreadPatternTitle": "Pattern {index} of {count}",
+    "CYBERPUNK.SpreadPatternHint": "Patterns within 1 m of each other. Hold Shift for precise placement.",
     "CYBERPUNK.SpreadPatternAdjacent": "Within 1 m of the previous pattern.",
     "CYBERPUNK.SpreadPatternWalked": "More than 1 m from the previous pattern — the burst walked.",
     "CYBERPUNK.SpreadOnTarget": "The pattern lands where it was aimed.",

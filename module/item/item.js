@@ -1260,7 +1260,11 @@ export class CyberpunkItem extends Item {
         weapon: this.name, index: i + 1, count: patterns
       }), {
         onPlacementChange: this.__patternPlacementFeedback(previous,
-          autoRange ? point => spreadProfileFor(bandAtPoint(point), ammo).width / 2 : null)
+          autoRange ? point => spreadProfileFor(bandAtPoint(point), ammo).width / 2 : null),
+        // D215 — core snaps a placement to half a grid square, 2.5 m on this system's own 5 m
+        // scene, so without Shift the nearest distinct centre is already outside the ring and
+        // every spread burst reads as walked (`T407`). Told, never enforced (D54).
+        hint: patterns > 1 ? localize("SpreadPatternHint") : null
       });
       // Dismissed: nothing is spent, nothing is rolled, no card is posted.
       if (!placed) return null;
