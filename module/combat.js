@@ -1,4 +1,4 @@
-import { MORTAL_WOUND_STATE, hiddenMessageMode, requestSave, tickDot } from "./damage.js";
+import { MORTAL_WOUND_STATE, endDot, hiddenMessageMode, requestSave, tickDot } from "./damage.js";
 import { displayName, localizeParam, localizeParamEscaped } from "./utils.js";
 import { createCyberpunkChatMessage } from "./compat.js";
 import { BaseDie } from "./dice.js";
@@ -173,7 +173,8 @@ export class CyberpunkCombat extends Combat {
       }, { messageMode });
 
       if (automated) {
-        const recovery = await requestSave(actor, "stun", { messageMode, token: combatant.token });
+        const recovery = await requestSave(actor, "stun",
+          { messageMode, token: combatant.token, cause: "SaveCauseStunRecovery" });
         if (recovery.success) await actor.toggleStatusEffect("cpStunned", { active: false });
       }
     }
@@ -187,8 +188,12 @@ export class CyberpunkCombat extends Combat {
 
     if (!automated) return;
 
-    const save = await requestSave(actor, "death", { messageMode, token: combatant.token });
-    if (!save.success) await actor.toggleStatusEffect("dead", { active: true, overlay: true });
+    const save = await requestSave(actor, "death",
+      { messageMode, token: combatant.token, cause: "SaveCauseMortal" });
+    if (!save.success) {
+      await endDot(actor);
+      await actor.toggleStatusEffect("dead", { active: true, overlay: true });
+    }
   }
 }
 
@@ -316,7 +321,20 @@ export async function resolveDefense(defender, attackTotal,
 
   // A Mortal but conscious defender still defends: his severity already reaches the roll through
   // the wound penalties folded into `ref.total`.
-  if (INCAPACITATED_STATUSES.some(id => defender.statuses.has(id))) return null;
+  //
+  // `T412` — the gate (`T43`) stands; what it used to do silently is announced. Without this the
+  // notice, the prompt and the card's Defense term all vanish together and the result is shaped
+  // exactly like a swing at nobody, so the table cannot tell a refused defence from a missed
+  // target. Display only: the return is unchanged.
+  if (INCAPACITATED_STATUSES.some(id => defender.statuses.has(id))) {
+    await createCyberpunkChatMessage({
+      speaker: ChatMessage.getSpeaker({ actor: defender, token: defenderToken }),
+      // Names the defender alone, so an ambusher stays unnamed here without needing D31's split.
+      content: localizeParamEscaped("DefenseSkipped",
+        { defender: displayName(defender, defenderToken) })
+    }, { messageMode });
+    return null;
+  }
 
   const options = defender.defenseOptions();
   const owner = defender.type === "npc"

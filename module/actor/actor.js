@@ -1,4 +1,4 @@
-import { makeD10Roll, Multiroll } from "../dice.js";
+import { DefaultRollTemplate, makeD10Roll, Multiroll } from "../dice.js";
 import { isFumbleRoll, buildSkillFumbleData } from "../utils.js";
 import { SortOrders, sortSkills } from "./skill-sort.js";
 import { btmFromBT, MARTIAL_ART_KEY_BY_ID, MARTIAL_ART_ID_BY_KEY, defensiveMartialActions, FNFF2_ONLY_MARTIAL_ART_IDS, getMartialActionBonus, isCombatAutomationEnabled, isFnff2Enabled, AWARENESS_NOTICE_SKILL_ID, ATHLETICS_SKILL_ID, DEMOLITIONS_SKILL_ID, MELEE_DEFENSE_SKILL_IDS, BRAWLING_SKILL_ID, DODGE_SKILL_ID, MEDICAL_TECH_SKILL_IDS, FIRST_AID_SKILL_ID, STABILIZATION_ADVANTAGES } from "../lookups.js";
@@ -1250,7 +1250,7 @@ export class CyberpunkActor extends Actor {
    * @param {number} [options.threshold] Save number to use instead of this actor's own
    * @returns {Promise<{total: number, threshold: number, success: boolean}>}
    */
-  async rollSave(kind, { mod = 0, messageMode, threshold: override } = {}) {
+  async rollSave(kind, { mod = 0, messageMode, threshold: override, token = null } = {}) {
     const death = kind === "death";
     const threshold = Number.isFinite(override)
       ? override
@@ -1277,7 +1277,13 @@ export class CyberpunkActor extends Actor {
     await evaluateCyberpunkRoll(saveRoll);
     const total = saveRoll.total;
     const success = total <= threshold;
-    await rolls.defaultExecute({ saveOutcome: { success, total, threshold, thresholdLabel } });
+    // `T420` — spoken by the character rather than by whoever rolled, so a save card read after an
+    // area attack says whose it is instead of leaning on the apply loop's order.
+    await rolls.execute(
+      ChatMessage.getSpeaker({ actor: this, token }),
+      DefaultRollTemplate,
+      { saveOutcome: { success, total, threshold, thresholdLabel } }
+    );
 
     return { total, threshold, success };
   }

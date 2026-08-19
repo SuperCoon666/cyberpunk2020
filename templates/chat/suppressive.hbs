@@ -1,4 +1,4 @@
-<div>
+<div class="cyberpunk cyberpunk-card flexcol">
     <h2>{{CPLocal 'SuppressiveFire'}} – {{weaponName}}</h2>
 
     <ul class="condensed">
@@ -17,7 +17,7 @@
     <p>{{CPLocal "SuppressiveHitsDesc" dmg=dmgFormula}}</p>
 
     {{#if placed}}
-    <p>{{CPLocal "ZonePlaced"}}</p>
+    <p class="cp-zone-state">{{CPLocal "ZonePlaced"}}</p>
     <div class="cp-card-actions">
         {{!-- Both are decided per client by the hook, which removes whichever does not apply: the
               zone is laid by the active GM, and with none connected it waits here for one. --}}

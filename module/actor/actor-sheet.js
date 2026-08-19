@@ -6,7 +6,7 @@ import { ModifiersDialog } from "../dialog/modifiers.js"
 import { SortOrders, sortSkills } from "./skill-sort.js";
 import { getHtmlElement, getRichEditorHTML, itemFromDropData, saveRichEditorHTML } from "../compat.js";
 import { actionPenaltyFor, chargeAction, currentTurnKey } from "../combat.js";
-import { MORTAL_WOUND_STATE } from "../damage.js";
+import { MORTAL_WOUND_STATE, endDot } from "../damage.js";
 
 const { HandlebarsApplicationMixin } = foundry.applications.api;
 const { ActorSheetV2 } = foundry.applications.sheets;
@@ -754,6 +754,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
     const death = await this.actor.rollSave("death", { mod });
     if (!death.success && automated) {
+      await endDot(this.actor);
       await this.actor.toggleStatusEffect("dead", { active: true, overlay: true });
     }
   }

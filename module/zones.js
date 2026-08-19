@@ -297,12 +297,43 @@ export function isSpreadAttack(ammo, range) {
  * @param {string} name What is being placed, as the region is labelled while it is placed
  * @param {string|null} [hint] A localized sentence the cue carries after the prompt: the rule this
  *   placement is governed by, for the placements that have one (D215)
- * @returns {() => void} Clears the cue
+ * @param {CyberpunkActor|null} [actor] Whoever is firing — their sheet is the window in the way
+ * @returns {Promise<() => Promise<void>>} Clears the cue and hands the sheet back
  */
-function armPlacement(name, hint = null) {
+async function armPlacement(name, hint = null, actor = null) {
   const prompt = localizeParam("PlacementPending", { name });
   const cue = ui.notifications.info(hint ? `${prompt} ${hint}` : prompt, { permanent: true });
-  return () => ui.notifications.remove(cue);
+
+  // `T417` — the preview follows the pointer over floating windows, but the confirming click is an
+  // ordinary DOM click and goes to whatever is on top: a placement aimed at a point under the
+  // shooter's own sheet was swallowed in silence, over and over, with the cue still naming the
+  // pattern it was waiting for. D183's answer, one window out — `ModifiersDialog` already minimizes
+  // itself for this at submit, and the sheet it was opened from is the larger obstacle.
+  // Awaited, so the preview arms after the sheet has left the map rather than during it.
+  const sheet = actor?.sheet;
+  const hidden = !!sheet?.rendered && !sheet.minimized;
+  if (hidden) await sheet.minimize();
+
+  // Minimizing the acting sheet clears the window the shot was fired from, and measurement says
+  // that is not all of them: with a `UserConfig` over the intended point the confirming click is
+  // still taken by the window and the placement simply stays pending, while the preview goes on
+  // tracking the pointer as though it had landed. Capture phase, because the window's own handler
+  // would otherwise consume it first; once per placement, since a shooter clicking the same window
+  // twice has already been told. Told, never enforced (D54) — the click is not intercepted.
+  let told = false;
+  const onCaughtClick = event => {
+    if (told || event.target === canvas.app?.view) return;
+    told = true;
+    ui.notifications.warn(localize("PlacementClickCaught"));
+  };
+  document.addEventListener("pointerdown", onCaughtClick, true);
+
+  return async () => {
+    document.removeEventListener("pointerdown", onCaughtClick, true);
+    ui.notifications.remove(cue);
+    // Only what this call minimized is restored: a sheet the shooter had already collapsed stays so.
+    if (hidden) await sheet.maximize();
+  };
 }
 
 /**
@@ -321,10 +352,12 @@ function armPlacement(name, hint = null) {
  *   `onChange`, which fires **after** the shape has settled into its snapped position — the raw
  *   `onMove` position is pre-snap and would disagree with what the card later reports.
  * @param {string|null} [options.hint] A localized sentence the cue carries after the prompt (D215)
+ * @param {CyberpunkActor|null} [options.actor] The shooter, whose sheet is minimized while the
+ *   placement is pending (`T417`)
  * @returns {Promise<{x: number, y: number}|null>} null when the placement was dismissed
  */
-export async function pickBlastCentre(radius, name, { onPlacementChange = null, hint = null } = {}) {
-  const disarm = armPlacement(name, hint);
+export async function pickBlastCentre(radius, name, { onPlacementChange = null, hint = null, actor = null } = {}) {
+  const disarm = await armPlacement(name, hint, actor);
   let region;
   try {
     region = await canvas.regions.placeRegion({
@@ -334,7 +367,7 @@ export async function pickBlastCentre(radius, name, { onPlacementChange = null, 
       visibility: CONST.REGION_VISIBILITY.ALWAYS
     }, { create: false, ...(onPlacementChange ? { onChange: onPlacementChange } : {}) });
   } finally {
-    disarm();
+    await disarm();
   }
   if (!region) return null;
 
@@ -542,7 +575,7 @@ async function resolveZoneCrossing(zone, token) {
   }, { messageMode: hiddenMessageMode(token.hidden) });
 
   const save = await requestSave(actor, "zone", {
-    dc: zone.saveDC, messageMode: hiddenMessageMode(token.hidden), token
+    dc: zone.saveDC, messageMode: hiddenMessageMode(token.hidden), token, cause: "SaveCauseZone"
   });
   if (save.success) return;
 
@@ -575,8 +608,8 @@ async function resolveZoneCrossing(zone, token) {
  * @param {string} name The region's label while it is being placed
  * @returns {Promise<object|null>} the placed geometry, or null when the placement was dismissed
  */
-export async function placeSuppressionZone(width, length, name) {
-  const disarm = armPlacement(name);
+export async function placeSuppressionZone(width, length, name, actor = null) {
+  const disarm = await armPlacement(name, null, actor);
   let region;
   try {
     region = await canvas.regions.placeRegion({
@@ -594,7 +627,7 @@ export async function placeSuppressionZone(width, length, name) {
       visibility: CONST.REGION_VISIBILITY.ALWAYS
     }, { create: false });
   } finally {
-    disarm();
+    await disarm();
   }
   if (!region) return null;
 

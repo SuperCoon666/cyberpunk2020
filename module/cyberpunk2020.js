@@ -19,7 +19,7 @@ import { registerHandlebarsHelpers } from "./handlebars-helpers.js"
 import * as migrations from "./migrate.js";
 import { registerSystemSettings } from "./settings.js"
 import { getHtmlElement } from "./compat.js";
-import { ATTACK_FLAG_VERSION, SAVE_PROMPT_DEADLINE_MS, applyAttackFromMessage, rollSaveOf } from "./damage.js";
+import { ATTACK_FLAG_VERSION, DOT_FLAG, SAVE_PROMPT_DEADLINE_MS, applyAttackFromMessage, rollSaveOf } from "./damage.js";
 import { CyberpunkCombat, announceTurn, applyDeclaredDodge, clearSuppressionZones, clearTurnFlags, DEFENSE_PROMPT_DEADLINE_MS } from "./combat.js";
 import { allOutEffectKeys, isCombatAutomationEnabled, isFnff2Enabled } from "./lookups.js";
 import { CyberpunkTokenRuler, vetoOverspentMovement } from "./movement.js";
@@ -39,11 +39,27 @@ const WOUND_STATUSES = ["cpWoundLight", "cpWoundSerious", "cpWoundCritical", "cp
  */
 const woundSyncs = new Map();
 
-async function syncWoundStatuses(actor) {
+/**
+ * The statuses this system derives rather than lets anyone toggle: the wound level behind
+ * `system.damage`, and the burn behind the `dot` flag `tickDot` maintains (`T413`).
+ *
+ * Each is written only where it disagrees, because the GM-arrival sweep (`T410`) runs this over
+ * every actor in the world and a blanket toggle would be four writes a head.
+ */
+async function syncDerivedStatuses(actor) {
   const state = actor.woundState();
-  const active = state > 0 ? WOUND_STATUSES[Math.min(state, WOUND_STATUSES.length) - 1] : null;
+  const wound = state > 0 ? WOUND_STATUSES[Math.min(state, WOUND_STATUSES.length) - 1] : null;
   for (const id of WOUND_STATUSES) {
-    await actor.toggleStatusEffect(id, { active: id === active });
+    const active = id === wound;
+    if (actor.statuses.has(id) !== active) await actor.toggleStatusEffect(id, { active });
+  }
+
+  // Death ends the burn (D218), and every death this system writes clears the flag — which is also
+  // what triggers this. A `dead` a GM toggled by hand does not, so the corpse is read here too,
+  // or the arrival sweep would paint a burning icon onto one.
+  const burning = !!actor.getFlag("cyberpunk2020", DOT_FLAG) && !actor.statuses.has("dead");
+  if (actor.statuses.has("cpBurning") !== burning) {
+    await actor.toggleStatusEffect("cpBurning", { active: burning });
   }
 }
 
@@ -131,10 +147,15 @@ Hooks.once('init', async function () {
     CONFIG.statusEffects.cpStunned = {
       id: "cpStunned", name: "CYBERPUNK.StatusStunned", img: "icons/svg/daze.svg"
     };
+    // `T413` — hud: false for the same reason the wound levels carry it: the burn is derived from
+    // the `dot` flag, and a hand toggle would be undone by the next tick.
+    CONFIG.statusEffects.cpBurning = {
+      id: "cpBurning", name: "CYBERPUNK.StatusBurning", img: "icons/svg/fire.svg", hud: false
+    };
 
     // The owner of a player character rolls their own save when the world asks for it. The reply
     // has to beat the sender's timeout, so the dialog is closed here rather than waited on forever.
-    CONFIG.queries["cyberpunk2020.savePrompt"] = async ({ actorUuid, tokenUuid, kind, dc, messageMode }) => {
+    CONFIG.queries["cyberpunk2020.savePrompt"] = async ({ actorUuid, tokenUuid, kind, dc, messageMode, cause }) => {
       const actor = await fromUuid(actorUuid);
       if (!actor) throw new Error(`No actor for save prompt: ${actorUuid}`);
 
@@ -144,9 +165,27 @@ Hooks.once('init', async function () {
 
       const titles = { death: "CYBERPUNK.SaveDeath", zone: "CYBERPUNK.SaveZone" };
 
+      // `T411` — the applying client already knew all of this and the prompt said none of it, while
+      // the card that arrives *after* the player has rolled prints the threshold and the direction
+      // both. Recomputed here rather than sent, because the threshold a Stun or Death save derives
+      // is the actor's own and this client holds the actor; `dc` is an override for the rules that
+      // name one (the severance save, the electroshock ladder, a zone's own number), which is the
+      // same test `rollSaveOf` makes before it rolls.
+      const zone = kind === "zone";
+      const threshold = zone || Number.isFinite(dc)
+        ? dc
+        : (kind === "death" ? actor.deathThreshold() : actor.stunThreshold());
+      const thresholdLabel = localize(
+        zone ? "SaveZoneThreshold" : (kind === "death" ? "SaveDeathThreshold" : "SaveStunThreshold"));
+      // A zone save reads **over** its number and a Stun or Death save reads under (`T360`), which
+      // is the one fact a player cannot infer — the same two sentences D186 put on the card.
+      const direction = localize(zone ? "OverThresholdMessage" : "UnderThresholdMessage");
+
       let dialog = null;
       let deadlineTimer = null;
+      let expired = false;
       const deadline = new Promise(resolve => deadlineTimer = setTimeout(() => {
+        expired = true;
         dialog?.close();
         resolve(null);
       }, SAVE_PROMPT_DEADLINE_MS));
@@ -154,7 +193,14 @@ Hooks.once('init', async function () {
       const answer = await Promise.race([
         foundry.applications.api.DialogV2.input({
           window: { title: titles[kind] ?? "CYBERPUNK.SaveStun" },
+          // The cause key rides in over the socket and a key core cannot find is echoed back
+          // verbatim, so the one string here that is not this client's own is escaped.
           content: `<p>${localizeParamEscaped("SavePrompt", { name: displayName(actor, token) })}</p>
+            ${cause ? `<p>${foundry.utils.escapeHTML(localize(cause))}</p>` : ""}
+            <p>${localizeParamEscaped("SavePromptThreshold",
+              { label: thresholdLabel, threshold, direction })}</p>
+            <p>${localizeParamEscaped("SaveDeadline",
+              { seconds: Math.round(SAVE_PROMPT_DEADLINE_MS / 1000) })}</p>
             <input type="number" name="mod" value="0" step="1" autofocus>`,
           ok: { label: "CYBERPUNK.SaveRollButton" },
           render: (event, app) => { dialog = app; }
@@ -163,8 +209,12 @@ Hooks.once('init', async function () {
       ]);
       clearTimeout(deadlineTimer);
 
+      // The card is posted under this player's own name whether or not they answered, so the one
+      // person who can tell the difference is told (`T411`).
+      if (expired) ui.notifications.warn(localize("SaveExpired"));
+
       const mod = Number(answer?.mod) || 0;
-      return rollSaveOf(actor, kind, dc, mod, messageMode);
+      return rollSaveOf(actor, kind, dc, mod, messageMode, token);
     };
 
     // A dodge declared against an attack resolved on somebody else's client. The attacker owns
@@ -493,7 +543,18 @@ Hooks.once('init', async function () {
       button.dataset.cpLayBound = "1";
 
       const attack = message.flags?.cyberpunk2020?.attack;
-      if (!game.user.isGM || !isCombatAutomationEnabled() || attack?.version !== ATTACK_FLAG_VERSION) {
+      const known = attack?.version === ATTACK_FLAG_VERSION;
+      // `T421` — the template prints its sentence off `placed`, which is the geometry the shooter
+      // previewed and not the Region the active GM's hook creates. With no GM connected nothing was
+      // laid, and the player who fired is the one client the offer below is removed for: they read
+      // that the zone is on the map, saw no button, and were right about neither. Decided here
+      // because it is a per-client answer, off the same two records the button reads, and ahead of
+      // the GM gate because the player is who it is wrong for.
+      const laidAlready = known && (attack.applied?.laid || zoneRegions(message).length > 0);
+      const state = root.querySelector(".cp-zone-state");
+      if (state && known && !laidAlready) state.textContent = localize("ZoneWaitingForGM");
+
+      if (!game.user.isGM || !isCombatAutomationEnabled() || !known) {
         button.remove();
         return;
       }
@@ -502,7 +563,7 @@ Hooks.once('init', async function () {
         button.disabled = true;
         button.textContent = localize("ZoneLaid");
       };
-      if (attack.applied?.laid || zoneRegions(message).length) return laid();
+      if (laidAlready) return laid();
 
       button.addEventListener("click", async () => {
         await layZoneFromMessage(message);
@@ -567,12 +628,17 @@ Hooks.once('init', async function () {
 
     // Wound icons follow system.damage wherever it comes from, which is what makes a hand click on
     // the wound tracker behave like an applied attack. One writer, as everywhere else here.
+    // The burn rides the same path off its own flag (`T413`): `setFlag`/`unsetFlag` are actor
+    // updates, so arming and exhausting a fire both arrive here. An unset reaches the diff as the
+    // `-=` removal key rather than as the field itself.
     Hooks.on("updateActor", (actor, changes) => {
       if (!game.user.isActiveGM) return;
-      if (!("damage" in (changes.system ?? {}))) return;
+      const flags = changes.flags?.cyberpunk2020 ?? {};
+      if (!("damage" in (changes.system ?? {}))
+        && !(DOT_FLAG in flags) && !(`-=${DOT_FLAG}` in flags)) return;
 
       const queued = (woundSyncs.get(actor.id) ?? Promise.resolve())
-        .then(() => syncWoundStatuses(actor))
+        .then(() => syncDerivedStatuses(actor))
         .finally(() => { if (woundSyncs.get(actor.id) === queued) woundSyncs.delete(actor.id); });
       woundSyncs.set(actor.id, queued);
     });
@@ -628,6 +694,20 @@ Hooks.once('init', async function () {
 /**
  * Check whether this world needs a system data migration.
  */
+/**
+ * `T410` — the derived statuses are written by the active GM's `updateActor` hook, so a wound track
+ * a player edits with no GM connected is never seen: the icon keeps the old level until the next
+ * damage write a GM is present for, and the GM's own arrival does not repair it.
+ *
+ * The arrival is the repair. Only actors whose statuses disagree are written, so a world where
+ * nothing drifted costs nothing. Scene tokens carrying an unlinked actor are outside this sweep —
+ * a no-GM edit is a player editing a character they own, which is a world actor.
+ */
+Hooks.once("ready", async function () {
+  if (!game.user.isActiveGM) return;
+  for (const actor of game.actors) await syncDerivedStatuses(actor);
+});
+
 Hooks.once("ready", async function () {
   if (!game.user.isGM) return;
 

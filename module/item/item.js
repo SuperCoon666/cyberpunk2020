@@ -804,7 +804,8 @@ export class CyberpunkItem extends Item {
 
     let centre = null;
     if (canvas.ready) {
-      centre = await pickBlastCentre(profile.radius, localizeParam("BlastZoneName", { weapon: this.name }));
+      centre = await pickBlastCentre(profile.radius, localizeParam("BlastZoneName", { weapon: this.name }),
+        { actor: this.actor });
       // Dismissing the placement takes the whole action back: nothing rolled, nothing spent.
       if (!centre) return null;
     }
@@ -952,7 +953,8 @@ export class CyberpunkItem extends Item {
       const aimed = canvas.tokens.get(targetTokens[0]?.id)?.center;
       centre = aimed
         ? { x: aimed.x, y: aimed.y }
-        : await pickBlastCentre(profile.radius, localizeParam("BlastZoneName", { weapon: this.name }));
+        : await pickBlastCentre(profile.radius, localizeParam("BlastZoneName", { weapon: this.name }),
+          { actor: this.actor });
       // Dismissing the placement takes the throw back: nothing has been rolled or spent yet.
       if (!centre) return null;
     }
@@ -1034,10 +1036,12 @@ export class CyberpunkItem extends Item {
 
     let start = null, end = null;
     if (canvas.ready) {
-      start = await pickBlastCentre(profile.radius, localizeParam("SweepStartPoint", { weapon: this.name }));
+      start = await pickBlastCentre(profile.radius, localizeParam("SweepStartPoint", { weapon: this.name }),
+        { actor: this.actor });
       // Dismissing either placement takes the whole action back: nothing has been rolled or spent.
       if (!start) return null;
-      end = await pickBlastCentre(profile.radius, localizeParam("SweepEndPoint", { weapon: this.name }));
+      end = await pickBlastCentre(profile.radius, localizeParam("SweepEndPoint", { weapon: this.name }),
+        { actor: this.actor });
       if (!end) return null;
     }
 
@@ -1264,7 +1268,8 @@ export class CyberpunkItem extends Item {
         // D215 — core snaps a placement to half a grid square, 2.5 m on this system's own 5 m
         // scene, so without Shift the nearest distinct centre is already outside the ring and
         // every spread burst reads as walked (`T407`). Told, never enforced (D54).
-        hint: patterns > 1 ? localize("SpreadPatternHint") : null
+        hint: patterns > 1 ? localize("SpreadPatternHint") : null,
+        actor: this.actor
       });
       // Dismissed: nothing is spent, nothing is rolled, no card is posted.
       if (!placed) return null;
@@ -1395,6 +1400,13 @@ export class CyberpunkItem extends Item {
       const changes = {};
       let resized = false;
 
+      // `T418` — the point the *resolution* will use. Core settles a placement onto the half-grid,
+      // 2.5 m on this system's own 5 m scene, and `snapPatternCentre` then rounds that to whole
+      // metres; measuring the unsnapped shape put the preview a metre from where the card was
+      // scored, so on a range-band boundary the shooter watched a 2 m disc resolve as a 6 m one,
+      // with the To Hit and the damage band moving with it. D218 — display follows data.
+      const settled = snapPatternCentre(shape, previous);
+
       // D194 — the disc widens and narrows live as the cursor crosses the weapon's own band
       // boundaries, so what the shooter is about to place is what they are looking at (`T371`).
       //
@@ -1404,7 +1416,7 @@ export class CyberpunkItem extends Item {
       // written to the document alone would be undone by the next move — a flicker rather than a
       // resize.
       if (radiusAt) {
-        const radius = metresToPixels(radiusAt(shape));
+        const radius = metresToPixels(radiusAt(settled));
         if (radius !== shape.radius) {
           shape.updateSource({ radius });
           changes.shapes = [...document.shapes.slice(0, -1), shape];
@@ -1413,7 +1425,7 @@ export class CyberpunkItem extends Item {
       }
 
       if (previous) {
-        const near = snapPatternCentre(shape, previous).adjacent;
+        const near = settled.adjacent;
         if (near !== lit) {
           lit = near;
           changes.color = near ? PATTERN_TINT_ADJACENT : PATTERN_TINT_WALKED;
@@ -1788,7 +1800,7 @@ export class CyberpunkItem extends Item {
       // nothing about measuring a distance.
       const reach = Math.round(rangeResolve[mods.range]?.(effectiveRange(this)) || 0);
       zone = await placeSuppressionZone(width, Math.max(width, reach),
-        localizeParam("ZoneName", { weapon: this.name }));
+        localizeParam("ZoneName", { weapon: this.name }), this.actor);
       // Dismissing the placement takes the burst back: nothing has been rolled or spent yet.
       if (!zone) return null;
     }

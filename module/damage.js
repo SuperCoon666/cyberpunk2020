@@ -2,7 +2,7 @@ import { createCyberpunkChatMessage, evaluateCyberpunkRoll, renderCyberpunkTempl
 import { displayName, localize, localizeParam, localizeParamEscaped, rollLocation, isRollableFormula } from "./utils.js";
 import { CyberpunkActor } from "./actor/actor.js";
 import { ATHLETICS_SKILL_ID, isCombatAutomationEnabled } from "./lookups.js";
-import { Multiroll } from "./dice.js";
+import { DefaultRollTemplate, Multiroll } from "./dice.js";
 
 /**
  * The shape of flags.cyberpunk2020.attack. A card written by an older version is ignored rather
@@ -35,7 +35,7 @@ import { Multiroll } from "./dice.js";
 export const ATTACK_FLAG_VERSION = 13;
 
 /** The flag a damage-over-time effect burns down from, one tick per turn. */
-const DOT_FLAG = "dot";
+export const DOT_FLAG = "dot";
 
 /** The victim's own record of which rounds their electroshock hits landed on, and in whose
  *  encounter (`T98`, `T257`). */
@@ -330,9 +330,10 @@ async function ablateArmor(actor, hitsByZone, { softOnly = false } = {}) {
  * @param {object} [options]
  * @param {number} [options.mod] Situational modifier chosen by whoever rolls
  * @param {string} [options.messageMode] Visibility of the card, for a hidden token
+ * @param {TokenDocument} [options.token] The token saving — the card is spoken by it (`T420`)
  * @returns {Promise<{total: number, threshold: number, success: boolean}>}
  */
-export async function rollZoneSave(actor, threshold, { mod = 0, messageMode } = {}) {
+export async function rollZoneSave(actor, threshold, { mod = 0, messageMode, token = null } = {}) {
   const athletics = actor._getSkillByStableId(ATHLETICS_SKILL_ID);
   const bonus = (Number(actor.system.stats.ref.total) || 0)
     + CyberpunkActor.realSkillValue(athletics)
@@ -349,20 +350,26 @@ export async function rollZoneSave(actor, threshold, { mod = 0, messageMode } = 
   await evaluateCyberpunkRoll(saveRoll);
   const total = saveRoll.total;
   const success = total >= threshold;
-  await rolls.defaultExecute({ saveOutcome: { success, total, threshold, thresholdLabel } });
+  // `T420` — an area attack posts one of these per victim and the header named the rolling user,
+  // so a two-victim apply produced two anonymous cards distinguished only by the loop's own order.
+  await rolls.execute(
+    ChatMessage.getSpeaker({ actor, token }),
+    DefaultRollTemplate,
+    { saveOutcome: { success, total, threshold, thresholdLabel } }
+  );
 
   return { total, threshold, success };
 }
 
 /** The roll behind one save, whoever ends up asking for it. */
-export function rollSaveOf(actor, kind, dc, mod = 0, messageMode = undefined) {
+export function rollSaveOf(actor, kind, dc, mod = 0, messageMode = undefined, token = null) {
   return kind === "zone"
-    ? rollZoneSave(actor, dc, { mod, messageMode })
+    ? rollZoneSave(actor, dc, { mod, messageMode, token })
     // A Stun or Death save derives its own threshold; `dc` overrides it for the rules that name a
     // threshold of their own — the severance save at Mortal 0 (`T144`) and the electroshock ladder
     // (`T98`). Tested for finiteness rather than truth: an electroshock threshold can reach exactly
     // 0, and `dc || undefined` would silently hand that save the victim's own number back.
-    : actor.rollSave(kind, { mod, messageMode, threshold: Number.isFinite(dc) ? dc : undefined });
+    : actor.rollSave(kind, { mod, messageMode, token, threshold: Number.isFinite(dc) ? dc : undefined });
 }
 
 /**
@@ -375,26 +382,28 @@ export function rollSaveOf(actor, kind, dc, mod = 0, messageMode = undefined) {
  * @param {number} [options.dc] The save number, for a zone save only
  * @param {string} [options.messageMode] Visibility of the card, for a hidden token
  * @param {TokenDocument} [options.token] The token the save is about — the prompt names it (D133)
+ * @param {string} [options.cause] Localization key suffix for what forced the save, printed on the
+ *   prompt (`T411`). A key rather than a sentence: it is localized on the client that reads it.
  * @returns {Promise<{total: number, threshold: number, success: boolean}>}
  */
-export async function requestSave(actor, kind, { dc = null, messageMode, token = null } = {}) {
+export async function requestSave(actor, kind, { dc = null, messageMode, token = null, cause = "" } = {}) {
   const manual = game.settings.get("cyberpunk2020", "pcSaveMode") === "manual" && actor.type !== "npc";
   const owner = manual
     ? game.users.players.find(u => u.active && actor.testUserPermission(u, "OWNER"))
     : null;
-  if (!owner) return rollSaveOf(actor, kind, dc, 0, messageMode);
+  if (!owner) return rollSaveOf(actor, kind, dc, 0, messageMode, token);
 
   try {
     return await owner.query(
       "cyberpunk2020.savePrompt",
       // The token rides beside the actor: the prompt renders on the owner's client, which cannot
       // tell which of a linked actor's placed tokens is being shot at (`T296`).
-      { actorUuid: actor.uuid, tokenUuid: token?.uuid ?? "", kind, dc, messageMode },
+      { actorUuid: actor.uuid, tokenUuid: token?.uuid ?? "", kind, dc, messageMode, cause },
       { timeout: SAVE_QUERY_TIMEOUT_MS }
     );
   } catch (err) {
     // The owner disconnected or the query outlived its deadline; the save still has to happen.
-    return rollSaveOf(actor, kind, dc, 0, messageMode);
+    return rollSaveOf(actor, kind, dc, 0, messageMode, token);
   }
 }
 
@@ -510,6 +519,17 @@ async function startDot(actor, ammo, zone) {
 }
 
 /**
+ * The burn is over — the last turn has been taken, or the victim is dead (`T413`). Clearing the
+ * flag is what retires the burning status, through the same active-GM sync the wound icons take.
+ *
+ * Read before it is written because death is overwhelmingly the un-burning case, and an unset
+ * against an absent flag is still an actor update and still a sync.
+ */
+export async function endDot(actor) {
+  if (actor.getFlag("cyberpunk2020", DOT_FLAG)) await actor.unsetFlag("cyberpunk2020", DOT_FLAG);
+}
+
+/**
  * Burn one turn off a damage-over-time effect at the start of its victim's turn.
  *
  * Ch. 07:910, the burning round's own armour rule: *"Hard armors protect normally. Soft armors must
@@ -593,7 +613,7 @@ export async function tickDot(actor, { messageMode, token = null } = {}) {
 
   const turns = Math.floor(dot.turns) - 1;
   if (turns > 0) await actor.setFlag("cyberpunk2020", DOT_FLAG, { ...dot, turns });
-  else await actor.unsetFlag("cyberpunk2020", DOT_FLAG);
+  else await endDot(actor);
 }
 
 /**
@@ -721,6 +741,7 @@ export async function applyHitsToActor(actor,
   }, { useDefaultRollMode: true, messageMode });
 
   if (killed) {
+    await endDot(actor);
     await actor.toggleStatusEffect("dead", { active: true, overlay: true });
     return card;
   }
@@ -744,8 +765,12 @@ export async function applyHitsToActor(actor,
   // stricter of the two, and it is the only one asked.
   if (severedLimbs.length) {
     const death = await requestSave(actor, "death",
-      { dc: atMortal ? null : actor.system.stats.bt.total, messageMode, token });
-    if (!death.success) await actor.toggleStatusEffect("dead", { active: true, overlay: true });
+      { dc: atMortal ? null : actor.system.stats.bt.total, messageMode, token,
+        cause: "SaveCauseSevered" });
+    if (!death.success) {
+      await endDot(actor);
+      await actor.toggleStatusEffect("dead", { active: true, overlay: true });
+    }
   }
 
   // One save for the whole attack, and — for the wound path — none at all when every hit went into
@@ -753,7 +778,8 @@ export async function applyHitsToActor(actor,
   // for regardless, at its own threshold: RAW conditions that save on being hit, not on wounding.
   if (wound > 0 || shock) {
     const stun = await requestSave(actor, "stun",
-      { dc: shock?.threshold ?? null, messageMode, token });
+      { dc: shock?.threshold ?? null, messageMode, token,
+        cause: shock ? "SaveCauseShock" : "SaveCauseWound" });
     if (!stun.success) await actor.toggleStatusEffect("cpStunned", { active: true });
   }
 
@@ -761,8 +787,12 @@ export async function applyHitsToActor(actor,
   // electroshock hit that changed nothing must not ask a Mortal character to die again. D57 — and
   // a severing hit has already asked, at this same threshold, so it is not asked twice.
   if (atMortal && !severedLimbs.length) {
-    const death = await requestSave(actor, "death", { messageMode, token });
-    if (!death.success) await actor.toggleStatusEffect("dead", { active: true, overlay: true });
+    const death = await requestSave(actor, "death",
+      { messageMode, token, cause: "SaveCauseMortal" });
+    if (!death.success) {
+      await endDot(actor);
+      await actor.toggleStatusEffect("dead", { active: true, overlay: true });
+    }
   }
 
   return card;
