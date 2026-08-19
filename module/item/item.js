@@ -4,7 +4,7 @@ import { displayName, localize, localizeParam, rollLocation, cwHasType, cwIsEnab
 import { createCyberpunkChatMessage, createCyberpunkRollCard, renderCyberpunkTemplate } from "../compat.js";
 import { ATTACK_FLAG_VERSION, attackerIsHidden, hiddenMessageMode, snapshotAmmo } from "../damage.js";
 import { declareDodge, dodgeRangedPenalty, resolveDefense } from "../combat.js";
-import { blastProfile, blastRings, fireCorridor, isBlastAttack, isSpreadAttack, metresToPixels, PATTERN_TINT_ADJACENT, PATTERN_TINT_WALKED, pickBlastCentre, placeSuppressionZone, scatterCentre, snapPatternCentre, spreadCorridorBands, spreadProfileFor } from "../zones.js";
+import { blastProfile, blastRings, cancelPendingPlacement, fireCorridor, isBlastAttack, isSpreadAttack, metresToPixels, PATTERN_TINT_ADJACENT, PATTERN_TINT_WALKED, pickBlastCentre, placeSuppressionZone, scatterCentre, snapPatternCentre, spreadCorridorBands, spreadProfileFor } from "../zones.js";
 /** @extends {Item} */
 export class CyberpunkItem extends Item {
 
@@ -404,10 +404,17 @@ export class CyberpunkItem extends Item {
 
     const isRanged = this.isRanged();
 
-    if (isRanged && Number(system?.shotsLeft ?? 0) <= 0) {
-      ui.notifications.warn(localize("NoAmmo"));
+    // `T429` — a refusal means the shot did not happen, so the map must not be left waiting for a
+    // click. The pending placement belongs to an attack the shooter has already moved on from, and
+    // its own dialog is minimized behind that wait (D183) with no way back until it resolves: the
+    // owner's report is a refusal notice and an armed preview standing side by side.
+    const refuse = key => {
+      cancelPendingPlacement();
+      if (key) ui.notifications.warn(localize(key));
       return false;
-    }
+    };
+
+    if (isRanged && Number(system?.shotsLeft ?? 0) <= 0) return refuse("NoAmmo");
 
     // Damage strings are typed on item sheets, so both of these are user-authored data at a real
     // boundary and only D/d notation is valid (D33). Refused here rather than at the roll: this is
@@ -415,8 +422,8 @@ export class CyberpunkItem extends Item {
     // would throw halfway through (`T120`). A blank formula is not a typo — several paths fall
     // back to their own default — so only a non-empty one is checked.
     const ammoDamage = snapshotAmmo(this)?.bonusDamageFormula;
-    if (system?.damage && !isRollableFormula(system.damage)) return false;
-    if (ammoDamage && !isRollableFormula(ammoDamage)) return false;
+    if (system?.damage && !isRollableFormula(system.damage)) return refuse();
+    if (ammoDamage && !isRollableFormula(ammoDamage)) return refuse();
 
     const targets = Array.isArray(targetTokens) ? targetTokens : [];
     // Hit locations come from the target's own table, so the first target rides along with the
@@ -435,19 +442,14 @@ export class CyberpunkItem extends Item {
       // what a player can actually do there (D212). Refused rather than coalesced to 0: `?? 0` read
       // as point blank, the most generous band in the table, for a state D199 refuses on the other
       // side. Ahead of the placement, so nothing is spent and no card is posted (`T394`).
-      if (canvas?.ready && !this.__attackerToken(attackerToken)) {
-        ui.notifications.warn(localize("AutoRangeNoAttackerToken"));
-        return false;
-      }
+      if (canvas?.ready && !this.__attackerToken(attackerToken)) return refuse("AutoRangeNoAttackerToken");
+
       const measured = this.__distanceTo(targets[0], attackerToken);
       if (measured !== null) mods.range = this.__bandAt(measured);
-      else if (!this.__placesOwnCentre(system, mods)) {
-        // D199, an approved hard restriction of the empty-weapon shape: nothing to measure and
-        // nothing to measure it to, so the shot does not happen — the player selects a target or
-        // deliberately picks a constant band. Nothing is spent and no card is posted.
-        ui.notifications.warn(localize("AutoRangeNoTarget"));
-        return false;
-      }
+      // D199, an approved hard restriction of the empty-weapon shape: nothing to measure and
+      // nothing to measure it to, so the shot does not happen — the player selects a target or
+      // deliberately picks a constant band. Nothing is spent and no card is posted.
+      else if (!this.__placesOwnCentre(system, mods)) return refuse("AutoRangeNoTarget");
     }
 
     if (!isRanged) {

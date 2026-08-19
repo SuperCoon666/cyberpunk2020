@@ -1,0 +1,15 @@
+{{!-- D219 — the zone's own controls: hide from the players, and take it off the map. --}}
+<div class="col left"></div>
+
+<div class="col middle"></div>
+
+<div class="col right">
+    <button type="button" class="control-icon {{visibilityClass}}" data-action="visibility"
+            data-tooltip aria-label="{{CPLocal visibilityKey}}">
+        <i class="fa-solid {{#if hidden}}fa-eye-slash{{else}}fa-eye{{/if}}" inert></i>
+    </button>
+    <button type="button" class="control-icon" data-action="deleteZone"
+            data-tooltip aria-label="{{CPLocal "DeleteZone"}}">
+        <i class="fa-solid fa-trash" inert></i>
+    </button>
+</div>

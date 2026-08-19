@@ -23,7 +23,8 @@ import { ATTACK_FLAG_VERSION, DOT_FLAG, SAVE_PROMPT_DEADLINE_MS, applyAttackFrom
 import { CyberpunkCombat, announceTurn, applyDeclaredDodge, clearSuppressionZones, clearTurnFlags, DEFENSE_PROMPT_DEADLINE_MS } from "./combat.js";
 import { allOutEffectKeys, isCombatAutomationEnabled, isFnff2Enabled } from "./lookups.js";
 import { CyberpunkTokenRuler, vetoOverspentMovement } from "./movement.js";
-import { applyBlastFromMessage, drawZone, layZoneFromMessage, SuppressiveFireBehavior, toggleZoneVisibility, zoneRegions } from "./zones.js";
+import { applyBlastFromMessage, drawZone, layZoneFromMessage, SuppressiveFireBehavior, zoneRegions } from "./zones.js";
+import { CyberpunkRegionLayer, CyberpunkZoneRegion } from "./zone-hud.js";
 import { displayName, localize, localizeParam, localizeParamEscaped } from "./utils.js";
 
 /**
@@ -84,6 +85,10 @@ Hooks.once('init', async function () {
     // and the shared die has to be awaited, which _getInitiativeFormula cannot do.
     CONFIG.Combat.documentClass = CyberpunkCombat;
     CONFIG.Token.rulerClass = CyberpunkTokenRuler;
+    // D219 — the zone's controls belong on the zone. Core gives Regions no HUD, so both halves are
+    // needed: the placeable decides a right-click reaches one, the layer is where core looks for it.
+    CONFIG.Region.objectClass = CyberpunkZoneRegion;
+    CONFIG.Canvas.layers.regions.layerClass = CyberpunkRegionLayer;
 
     // Walking is MA metres a turn and running three times that, so running has to be a movement
     // action the player can pick — the budget follows the choice. terrainAction: "walk" because
@@ -573,10 +578,9 @@ Hooks.once('init', async function () {
 
     // `T305` — the same offer `T125` gave the fire zone, one line apart in the same hook branch:
     // a splash resolved with no GM connected (or with automation off at the moment of firing) posts
-    // a card describing a crater nobody painted, and the only other control on it — the visibility
-    // toggle — answers `ZoneNotDrawn`. The drawn state is read off the Region rather than recorded
-    // on the card, which is also what makes the click idempotent against the active GM's own hook
-    // finishing between this render and it.
+    // a card describing a crater nobody painted. The drawn state is read off the Region rather than
+    // recorded on the card, which is also what makes the click idempotent against the active GM's
+    // own hook finishing between this render and it.
     Hooks.on("renderChatMessageHTML", (message, html) => {
       const root = getHtmlElement(html);
       const button = root?.querySelector?.('button[data-action="drawZone"]');
@@ -599,30 +603,6 @@ Hooks.once('init', async function () {
       button.addEventListener("click", async () => {
         if (!zoneRegions(message).length) await drawZone(attack.blast, attack.kind, message.id);
         drawn();
-      });
-    });
-
-    // D122 — the GM's per-zone control over whether the players see this effect. Its label is read
-    // off the regions rather than remembered, because `renderChatMessageHTML` fires again on every
-    // re-render; on the first render of a card the drawing may not have landed yet, and the label's
-    // own default is the state a zone is drawn in.
-    Hooks.on("renderChatMessageHTML", (message, html) => {
-      const root = getHtmlElement(html);
-      const button = root?.querySelector?.('button[data-action="toggleZone"]');
-      if (!button || button.dataset.cpZoneBound === "1") return;
-      button.dataset.cpZoneBound = "1";
-
-      if (!game.user.isGM || !isCombatAutomationEnabled()) {
-        button.remove();
-        return;
-      }
-
-      const label = hidden => localize(hidden ? "ShowZone" : "HideZone");
-      button.textContent = label(zoneRegions(message).some(region => region.hidden));
-
-      button.addEventListener("click", async () => {
-        const hidden = await toggleZoneVisibility(message);
-        if (hidden !== null) button.textContent = label(hidden);
       });
     });
 

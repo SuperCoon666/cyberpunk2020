@@ -56,6 +56,9 @@ export const preloadHandlebarsTemplates = async function() {
         // Weapon settings dialog
         "systems/cyberpunk2020/templates/dialog/modifiers.hbs",
 
+        // The zone object's own controls
+        "systems/cyberpunk2020/templates/hud/zone-hud.hbs",
+
         // Combat automation settings submenu
         "systems/cyberpunk2020/templates/dialog/combat-automation.hbs",
 

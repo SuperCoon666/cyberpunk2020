@@ -1446,26 +1446,66 @@ export function zoneRegions(message) {
 }
 
 /**
- * D122 — the GM's per-zone control over whether the players see this effect at all.
+ * Every Region one card laid, reached from any one of them. A blast draws its rings as separate
+ * Regions, so the group — not the shape the GM happened to right-click — is what hides and deletes.
+ *
+ * @param {RegionDocument} region
+ * @returns {RegionDocument[]}
+ */
+export function zoneSiblings(region) {
+  const messageId = region?.getFlag("cyberpunk2020", ZONE_FLAG);
+  if (!messageId) return [];
+
+  return region.parent.regions.filter(sibling =>
+    sibling.getFlag("cyberpunk2020", ZONE_FLAG) === messageId);
+}
+
+/**
+ * D122 — the GM's per-zone control over whether the players see this effect at all. D219 moved the
+ * control onto the zone object, so this is reached from a Region rather than from the card.
  *
  * `hidden` rather than `visibility`: it takes the region off the players' canvas and leaves it on
  * the GM's, drawn dashed (`client/canvas/placeables/region.mjs:427`, 14.365.0) — so the GM-only
  * highlight of a hidden token stays GM-only however this is flipped.
  *
- * @param {ChatMessage} message
- * @returns {Promise<boolean|null>} the state it is now in, or null when this card drew nothing
+ * @param {RegionDocument} region
+ * @returns {Promise<boolean|null>} the state it is now in, or null when this is not a system zone
  */
-export async function toggleZoneVisibility(message) {
-  const regions = zoneRegions(message);
-  if (!regions.length) {
-    ui.notifications.warn(localize("ZoneNotDrawn"));
-    return null;
-  }
+export async function toggleZoneVisibility(region) {
+  const group = zoneSiblings(region);
+  if (!group.length) return null;
 
-  const hidden = !regions.some(region => region.hidden);
-  await regions[0].parent.updateEmbeddedDocuments("Region",
-    regions.map(region => ({ _id: region.id, hidden })));
+  const hidden = !group.some(sibling => sibling.hidden);
+  await region.parent.updateEmbeddedDocuments("Region",
+    group.map(sibling => ({ _id: sibling.id, hidden })));
   return hidden;
+}
+
+/**
+ * D219 — take the zone off the map. The whole group goes, for the reason `zoneSiblings` exists:
+ * deleting one ring of a blast would leave the rest of it standing.
+ *
+ * @param {RegionDocument} region
+ * @returns {Promise<number>} how many Regions went
+ */
+export async function deleteZone(region) {
+  const group = zoneSiblings(region);
+  if (!group.length) return 0;
+
+  await region.parent.deleteEmbeddedDocuments("Region", group.map(sibling => sibling.id));
+  return group.length;
+}
+
+/**
+ * Take back a placement this client left armed.
+ *
+ * `T429` — a refused attack leaves the map waiting for a click that belongs to an attack the
+ * shooter has already moved on from, and the dialog that armed it is minimized behind that wait
+ * with no way back. Core's own cancel resolves the pending placement with `null`, which is the
+ * dismissed path every caller already handles, and it is a no-op when nothing is armed.
+ */
+export function cancelPendingPlacement() {
+  if (canvas?.regions?._placementContext) canvas.regions._cancelPlacement();
 }
 
 /**
