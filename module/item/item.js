@@ -428,6 +428,17 @@ export class CyberpunkItem extends Item {
     // itself. A target is the measure where there is one; an attack that puts its own centre on
     // the map measures from that centre instead and resolves further down.
     if (mods.range === ranges.auto) {
+      // D205 — the missing **source** is tested first, and the order is by cause rather than by
+      // attack kind: `__distanceTo` answers null for either missing end, so asking about the target
+      // first told a shooter with no token on the scene that their selected target was not selected
+      // (`T401`). The canvas test keeps a mapless table on D199's notice below, the one that names
+      // what a player can actually do there (D212). Refused rather than coalesced to 0: `?? 0` read
+      // as point blank, the most generous band in the table, for a state D199 refuses on the other
+      // side. Ahead of the placement, so nothing is spent and no card is posted (`T394`).
+      if (canvas?.ready && !this.__attackerToken(attackerToken)) {
+        ui.notifications.warn(localize("AutoRangeNoAttackerToken"));
+        return false;
+      }
       const measured = this.__distanceTo(targets[0], attackerToken);
       if (measured !== null) mods.range = this.__bandAt(measured);
       else if (!this.__placesOwnCentre(system, mods)) {
@@ -435,15 +446,6 @@ export class CyberpunkItem extends Item {
         // nothing to measure it to, so the shot does not happen — the player selects a target or
         // deliberately picks a constant band. Nothing is spent and no card is posted.
         ui.notifications.warn(localize("AutoRangeNoTarget"));
-        return false;
-      }
-      // D205 — a placed centre is still measured **from the shooter**, so an attacker with no token
-      // on the viewed scene has nothing to measure from either. Refused here rather than coalesced
-      // to 0: `?? 0` read as point blank, the most generous band in the table, for a state D199
-      // refuses on the other side. Ahead of the placement, so nothing is spent and no card is
-      // posted — the shape D199's own refusal takes (`T394`).
-      else if (!this.__attackerToken(attackerToken)) {
-        ui.notifications.warn(localize("AutoRangeNoAttackerToken"));
         return false;
       }
     }
@@ -468,14 +470,14 @@ export class CyberpunkItem extends Item {
     // lands on a point rather than a body, so it never reaches the fire modes below. With
     // automation off it falls through to its fire mode, which is the plain shot v1.1.x rolled.
     if (isCombatAutomationEnabled() && isBlastAttack(snapshotAmmo(this))) {
-      return this.__blastAttack(mods, targets);
+      return this.__blastAttack(mods, targets, attackerToken);
     }
 
     // Ch. 07:910 — a flamethrower is swept between two chosen points rather than fired at one, so
     // it never reaches a fire mode either; D91 schedules it in v1.2.0. With automation off it falls
     // through to the plain shot v1.1.x rolled, the same fallback blast and suppression already use.
     if (isCombatAutomationEnabled() && system.attackType === rangedAttackTypes.flamethrow) {
-      return this.__flamethrowerSweep(mods);
+      return this.__flamethrowerSweep(mods, attackerToken);
     }
 
     // ---- Firemode-specific rolling. I may roll together some common aspects later ----
@@ -488,7 +490,7 @@ export class CyberpunkItem extends Item {
       if (isCombatAutomationEnabled()
         && system.attackType === rangedAttackTypes.autoshotgun
         && isSpreadAttack(snapshotAmmo(this), mods.range)) {
-        return this.__autoshotgunFullAuto(mods, targets);
+        return this.__autoshotgunFullAuto(mods, targets, attackerToken);
       }
       return this.__fullAuto(mods, targets);
     }
@@ -497,7 +499,7 @@ export class CyberpunkItem extends Item {
       return this.__threeRoundBurst(mods, targets);
     }
     else if(mods.fireMode === fireModes.semiAuto) {
-      return this.__semiAuto(mods, targets);
+      return this.__semiAuto(mods, targets, attackerToken);
     }
     else if(mods.fireMode === fireModes.suppressive) {
       return this.__suppressiveFire(mods);
@@ -933,9 +935,10 @@ export class CyberpunkItem extends Item {
    *
    * @param {object} attackMods
    * @param {Array} targetTokens
+   * @param {TokenDocument} [attackerToken] The acting client's own token
    * @returns {Promise<Multiroll|null>} null when the placement was dismissed
    */
-  async __blastAttack(attackMods, targetTokens = []) {
+  async __blastAttack(attackMods, targetTokens = [], attackerToken = null) {
     const system = this._getWeaponSystem();
     const ammo = snapshotAmmo(this);
     const profile = blastProfile(ammo);
@@ -958,7 +961,8 @@ export class CyberpunkItem extends Item {
     // the shooter chose rather than by a target they never selected. Resolved before the roll,
     // because `__shootModTerms` and the DC both read the band.
     if (attackMods.range === ranges.auto) {
-      attackMods = { ...attackMods, range: this.__bandAt(this.__distanceToPoint(centre)) };
+      attackMods = { ...attackMods,
+        range: this.__bandAt(this.__distanceToPoint(centre, this.__attackerToken(attackerToken))) };
     }
 
     const attackRoll = await this.attackRoll(attackMods);
@@ -1018,10 +1022,12 @@ export class CyberpunkItem extends Item {
    * the ammo sheet, not this method's to compute.
    *
    * @param {object} attackMods
+   * @param {TokenDocument} [attackerToken] The acting client's own token
    * @returns {Promise<Multiroll|null>} null when either placement was dismissed
    */
-  async __flamethrowerSweep(attackMods) {
+  async __flamethrowerSweep(attackMods, attackerToken = null) {
     const system = this._getWeaponSystem();
+    const shooterToken = this.__attackerToken(attackerToken);
     const ammo = snapshotAmmo(this);
     const width = Math.max(2, Math.floor(Number(attackMods.zoneWidth ?? 2)));
     const profile = { radius: width / 2, fullDamageWithin: width / 2, multipliers: [] };
@@ -1037,7 +1043,8 @@ export class CyberpunkItem extends Item {
 
     // D199 again: the stream's own far point is what auto range measures to.
     if (attackMods.range === ranges.auto) {
-      attackMods = { ...attackMods, range: this.__bandAt(this.__distanceToPoint(end)) };
+      attackMods = { ...attackMods,
+        range: this.__bandAt(this.__distanceToPoint(end, shooterToken)) };
     }
 
     const attackRoll = await this.attackRoll(attackMods);
@@ -1095,7 +1102,7 @@ export class CyberpunkItem extends Item {
           corridor: {
             from: { x: start.x, y: start.y },
             to: { x: end.x, y: end.y },
-            shooterTokenUuid: this.actor.getActiveTokens()[0]?.document?.uuid ?? ""
+            shooterTokenUuid: shooterToken?.document?.uuid ?? ""
           }
         }
         : null,
@@ -1215,9 +1222,10 @@ export class CyberpunkItem extends Item {
    *
    * @param {object} attackMods
    * @param {object[]} targetTokens
+   * @param {TokenDocument} [attackerToken] The acting client's own token
    * @returns {Promise<null|false|object>} null when the chain was dismissed, false on a refusal
    */
-  async __autoshotgunFullAuto(attackMods, targetTokens = []) {
+  async __autoshotgunFullAuto(attackMods, targetTokens = [], attackerToken = null) {
     const system = this._getWeaponSystem();
     const ammo = snapshotAmmo(this);
     const autoRange = attackMods.range === ranges.auto;
@@ -1225,7 +1233,7 @@ export class CyberpunkItem extends Item {
     // centre falls in, so the width, the damage and the DC are all decided by where the shooter
     // put it. Before the first drag there is nothing to measure, so the preview opens at the band
     // the shooter is standing in and resizes as the cursor crosses each boundary (`T371`).
-    const shooterToken = this.actor.getActiveTokens()[0];
+    const shooterToken = this.__attackerToken(attackerToken);
     const bandAtPoint = point => this.__bandAt(this.__distanceToPoint(point, shooterToken));
     const spread = spreadProfileFor(autoRange ? this.__bandAt(0) : attackMods.range, ammo);
     const patterns = CyberpunkItem._resolveFullAutoRounds(attackMods, system);
@@ -1853,7 +1861,7 @@ export class CyberpunkItem extends Item {
     };
   }
 
-  async __semiAuto(attackMods, targetTokens = []) {
+  async __semiAuto(attackMods, targetTokens = [], attackerToken = null) {
       const system = this._getWeaponSystem();
 
       // The range we're shooting at
@@ -1951,7 +1959,7 @@ export class CyberpunkItem extends Item {
             // Which level's walls the pattern meets, taken where it was fired from — D115's gate
             // reads it the same way a blast's does (`T284`).
             levelId: canvas.level.id,
-            corridor: fireCorridor(this.actor.getActiveTokens()[0], patternCentre,
+            corridor: fireCorridor(this.__attackerToken(attackerToken), patternCentre,
               spreadCorridorBands(effectiveRange(this), ammo)),
             // D17's wall exemption is for *"the shot's designated target"*, and a scattered pattern
             // is no longer aimed at anybody — exempting the token it missed would carry the
@@ -2207,7 +2215,11 @@ export class CyberpunkItem extends Item {
     // BODY built into it: its additive column is `strengthDamageBonus(BODY)` at every printed row,
     // so appending `@strengthBonus` here counted BODY twice. Every other maneuver, FNFF2's three
     // included, is a flat die that RAW does add HH(BODY) to.
-    const carriesBodyAlready = maneuverDamage !== null && action === martialActions.ram;
+    //
+    // Truthiness, not `!== null`: `unarmedManeuverFormula` answers **`undefined`** for a Ram off the
+    // FNFF2 gate, and that state rolls the stand-in's own die, which never carried BODY — testing
+    // against `null` alone dropped `@strengthBonus` from it (`T404`).
+    const carriesBodyAlready = maneuverDamage && action === martialActions.ram;
 
     if (canDealDamage && damageDie) {
       damageFormula = carriesBodyAlready
