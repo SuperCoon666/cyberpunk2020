@@ -509,7 +509,7 @@ export class CyberpunkActorSheet extends ActorSheet {
     });
 
     // Initiative
-    html.find(".roll-initiative").click(ev => {
+    html.find(".roll-initiative .action").click(ev => {
       const rollInitiativeModificatorInput = html.find(".roll-initiative-modificator")[0];
       this.actor.addToCombatAndRollInitiative(rollInitiativeModificatorInput.value);
     });
@@ -523,7 +523,7 @@ export class CyberpunkActorSheet extends ActorSheet {
       const value = ev.target.value;
       this.actor.update({"system.StunDeathMod": Number(value)});
     });
-    html.find(".stun-death-save").click(ev => {
+    html.find(".stun-death-save .action").click(ev => {
       const rollModificatorInput = html.find(".roll-stun-death-modificator")[0]
       this.actor.rollStunDeath(rollModificatorInput.value);
     });
