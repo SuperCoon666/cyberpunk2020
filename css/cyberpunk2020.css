@@ -338,18 +338,28 @@ input.cyberware-humanity-locked {
   color: whitesmoke !important;
   font-weight: 600;
 }
-/* Text and number inputs — as tall as the row, and never shorter than a select.
-   `.cyberpunk .field` is a stretch flex row, and a fixed `height` here won over that stretch: in a
-   row whose label had wrapped to two lines the box stayed 24px at the top and left a gap under it.
-   `min-height` keeps every single-line row at exactly the 24px it had, and `line-height: normal` is
-   what lets the browser centre the value in a box taller than one line. */
+/* Text and number inputs — same height as selects */
 .cyberpunk .field input[type="text"],
 .cyberpunk .field input[type="number"] {
   box-sizing: border-box;
-  min-height: 24px;
-  line-height: normal;
+  height: 24px;
+  line-height: 24px;
   padding: 0 6px;
   margin: 0;
+}
+
+/* `.cyberpunk .field` is a stretch flex row, but the fixed `height` above wins over that stretch:
+   in a row whose label has wrapped to two lines the box stays 24px at the top and leaves a gap
+   under it. Visible on the free-modifier row since D223 put the action selector beside it.
+   `min-height` keeps every single-line row at exactly the 24px it had, and `line-height: normal`
+   is what lets the browser centre the value in a box that is now taller than one line.
+   Scoped to this dialog on purpose: the rule above governs every sheet in the system and the rest
+   of them have not been looked at. */
+.weapon-modifier .cyberpunk .field input[type="text"],
+.weapon-modifier .cyberpunk .field input[type="number"] {
+  height: auto;
+  min-height: 24px;
+  line-height: normal;
 }
 
 .cyberpunk .field input.smallnumber {
@@ -514,9 +524,17 @@ input.cyberware-humanity-locked {
    Бег) took the last field down to an 18px content box for text needing 36px, so it rendered «50/»
    on all six tabs — the header sits outside the tab body. Sized in `ch` and refused a shrink rather
    than given a pixel width: the box then follows whatever font and whatever locale it is handed,
-   which is what the next language will need of it. 7ch is `100/100`, the widest value it can hold. */
+   which is what the next language will need of it. 7ch is `100/100`, the widest value it can hold.
+   Two things have to be true for that measure to mean anything, and each cost a defect:
+   `width` must carry it and not `min-width` alone, because `width: auto` on an input resolves to its
+   `size` attribute — 20 characters — and with the shrink refused the row then claimed 196px it never
+   needed, froze the whole header at that measure and pushed the last stat block off the sheet under
+   `overflow-x: hidden` (D226, `F.4.8`); and the box must be `content-box`, because the shared input
+   rule above is `border-box` and its 6px of padding either side would come out of the 7ch instead of
+   sitting outside it, clipping `100/100` at the sheet's own default width (`F.4.7`). */
 .stats > .derivedrow > .field.humanity input {
-  width: auto;
+  box-sizing: content-box;
+  width: 7ch;
   min-width: 7ch;
   flex-shrink: 0;
 }
@@ -810,6 +828,10 @@ div.statderive .value.rightborder {
    resize. */
 .combat-tab {
   --cp-combat-col: 180px;
+  /* The widest a block on this tab may grow to. Measured: the width at which «Спас Оглушение/
+     Смерть», the longest row name across the two maintained locales, stops wrapping to two
+     lines. */
+  --cp-combat-col-max: 320px;
   display: grid;
   grid-template-columns: 1fr calc(16em + 12px);
   /* The armour spans both rows, so with two content-sized rows the grid hands the height it needs
@@ -953,6 +975,31 @@ div.statderive .value.rightborder {
    the two lists line up column for column. */
 .combat-tab .combat-rolls .field-list {
   grid-template-columns: repeat(auto-fill, minmax(var(--cp-combat-col), 1fr));
+}
+
+/* From here up the acting column holds a third track, and the rule above then leaves a hole at the
+   end of every row it cannot fill: two 191px blocks with 700px of empty column beside them and the
+   longer name wrapped to two lines anyway (`T-43`). The strip is pinned to two columns instead, each
+   of which grows to `--cp-combat-col-max` and no further, so a wider sheet buys width up to a limit
+   and then stops with the surplus left at the right of the column. Placed at the third track rather
+   than higher up because that is where the defect starts and the seam is invisible there: the rule
+   above already fills a two-track row, so the blocks step 267px → 271px across it. Below it nothing
+   changes, the sheet's own default width included.
+   The ceiling is on the **track**, not on the block: capping the block instead leaves the tracks at
+   half the column each, and the second one then starts where its track does — a 150px hole between
+   the two columns at a 1218px sheet, measured. And a track ceiling is only possible because the
+   count is explicit: `repeat(auto-fit, minmax(180px, 320px))` counts its repetitions against the
+   **maximum** wherever that is definite, so it lays a single 320px column at 660px and at 900px
+   alike, and any definite maximum above 191px collapses the default width to one column — both
+   measured. Two is also what the strip is: the saves list always carries two rows and the actions
+   list carries one or two (the unarmed attack is conditional), so `auto-fit` would collapse the
+   one-row lists to a track of their own and hand them the whole column.
+   The weapons list is deliberately left on the rule above: its rows fill every track they are
+   given, so it has no hole to close. */
+@container (min-width: 790px) {
+  .combat-tab .combat-rolls .field-list {
+    grid-template-columns: repeat(2, minmax(0, var(--cp-combat-col-max)));
+  }
 }
 /* The three lists are one strip, not three blocks: they take the same 3px the rows inside them
    take, against the 10px `.field-list + *` gives every other list on the sheet. */
