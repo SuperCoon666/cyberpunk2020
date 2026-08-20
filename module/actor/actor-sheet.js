@@ -95,8 +95,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       const initiativeMod = foundry.utils.getProperty(system, "initiativeMod") || 0;
       sheetData.initiativeMod = initiativeMod;
 
-      const StunDeathMod = foundry.utils.getProperty(system, "StunDeathMod") || 0;
-      sheetData.StunDeathMod = StunDeathMod;
+      sheetData.stunDeathSaveBonus = foundry.utils.getProperty(system, "stunDeathSaveBonus") || 0;
     }
 
     sheetData.cyberwareSegmentsRight = [
@@ -1206,7 +1205,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       }
 
       if (target.matches(".roll-stun-death-modificator")) {
-        await this.actor.update({ "system.StunDeathMod": Number(target.value) });
+        await this.actor.update({ "system.stunDeathSaveBonus": Number(target.value) });
       }
     });
   }

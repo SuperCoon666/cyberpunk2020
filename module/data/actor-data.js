@@ -57,7 +57,7 @@ class CyberpunkBaseActorData extends foundry.abstract.TypeDataModel {
       initiativeMod: numberField(0),
       initiativeImplantMod: numberField(0),
       CombatSenseMod: numberField(0),
-      StunDeathMod: numberField(0),
+      stunDeathSaveBonus: numberField(0),
       _cwChecks: objectField({ saveStun: 0 }),
 
       // Netrunning fields are top-level in the current templates and sheet code.
@@ -108,6 +108,15 @@ class CyberpunkBaseActorData extends foundry.abstract.TypeDataModel {
     }
     if (source.icon && typeof source.icon === "object") {
       source.icon = source.icon.default ?? "";
+    }
+
+    // D224 — the sign flips with the field's meaning: a positive number is now a bonus on a save
+    // read under its threshold. Renamed rather than negated under the old key, for the reason D108
+    // records on the ammunition's: `migrateData` runs on every read, so a bare negation would flip
+    // again on each one and a character would oscillate. Keyed on the new name being absent, it
+    // cannot run twice, and an upgrading world keeps the save it was rolling.
+    if (hasOwn(source, "StunDeathMod") && !hasOwn(source, "stunDeathSaveBonus")) {
+      source.stunDeathSaveBonus = -(Number(source.StunDeathMod) || 0);
     }
 
     if (hasOwn(source, "skills")) source.skills ??= {};

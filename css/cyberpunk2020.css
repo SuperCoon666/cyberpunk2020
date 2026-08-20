@@ -338,28 +338,18 @@ input.cyberware-humanity-locked {
   color: whitesmoke !important;
   font-weight: 600;
 }
-/* Text and number inputs — same height as selects */
+/* Text and number inputs — as tall as the row, and never shorter than a select.
+   `.cyberpunk .field` is a stretch flex row, and a fixed `height` here won over that stretch: in a
+   row whose label had wrapped to two lines the box stayed 24px at the top and left a gap under it.
+   `min-height` keeps every single-line row at exactly the 24px it had, and `line-height: normal` is
+   what lets the browser centre the value in a box taller than one line. */
 .cyberpunk .field input[type="text"],
 .cyberpunk .field input[type="number"] {
   box-sizing: border-box;
-  height: 24px;
-  line-height: 24px;
-  padding: 0 6px;
-  margin: 0;
-}
-
-/* `.cyberpunk .field` is a stretch flex row, but the fixed `height` above wins over that stretch:
-   in a row whose label has wrapped to two lines the box stays 24px at the top and leaves a gap
-   under it. Visible on the free-modifier row since D223 put the action selector beside it.
-   `min-height` keeps every single-line row at exactly the 24px it had, and `line-height: normal`
-   is what lets the browser centre the value in a box that is now taller than one line.
-   Scoped to this dialog on purpose: the rule above governs every sheet in the system and the rest
-   of them have not been looked at. */
-.weapon-modifier .cyberpunk .field input[type="text"],
-.weapon-modifier .cyberpunk .field input[type="number"] {
-  height: auto;
   min-height: 24px;
   line-height: normal;
+  padding: 0 6px;
+  margin: 0;
 }
 
 .cyberpunk .field input.smallnumber {

@@ -523,6 +523,7 @@
     "CYBERPUNK.Action": "Action",
     "CYBERPUNK.Rolls": "Rolls",
     "CYBERPUNK.Initiative": "Initiative",
+    "CYBERPUNK.StunDeathBonusHint": "A positive number makes the save easier — it comes off a roll that has to land at or under the threshold.",
     "CYBERPUNK.StunDeathSave": "Stun/Death Save",
     "CYBERPUNK.UnderThresholdMessage": "Roll under the thresholds to succeed",
     "CYBERPUNK.Save": "Save",

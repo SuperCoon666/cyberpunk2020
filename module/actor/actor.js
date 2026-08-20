@@ -1257,7 +1257,11 @@ export class CyberpunkActor extends Actor {
       : (death ? this.deathThreshold() : this.stunThreshold());
 
     const fromImplants = Number(this.system?._cwChecks?.saveStun || 0);
-    const totalMod = (Number(mod) || 0) - fromImplants;
+    // D224 — both numbers are bonuses on a roll that has to land **at or under** its threshold
+    // (`07:604`), so both come off it. The typed one used to be added, which made a positive value a
+    // penalty while the implant's went the other way: one number, two directions, and nothing on
+    // screen said which was which. Same reading D108 gave the ammunition's own save modifier.
+    const totalMod = -((Number(mod) || 0) + fromImplants);
     const formula = totalMod ? `1d10 + ${totalMod}` : "1d10";
 
     const rolls = new Multiroll(

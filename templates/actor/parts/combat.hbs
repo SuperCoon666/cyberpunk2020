@@ -27,7 +27,7 @@
                 <div class="field stun-death-save">
                     <label class="action">{{CPLocal "StunDeathSave"}}</label>
                     <span class="flex-pad"></span>
-                    <input class="roll-stun-death-modificator number" type="number" {{#unless (eq StunDeathMod 0)}}value="{{StunDeathMod}}"{{/unless}} placeholder="0">
+                    <input class="roll-stun-death-modificator number" type="number" data-tooltip="{{CPLocal 'StunDeathBonusHint'}}" {{#unless (eq stunDeathSaveBonus 0)}}value="{{stunDeathSaveBonus}}"{{/unless}} placeholder="0">
                 </div>
             </div>
 

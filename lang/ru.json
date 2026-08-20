@@ -523,6 +523,7 @@
     "CYBERPUNK.Action": "Действие",
     "CYBERPUNK.Rolls": "Броски",
     "CYBERPUNK.Initiative": "Инициатива",
+    "CYBERPUNK.StunDeathBonusHint": "Положительное значение облегчает спас — оно вычитается из броска, который должен лечь не выше порога.",
     "CYBERPUNK.StunDeathSave": "Спас Оглушение/Смерть",
     "CYBERPUNK.UnderThresholdMessage": "Выбрось меньше порога, чтобы преуспеть",
     "CYBERPUNK.Save": "Спасбросок",
