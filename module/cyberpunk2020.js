@@ -456,9 +456,18 @@ Hooks.once('init', async function () {
 
         const hideTip = () => {
           if (tip) {
+            document.removeEventListener("mouseover", onPointerElsewhere, true);
             tip.remove();
             tip = null;
           }
+        };
+
+        // A chat re-render replaces the anchor under a stationary cursor with no `mouseleave` to
+        // follow, which leaves an open tooltip with no owner to remove it. A pointer landing
+        // outside the anchor is the signal core's own TooltipManager reads for this
+        // (`client/helpers/interaction/tooltip-manager.mjs:142`, 14.365.0).
+        const onPointerElsewhere = (ev) => {
+          if (!el.contains(ev.target)) hideTip();
         };
 
         const positionTip = () => {
@@ -540,6 +549,7 @@ Hooks.once('init', async function () {
           }
 
           document.body.appendChild(tip);
+          document.addEventListener("mouseover", onPointerElsewhere, true);
 
           requestAnimationFrame(() => {
             positionTip();
