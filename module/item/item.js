@@ -1,7 +1,7 @@
 import { weaponTypes, rangedAttackTypes, meleeAttackTypes, fireModes, ranges, rangeBandFor, rangeDCs, rangeResolve, effectiveRange, strengthDamageBonus, getMartialActionBonus, martialActions, isCombatAutomationEnabled, isFnff2Enabled, getFnff2DamageBonusSymbol, unarmedManeuverFormula, JUMP_KICK_TO_HIT, UNARMED_STRIKE_ID } from "../lookups.js"
 import { Multiroll, makeD10Roll } from "../dice.js"
-import { displayName, localize, localizeParam, rollLocation, cwHasType, cwIsEnabled, isFumbleRoll, buildRangedCombatFumbleData, buildSkillFumbleData, clamp, isRollableFormula } from "../utils.js";
-import { createCyberpunkChatMessage, createCyberpunkRollCard, renderCyberpunkTemplate } from "../compat.js";
+import { displayName, localize, localizeParam, localizeParamEscaped, rollLocation, cwHasType, cwIsEnabled, isFumbleRoll, buildRangedCombatFumbleData, buildSkillFumbleData, clamp, isRollableFormula } from "../utils.js";
+import { createCyberpunkChatMessage, createCyberpunkRollCard, getGMUserIds, renderCyberpunkTemplate } from "../compat.js";
 import { ATTACK_FLAG_VERSION, attackerIsHidden, hiddenMessageMode, snapshotAmmo } from "../damage.js";
 import { declareDodge, dodgeRangedPenalty, resolveDefense } from "../combat.js";
 import { blastProfile, blastRings, cancelPendingPlacement, fireCorridor, isBlastAttack, isSpreadAttack, metresToPixels, PATTERN_TINT_ADJACENT, PATTERN_TINT_WALKED, pickBlastCentre, placeSuppressionZone, scatterCentre, snapPatternCentre, spreadCorridorBands, spreadProfileFor } from "../zones.js";
@@ -106,6 +106,104 @@ export class CyberpunkItem extends Item {
       return await this.update({[`system.CyberWorkType.Weapon.${field}`]: value});
     }
     return null;
+  }
+
+  /**
+   * Reload from the actor's own inventory, exactly as the attack dialog's Reload button always has.
+   *
+   * On the document because it has a second caller since D222 — the turn-start upkeep, which offers
+   * a reload when holding a fire zone has run the magazine dry — and because every other resolution
+   * step in this system lives here rather than in a sheet.
+   *
+   * @returns {Promise<{loaded: boolean, shotsLeft: number}>} `loaded: false` means nothing was
+   *   written and the player has already been told why.
+   */
+  async reloadFromInventory() {
+    const sys = this._getWeaponSystem();
+    const capacity = Number(sys.shots ?? 0);
+    const currentLeft = Number(sys.shotsLeft ?? 0);
+
+    // GM audit: show reload in chat for player-controlled characters (not NPCs)
+    const gmReloadAudit = async (shotsLeftAfter) => {
+      try {
+        const actor = this.actor;
+
+        // Only players (non-GM) and only Characters (not NPC)
+        if (actor && actor.type !== "npc" && !game.user.isGM) {
+          const gmRecipients = getGMUserIds();
+          if (!gmRecipients.length) return;
+
+          await createCyberpunkChatMessage({
+            speaker: ChatMessage.getSpeaker({ actor }),
+            whisper: gmRecipients,
+            content: localizeParamEscaped("Chat.Reload", {
+              actor: actor.name,
+              weapon: this.name,
+              shots: `${shotsLeftAfter}/${capacity}`
+            })
+          });
+        }
+      } catch (err) {
+        console.warn("Cyberpunk2020 | reload audit message failed", err);
+      }
+    };
+
+    const loadTo = async (shotsLeftAfter) => {
+      await this.__setWeaponField("shotsLeft", shotsLeftAfter);
+      ui.notifications.info(localize("Reloaded"));
+      await gmReloadAudit(shotsLeftAfter);
+      return { loaded: true, shotsLeft: shotsLeftAfter };
+    };
+
+    // If the player has not selected ammunition for the weapon -> reload as before (infinite)
+    const ammoItemId = String(sys.ammoItemId ?? "");
+    if (!ammoItemId) return loadTo(capacity);
+
+    // If cartridges are selected -> we write off the quantity from Ammo
+    const ammoItem = this.actor?.items?.get(ammoItemId);
+
+    if (!ammoItem || ammoItem.type !== "ammo") {
+      ui.notifications.warn(localize("AmmoItemNotFoundReloadedLegacy"));
+      return loadTo(capacity);
+    }
+
+    const ammoQty = Number(ammoItem.system?.quantity ?? 0);
+
+    if (!Number.isFinite(ammoQty) || ammoQty <= 0) {
+      ui.notifications.warn(localize("NotEnoughAmmoToReload"));
+      return { loaded: false, shotsLeft: currentLeft };
+    }
+
+    if (!Number.isFinite(capacity) || capacity <= 0) {
+      ui.notifications.warn(localize("WeaponCannotBeReloaded"));
+      return { loaded: false, shotsLeft: currentLeft };
+    }
+
+    const reloadByMagazines = !!game.settings.get("cyberpunk2020", "reloadByMagazines");
+
+    let ammoToLoad = 0;
+    let shotsLeftAfter = currentLeft;
+
+    if (reloadByMagazines) {
+      ammoToLoad = Math.min(capacity, ammoQty);
+      shotsLeftAfter = Math.min(capacity, ammoToLoad);
+    } else {
+      const missing = Math.max(0, capacity - currentLeft);
+      ammoToLoad = Math.min(missing, ammoQty);
+      shotsLeftAfter = Math.min(capacity, currentLeft + ammoToLoad);
+    }
+
+    if (ammoToLoad <= 0) {
+      ui.notifications.warn(localize("NotEnoughAmmoToReload"));
+      return { loaded: false, shotsLeft: currentLeft };
+    }
+
+    // Rendered on purpose: an open ammo sheet shows this number and the box count derived from
+    // it, and {render: false} suppresses the item's own re-render, so the card sat stale until
+    // it was closed and reopened.
+    await ammoItem.update({ "system.quantity": Math.max(0, ammoQty - ammoToLoad) });
+
+    return loadTo(shotsLeftAfter);
   }
 
   isRanged() {
@@ -1792,16 +1890,15 @@ export class CyberpunkItem extends Item {
     // With automation off the burst takes the existing no-canvas branch: the abstract per-target
     // tally and `placed: false`, which is the v1.1.x card.
     if (rounds > 0 && canvas.ready && isCombatAutomationEnabled()) {
-      // The corridor covers the band being fired at; the shooter places and rotates it. A weapon
-      // with no range falls back to a square, which is the zone the book's own examples describe.
+      // D220 — the zone is the declared width square, and the range band has no part in it: the
+      // book prices the save by that one number and never measures a distance in this mode
+      // (`07:726-749`), so a second axis would be free. A wider zone is the trade the book does
+      // price — more ground covered, an easier save.
       //
-      // D204 — a suppression zone is laid **before** anything is measured and is a corridor rather
-      // than a centre, so D199's *"the placed centre is the measure"* has nothing to bite on. The
-      // mode is off the auto option entirely and the shooter declares the corridor's reach with a
-      // constant band, which is the book's own shape: `07:726-749` prices the width and says
-      // nothing about measuring a distance.
-      const reach = Math.round(rangeResolve[mods.range]?.(effectiveRange(this)) || 0);
-      zone = await placeSuppressionZone(width, Math.max(width, reach),
+      // D204 still holds above this: the mode is off the auto-range option, because the zone is
+      // laid before anything is measured and D199's *"the placed centre is the measure"* has
+      // nothing to bite on.
+      zone = await placeSuppressionZone(width,
         localizeParam("ZoneName", { weapon: this.name }), this.actor);
       // Dismissing the placement takes the burst back: nothing has been rolled or spent yet.
       if (!zone) return null;
@@ -1844,7 +1941,7 @@ export class CyberpunkItem extends Item {
     return createCyberpunkChatMessage({
       speaker: ChatMessage.getSpeaker({ actor: this.actor }),
       content: html,
-      flags : { cyberpunk2020: { fireMode: "suppressive", ...this.__suppressionFlags(zone, saveDC, dmgFormula) } }
+      flags : { cyberpunk2020: { fireMode: "suppressive", ...this.__suppressionFlags(zone, saveDC, dmgFormula, rounds, width) } }
     }, { useDefaultRollMode: true });
   }
 
@@ -1855,8 +1952,10 @@ export class CyberpunkItem extends Item {
    * @param {object|null} zone The placed geometry from placeSuppressionZone
    * @param {number} saveDC
    * @param {string} damageFormula
+   * @param {number} rounds The declared burst — what D222's upkeep respends every turn
+   * @param {number} width The zone's width in metres, the divisor the save is priced by
    */
-  __suppressionFlags(zone, saveDC, damageFormula) {
+  __suppressionFlags(zone, saveDC, damageFormula, rounds, width) {
     if (!zone) return undefined;
 
     return {
@@ -1869,6 +1968,8 @@ export class CyberpunkItem extends Item {
         behaviour: {
           name: localizeParam("ZoneName", { weapon: this.name }),
           saveDC,
+          rounds,
+          width,
           damageFormula,
           ap: !!this._getWeaponSystem()?.ap,
           ammo: snapshotAmmo(this)

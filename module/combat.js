@@ -3,10 +3,10 @@ import { displayName, localizeParam, localizeParamEscaped } from "./utils.js";
 import { createCyberpunkChatMessage } from "./compat.js";
 import { BaseDie } from "./dice.js";
 import { DODGE_SKILL_ID, isCombatAutomationEnabled, martialActions } from "./lookups.js";
-import { COMBAT_FLAG, SUPPRESSION_FLAG, ZONE_FLAG } from "./zones.js";
+import { COMBAT_FLAG, SUPPRESSION_FLAG, ZONE_FLAG, deleteZone, suppressionZonesOf } from "./zones.js";
 
 /** Cumulative penalty per extra action taken in the same turn (optional rule). */
-const ACTION_PENALTY_STEP = -3;
+export const ACTION_PENALTY_STEP = -3;
 
 /** The flag the optional action economy counts against. */
 const ACTIONS_TAKEN_FLAG = "actionsTaken";
@@ -149,6 +149,10 @@ export class CyberpunkCombat extends Combat {
       await actor.unsetFlag("cyberpunk2020", DODGING_FLAG);
     }
 
+    // D222 — the fire zone is respent here, ahead of the corpse gate below: a shooter who did not
+    // live to his own turn stops suppressing rather than holding the ground for ever.
+    await upkeepSuppression(actor, combatant, messageMode);
+
     // A corpse is asked for nothing and does nothing: the Death Save at the bottom of this function
     // is what writes `dead`, and without this gate it kept asking every turn for ever — a success
     // against the threshold changed nothing, because no code reads the result of a save by an actor
@@ -194,6 +198,102 @@ export class CyberpunkCombat extends Combat {
       await endDot(actor);
       await actor.toggleStatusEffect("dead", { active: true, overlay: true });
     }
+  }
+}
+
+/**
+ * D222 — suppressive fire is a burst that has to be paid for again every turn. At the start of each
+ * of the shooter's own turns his owner is asked whether the fire zone still stands: continuing
+ * spends the declared rounds and charges an action, stopping takes the zone off the map, and a
+ * magazine that can no longer pay for the whole burst reprices the save at what it could
+ * (`rounds / width`, ch. 07:734) instead of refusing.
+ *
+ * **The question has no deadline** (owner's ruling): nothing is spent without a direct answer, and
+ * a zone nobody answers for is left exactly where it stood before any of this existed. So is an
+ * **NPC's** — the book has no upkeep at all, and this is a rule for the players' side of the screen.
+ * Waiting here holds nothing up: core does not await `_manageTurnEvents`
+ * (`client/documents/combat.mjs:626,647`, 14.365.0).
+ *
+ * The **ammunition is spent on the owner's client**, inside the query, because it is their weapon
+ * and the reload the prompt may offer writes their inventory; this client owns the Region and the
+ * card, which is the same single-writer split every other zone path here uses.
+ *
+ * @param {CyberpunkActor} actor
+ * @param {Combatant} combatant
+ * @param {string|undefined} messageMode
+ * @returns {Promise<void>}
+ */
+async function upkeepSuppression(actor, combatant, messageMode) {
+  if (!isCombatAutomationEnabled()) return;
+
+  const held = suppressionZonesOf(actor);
+  if (!held.length) return;
+
+  const speaker = ChatMessage.getSpeaker({ actor, token: combatant.token });
+  const name = displayName(actor, combatant.token);
+
+  const drop = async (region, key) => {
+    await deleteZone(region);
+    await createCyberpunkChatMessage({
+      speaker,
+      content: localizeParamEscaped(key, { name, zone: region.name })
+    }, { messageMode });
+  };
+
+  for (const { region, behavior, itemId } of held) {
+    // A zone laid before D222 records no burst, so there is nothing to respend and it keeps
+    // standing to the end of the encounter the way every zone used to.
+    const rounds = Math.max(0, Math.floor(Number(behavior.system.rounds) || 0));
+    const width = Math.max(1, Math.floor(Number(behavior.system.width) || 2));
+    if (rounds <= 0) continue;
+
+    if (actor.statuses.has("dead")) {
+      await drop(region, "SuppressionDropped");
+      continue;
+    }
+
+    const owner = actor.type !== "npc"
+      ? game.users.players.find(u => u.active && actor.testUserPermission(u, "OWNER"))
+      : null;
+    if (!owner) continue;
+
+    const declaredIn = currentTurnKey();
+    let answer;
+    try {
+      answer = await owner.query("cyberpunk2020.suppressionPrompt", {
+        actorUuid: actor.uuid,
+        tokenUuid: combatant.token?.uuid ?? "",
+        itemId,
+        zoneName: region.name,
+        rounds,
+        width,
+        offerExtraAction: actionPenaltyFor(actor) !== null
+      });
+    } catch (err) {
+      // The owner disconnected while the question was open. The zone stays where it is, which is
+      // the same answer silence gets.
+      continue;
+    }
+
+    // The rounds are counted on the far side of a socket, so they are read as user-authored data
+    // and not trusted to be the number that was asked for.
+    const spent = Math.min(rounds, Math.max(0, Math.floor(Number(answer?.spent) || 0)));
+    if (!answer?.continue || spent <= 0) {
+      await drop(region, "SuppressionStopped");
+      continue;
+    }
+
+    await behavior.update({ "system.saveDC": Math.floor(spent / width) });
+
+    await chargeAction(actor, declaredIn);
+    // The reload the shooter chose to take as an action of its own, which is theirs to decide.
+    if (answer.extraAction) await chargeAction(actor, declaredIn);
+
+    await createCyberpunkChatMessage({
+      speaker,
+      content: localizeParamEscaped(spent < rounds ? "SuppressionPartial" : "SuppressionContinued",
+        { name, zone: region.name, rounds: spent, save: Math.floor(spent / width) })
+    }, { messageMode });
   }
 }
 

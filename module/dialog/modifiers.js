@@ -1,6 +1,6 @@
-import { deepSet, localize, localizeParam, localizeParamEscaped, refusedWhilePaused } from "../utils.js"
+import { deepSet, localize, localizeParam, refusedWhilePaused } from "../utils.js"
 import { fireModes, ranges, rangedAttackTypes, getMartialActionBonus, allOutEffectKeys } from "../lookups.js"
-import { createCyberpunkChatMessage, getGMUserIds, getHtmlElement } from "../compat.js";
+import { getHtmlElement } from "../compat.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -81,6 +81,13 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
             defaultValue: 0
           }];
 
+          // D223 — the action penalty shares this row instead of taking one of its own: it is the
+          // shooter's own arithmetic, the same as the free modifier beside it, and `.field-list` is
+          // a two-column grid that would otherwise leave both of them half empty. The sheet appends
+          // it as a group of its own because this group does not exist yet when it runs.
+          const actionIndex = groups.findIndex(group => group[0]?.dataPath === "actionPenalty");
+          if (actionIndex >= 0) extraGroup.push(...groups.splice(actionIndex, 1)[0]);
+
           const weapon = this.options.weapon;
           const fireModesAvailable = weapon?.__getFireModes?.() ?? [];
 
@@ -139,6 +146,68 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
       this._cpActivateAdvantageToggles(root);
       this._cpActivateFireModeFields(root);
       this._cpActivateMartialBonuses(root);
+      this._cpActivateTargetList(root);
+    }
+
+    /** @override */
+    _onClose(options) {
+      if (this.#targetHook) Hooks.off("targetToken", this.#targetHook);
+      this.#targetHook = null;
+      return super._onClose(options);
+    }
+
+    /** The `targetToken` registration this dialog holds while it is open, or null. */
+    #targetHook = null;
+
+    /**
+     * Keep the *Targets* section on whoever the shooter has targeted **now** (`T437`). The shot
+     * reads the canvas again when the window is confirmed, so a section still naming the token the
+     * window opened on — or missing, because there was none — contradicts what is about to be
+     * rolled.
+     *
+     * Rewritten in place rather than re-rendered: ApplicationV2 replaces the frame's contents, so a
+     * render here would throw away every modifier the player has set and the field they are typing
+     * in. Only the two nodes that carry a name are touched.
+     *
+     * Only where the caller is firing something. The stabilization dialog names the patient its own
+     * roll froze at open, and a skill roll has no target section at all — following the canvas in
+     * either would describe something that is not happening.
+     *
+     * @param {HTMLElement} root
+     */
+    _cpActivateTargetList(root) {
+      if (!this.options.weapon) return;
+
+      const section = root.querySelector(".cp-targets");
+      const list = section?.querySelector(".fieldrow");
+      if (!list) return;
+
+      const refresh = () => {
+        const names = Array.from(game.user.targets.values()).map(token => token.document.name);
+        // A class rather than an inline `display`, because the CSS has to distinguish the two
+        // states: the section is now always in the markup, and while it is empty the button row
+        // below it has to keep the margin `.field-list + *` used to give it.
+        section.classList.toggle("empty", names.length === 0);
+        list.replaceChildren(...names.map(name => {
+          const field = document.createElement("div");
+          field.className = "field";
+          const label = document.createElement("span");
+          label.style.width = "100%";
+          label.textContent = name;
+          field.append(label);
+          return field;
+        }));
+      };
+
+      // A re-render leaves the previous registration writing into a detached node, so it goes
+      // before the new one; `_onClose` takes whichever is current.
+      if (this.#targetHook) Hooks.off("targetToken", this.#targetHook);
+      // `Hooks.callAll("targetToken", user, token, targeted)` — one call per token, the clearing of
+      // a whole selection included (`client/canvas/placeables/tokens/targets.mjs:65`, 14.365.0).
+      this.#targetHook = Hooks.on("targetToken", user => {
+        if (user === game.user) refresh();
+      });
+      refresh();
     }
 
     /**
@@ -179,50 +248,6 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
       const weapon = this.options.weapon;
       if (!weapon) return;
 
-      const sys = weapon._getWeaponSystem?.() ?? weapon.system ?? {};
-      const capacity = Number(sys.shots ?? 0);
-      const currentLeft = Number(sys.shotsLeft ?? 0);
-
-      const updateWeaponShotsLeft = async (value) => {
-        if (weapon.__setWeaponField) {
-          await weapon.__setWeaponField("shotsLeft", value);
-          return;
-        }
-
-        if (weapon.type === "cyberware") {
-          await weapon.update({ "system.CyberWorkType.Weapon.shotsLeft": value });
-        } else {
-          await weapon.update({ "system.shotsLeft": value });
-        }
-      };
-
-      // GM audit: show reload in chat for player-controlled characters (not NPCs)
-      const gmReloadAudit = async (shotsLeftAfter) => {
-        try {
-          const actor = weapon.actor;
-
-          // Only players (non-GM) and only Characters (not NPC)
-          if (actor && actor.type !== "npc" && !game.user.isGM) {
-            const gmRecipients = getGMUserIds();
-            if (!gmRecipients.length) return;
-
-            const shotsText = `${shotsLeftAfter}/${capacity}`;
-
-            await createCyberpunkChatMessage({
-              speaker: ChatMessage.getSpeaker({ actor }),
-              whisper: gmRecipients,
-              content: localizeParamEscaped("Chat.Reload", {
-                actor: actor.name,
-                weapon: weapon.name,
-                shots: shotsText
-              })
-            });
-          }
-        } catch (err) {
-          console.warn("Cyberpunk2020 | reload audit message failed", err);
-        }
-      };
-
       const applyLocalState = (shotsLeftAfter) => {
         if (weapon.type === "weapon") {
           this.options.weapon.system.shotsLeft = shotsLeftAfter;
@@ -251,70 +276,8 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
         }
       };
 
-      // If the player has not selected ammunition for the weapon -> reload as before (infinite)
-      const ammoItemId = String(sys.ammoItemId ?? "");
-      if (!ammoItemId) {
-        await updateWeaponShotsLeft(capacity);
-        ui.notifications.info(localize("Reloaded"));
-        await gmReloadAudit(capacity);
-        applyLocalState(capacity);
-        return;
-      }
-
-      // If cartridges are selected -> we write off the quantity from Ammo
-      const actor = weapon.actor;
-      const ammoItem = actor?.items?.get(ammoItemId);
-
-      if (!ammoItem || ammoItem.type !== "ammo") {
-        ui.notifications.warn(localize("AmmoItemNotFoundReloadedLegacy"));
-        await updateWeaponShotsLeft(capacity);
-        ui.notifications.info(localize("Reloaded"));
-        await gmReloadAudit(capacity);
-        applyLocalState(capacity);
-        return;
-      }
-
-      const ammoQty = Number(ammoItem.system?.quantity ?? 0);
-
-      if (!Number.isFinite(ammoQty) || ammoQty <= 0) {
-        ui.notifications.warn(localize("NotEnoughAmmoToReload"));
-        return;
-      }
-
-      if (!Number.isFinite(capacity) || capacity <= 0) {
-        ui.notifications.warn(localize("WeaponCannotBeReloaded"));
-        return;
-      }
-
-      const reloadByMagazines = !!game.settings.get("cyberpunk2020", "reloadByMagazines");
-
-      let ammoToLoad = 0;
-      let shotsLeftAfter = currentLeft;
-
-      if (reloadByMagazines) {
-        ammoToLoad = Math.min(capacity, ammoQty);
-        shotsLeftAfter = Math.min(capacity, ammoToLoad);
-      } else {
-        const missing = Math.max(0, capacity - currentLeft);
-        ammoToLoad = Math.min(missing, ammoQty);
-        shotsLeftAfter = Math.min(capacity, currentLeft + ammoToLoad);
-      }
-
-      if (ammoToLoad <= 0) {
-        ui.notifications.warn(localize("NotEnoughAmmoToReload"));
-        return;
-      }
-
-      // Rendered on purpose: an open ammo sheet shows this number and the box count derived from
-      // it, and {render: false} suppresses the item's own re-render, so the card sat stale until
-      // it was closed and reopened.
-      await ammoItem.update({ "system.quantity": Math.max(0, ammoQty - ammoToLoad) });
-
-      await updateWeaponShotsLeft(shotsLeftAfter);
-
-      ui.notifications.info(localize("Reloaded"));
-      await gmReloadAudit(shotsLeftAfter);
-      applyLocalState(shotsLeftAfter);
+      const { loaded, shotsLeft } = await weapon.reloadFromInventory();
+      if (loaded) applyLocalState(shotsLeft);
     });
     }
 
@@ -364,11 +327,16 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
       const weaponSys = this.options.weapon?._getWeaponSystem?.() ?? this.options.weapon?.system ?? {};
       const isFlamethrow = weaponSys.attackType === rangedAttackTypes.flamethrow;
 
-      // D204 — the range selector is fire-mode dependent for exactly one mode: suppressive fire
-      // declares the corridor's reach off a constant band, so «auto» is not on offer while it is
-      // selected. Hidden rather than removed, so switching back to another mode restores it.
+      // D221 — the range row leaves the dialog for suppressive fire altogether. D220 took the band
+      // out of the geometry and the save it prices is `rounds / width` alone, so there is no number
+      // behind the control any more: offering it says the shooter's choice matters when it does not.
+      // Hidden rather than removed, so switching back to another mode restores their own band.
+      //
+      // The hidden row still submits, and what it submits must not be «auto»: `__weaponRoll` refuses
+      // that with nothing to measure from (D204, D199). Hence the swap below — the row goes and a
+      // constant band goes with it.
       const rangeSelect = root.querySelector('select[name="fields.range"], select[name="range"]');
-      const autoRangeOption = rangeSelect?.querySelector(`option[value="${ranges.auto}"]`);
+      const rangeRows = rangeSelect ? rowsFor(['select[name="fields.range"], select[name="range"]']) : [];
       const constantRange = (this.options.modifierGroups ?? [])
         .flat()
         .find(mod => mod?.dataPath === "range")?.constantDefault;
@@ -536,14 +504,12 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
         for (const row of widthRows) row.style.display = (isSup || isFlamethrow) ? "" : "none";
         for (const row of fullAutoRows) row.style.display = isFullAuto ? "" : "none";
 
-        if (autoRangeOption) {
-          autoRangeOption.hidden = isSup;
-          autoRangeOption.disabled = isSup;
-          // Only the option the shooter never chose is replaced: a band they picked by hand stands,
-          // and switching away from suppression does not put «auto» back over it.
-          if (isSup && constantRange && rangeSelect.value === ranges.auto) {
-            rangeSelect.value = constantRange;
-          }
+        for (const row of rangeRows) row.style.display = isSup ? "none" : "";
+
+        // Only the option the shooter never chose is replaced: a band they picked by hand stands,
+        // and switching away from suppression does not put «auto» back over it.
+        if (isSup && constantRange && rangeSelect?.value === ranges.auto) {
+          rangeSelect.value = constantRange;
         }
 
         const fullAutoInput = getFullAutoRoundsInput();
@@ -728,17 +694,34 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
       // of the viewport (`T353`). Minimized rather than closed, because a refusal — no ammunition, a
       // disabled cyberweapon — has to hand the shooter their choices back.
       // Awaited, so the placement preview arms after the window has left the map, not during it.
+      //
+      // `T435` — the size to come back to is taken **now**, because core's own `maximize` cannot be
+      // relied on to restore it. It ends in `setPosition`, which clamps the size it is given by the
+      // **computed** max-width/max-height (`_updatePosition`,
+      // `client/applications/api/application.mjs:1118-1152`, 14.365.0) — and from the second
+      // collapse onwards the expand transition does not fire, so those are still the minimized
+      // 200x36 when it reads them. The clamped pair is then written into the application's own
+      // position, which pins the window at header height for the rest of its life. Measured across
+      // three refusals in one dialog: 500x375 back on the first, 200x36 on the second and the
+      // third. Re-applying the size after `maximize` has finished is enough, because by then the
+      // `maximizing` class is gone and the ceiling it reads is the real one again.
+      const priorSize = { width: this.position.width, height: this.position.height };
+      const handBack = async () => {
+        await this.maximize();
+        this.setPosition(priorSize);
+      };
+
       await this.minimize();
       try {
         const fired = await this.options.onConfirm(formData);
         if (fired !== false) this.close();
-        else await this.maximize();
+        else await handBack();
       } catch (err) {
         // `onConfirm` can throw — a bad formula reaching a `Roll`, or a chat failure now that
         // decision 6(b) propagates one. Without this the window stays collapsed to its header with
         // the shooter's whole modifier set behind it and no way back but a reload (`T384`). The
         // error still propagates; only the window is handed back.
-        await this.maximize();
+        await handBack();
         throw err;
       }
     }

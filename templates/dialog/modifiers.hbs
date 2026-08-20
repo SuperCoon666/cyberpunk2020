@@ -27,7 +27,10 @@
     </div>
     {{/if}}
 
-    {{#if (hasElements targetTokens)}}
+    {{!-- Rendered even with nothing targeted: the attack dialog follows the shooter's targets
+          while it is open (`_cpActivateTargetList`), and a section that exists only when the
+          window opened with a target has nothing to fill. --}}
+    <div class="cp-targets{{#unless (hasElements targetTokens)}} empty{{/unless}}">
         <h2>{{CPLocal "Targets"}}</h2>
         <div class="fieldrow" style="margin-bottom: 5px; width: auto">
         {{#each targetTokens}}
@@ -36,7 +39,7 @@
             </div>
         {{/each}}
         </div>
-    {{/if}}
+    </div>
 
     {{#if showAdvDis}}
     <div class="field-list">

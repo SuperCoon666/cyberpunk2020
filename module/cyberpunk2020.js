@@ -230,6 +230,70 @@ Hooks.once('init', async function () {
     // player's character owns nothing on it.
     CONFIG.queries["cyberpunk2020.applyStabilized"] = payload => CyberpunkActor.applyStabilized(payload);
 
+    // D222 — the shooter's own turn has come round and the fire zone is asking to be paid for. The
+    // ammunition is spent here rather than by the asking GM: it is this client's weapon, and the
+    // reload the prompt offers when the magazine is dry writes this client's inventory. No
+    // deadline, by the owner's ruling — nothing is spent without a direct answer, and dismissing
+    // the window is one of the answers.
+    CONFIG.queries["cyberpunk2020.suppressionPrompt"] = async ({ actorUuid, tokenUuid, itemId, zoneName, rounds, width, offerExtraAction }) => {
+      const actor = await fromUuid(actorUuid);
+      if (!actor) throw new Error(`No actor for suppression prompt: ${actorUuid}`);
+
+      // Named rather than "you", for savePrompt's reason: a player may own more than one character.
+      const token = tokenUuid ? await fromUuid(tokenUuid) : null;
+
+      // The weapon that laid the zone has been dropped, sold or deleted since. There is nothing
+      // left to keep firing with, so the zone comes down rather than being held for free.
+      const item = actor.items.get(itemId);
+      if (!item) {
+        ui.notifications.warn(localize("SuppressionWeaponGone"));
+        return { continue: false };
+      }
+
+      const shotsOf = () => Math.max(0, Math.floor(Number(item._getWeaponSystem()?.shotsLeft) || 0));
+      const empty = shotsOf() <= 0;
+      const spendNow = Math.min(rounds, shotsOf());
+      const name = displayName(actor, token);
+
+      const content = empty
+        ? `<p>${localizeParamEscaped("SuppressionPromptEmpty", { name, zone: zoneName })}</p>
+           ${offerExtraAction
+              ? `<label><input type="checkbox" name="extraAction"> ${localize("SuppressionExtraAction")}</label>`
+              : ""}`
+        : `<p>${localizeParamEscaped("SuppressionPromptAsk", { name, zone: zoneName })}</p>
+           <p>${localizeParamEscaped("SuppressionPromptCost",
+                { rounds: spendNow, save: Math.floor(spendNow / width), left: shotsOf() })}</p>`;
+
+      // The checkbox lives on the reload prompt only, and the reload is the one that can be a
+      // second action: continuing to fire is the turn's action either way.
+      const go = empty
+        ? { action: "reload", label: "CYBERPUNK.SuppressionReloadButton", default: true,
+            callback: (event, button) => ({ extraAction: !!button.form?.elements?.extraAction?.checked }) }
+        : { action: "continue", label: "CYBERPUNK.SuppressionContinueButton", default: true,
+            callback: () => ({ extraAction: false }) };
+
+      const answer = await foundry.applications.api.DialogV2.wait({
+        window: { title: "CYBERPUNK.SuppressionPromptTitle" },
+        content,
+        buttons: [go, { action: "stop", label: "CYBERPUNK.SuppressionStopButton" }],
+        rejectClose: false
+      });
+
+      // "stop" carries no callback, so it arrives as its own action string; a dismissed window
+      // arrives as null. Both mean the same thing and neither spends a round.
+      if (!answer || answer === "stop") return { continue: false };
+
+      // A reload that could not happen — no rounds in the inventory, no magazine to fill — has
+      // already told the player why, and leaves the shooter with nothing to fire.
+      if (empty && !(await item.reloadFromInventory()).loaded) return { continue: false };
+
+      const spend = Math.min(rounds, shotsOf());
+      if (spend <= 0) return { continue: false };
+
+      await item.__setWeaponField("shotsLeft", shotsOf() - spend);
+      return { continue: true, spent: spend, extraAction: !!answer.extraAction };
+    };
+
     // The defender picks the skill; the attacker's client rolls it, so this returns a choice and
     // never a result. Null means "decide for me" — the timeout path answers that way too.
     CONFIG.queries["cyberpunk2020.defensePrompt"] = async ({ attackerName, itemName, defenderActorUuid, defenderTokenUuid, attackTotal, choices }) => {

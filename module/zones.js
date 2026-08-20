@@ -392,6 +392,13 @@ export class SuppressiveFireBehavior extends foundry.data.regionBehaviors.Region
     const { NumberField, StringField, BooleanField, ObjectField } = foundry.data.fields;
     return {
       saveDC: new NumberField({ required: true, integer: true, initial: 0, min: 0 }),
+      // D222 — the two numbers the save is made of, carried beside the number they produce. The
+      // upkeep respends the burst at the start of every one of the shooter's turns and has to
+      // recompute `rounds / width` when the magazine can no longer pay for all of it, and the
+      // zone outlives the card the same way everything else here does. A zone laid before D222
+      // reads `rounds: 0`, which is what keeps it out of the upkeep and standing as it always was.
+      rounds: new NumberField({ required: true, integer: true, initial: 0, min: 0 }),
+      width: new NumberField({ required: true, integer: true, initial: 2, min: 1 }),
       damageFormula: new StringField({ required: true, initial: "1d6" }),
       ap: new BooleanField(),
       ammo: new ObjectField({ nullable: true, initial: null })
@@ -432,6 +439,37 @@ export const ZONE_FLAG = "zone";
 
 /** The encounter a zone was laid in, by combat id — what keeps one fight's sweep out of another. */
 export const COMBAT_FLAG = "combat";
+
+/**
+ * Every fire zone this actor is holding, on every scene — what the turn-start upkeep asks about.
+ *
+ * The shooter is read off the **card** and never off the Region: `T115`/D131 keep anything that
+ * identifies them out of a document every client can read, and that stays true now that the upkeep
+ * is a reader too. `SUPPRESSION_FLAG` is the filter rather than `ZONE_FLAG`, which a blast's rings
+ * carry as well.
+ *
+ * @param {Actor} actor
+ * @returns {{region: RegionDocument, behavior: RegionBehavior, itemId: string}[]}
+ */
+export function suppressionZonesOf(actor) {
+  const uuid = actor?.uuid;
+  if (!uuid) return [];
+
+  const held = [];
+  for (const scene of game.scenes) {
+    for (const region of scene.regions) {
+      if (!region.getFlag("cyberpunk2020", SUPPRESSION_FLAG)) continue;
+
+      const attack = game.messages.get(String(region.getFlag("cyberpunk2020", ZONE_FLAG) ?? ""))
+        ?.flags?.cyberpunk2020?.attack;
+      if (attack?.attackerActorUuid !== uuid) continue;
+
+      const behavior = region.behaviors.find(b => b.type === "suppressiveFire");
+      if (behavior) held.push({ region, behavior, itemId: String(attack.itemId ?? "") });
+    }
+  }
+  return held;
+}
 
 /**
  * The encounter a zone belongs to — what it is stamped with when it is laid (D141), and what a
@@ -597,18 +635,24 @@ async function resolveZoneCrossing(zone, token) {
 }
 
 /**
- * Let the shooter lay the fire corridor where they mean it, without writing anything.
+ * Let the shooter lay the fire zone where they mean it, without writing anything.
  *
- * The rectangle's origin is the middle of its near edge (`anchorX: 0, anchorY: 0.5`), which is both
- * where the cursor holds it and what the mouse wheel rotates it around — so the corridor swings
- * from the muzzle end onto the line of fire instead of pivoting on a corner.
+ * Square, because the book gives the fire zone exactly one measurement: `07:726-749` divides the
+ * save by *"the width of the fire zone in meters"* and its worked examples call the whole thing
+ * *"a 2 meter area"*. A second axis would be bought for nothing — the same rounds price the same
+ * save however far the zone runs — which is why no distance reaches this (D220).
  *
- * @param {number} width The fire zone's width in scene units — the number the save divides by
- * @param {number} length How far down the corridor the fire reaches, in scene units
+ * The origin is the middle of the near edge (`anchorX: 0, anchorY: 0.5`), which is both where the
+ * cursor holds it and what the mouse wheel rotates it around, so the zone stands in front of the
+ * muzzle and swings about it instead of pivoting on a corner.
+ *
+ * @param {number} width The fire zone's width in scene units — the number the save divides by, and
+ *   its only measurement
  * @param {string} name The region's label while it is being placed
  * @returns {Promise<object|null>} the placed geometry, or null when the placement was dismissed
  */
-export async function placeSuppressionZone(width, length, name, actor = null) {
+export async function placeSuppressionZone(width, name, actor = null) {
+  const side = metresToPixels(width);
   const disarm = await armPlacement(name, null, actor);
   let region;
   try {
@@ -618,8 +662,8 @@ export async function placeSuppressionZone(width, length, name, actor = null) {
         type: "rectangle",
         x: 0,
         y: 0,
-        width: metresToPixels(length),
-        height: metresToPixels(width),
+        width: side,
+        height: side,
         anchorX: 0,
         anchorY: 0.5
       }],

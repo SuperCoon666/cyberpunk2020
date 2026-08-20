@@ -5,7 +5,7 @@ import { deleteFieldUpdate, localize, localizeParamEscaped, cwHasType, cwIsEnabl
 import { ModifiersDialog } from "../dialog/modifiers.js"
 import { SortOrders, sortSkills } from "./skill-sort.js";
 import { getHtmlElement, getRichEditorHTML, itemFromDropData, saveRichEditorHTML } from "../compat.js";
-import { actionPenaltyFor, chargeAction, currentTurnKey } from "../combat.js";
+import { ACTION_PENALTY_STEP, actionPenaltyFor, chargeAction, currentTurnKey } from "../combat.js";
 import { MORTAL_WOUND_STATE, endDot } from "../damage.js";
 
 const { HandlebarsApplicationMixin } = foundry.applications.api;
@@ -879,12 +879,15 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       : this._cpGetSavedMeleeAttackOptions(flagHolder);
 
     let modifierGroups;
-    const targetTokens = Array.from(game.users.current.targets.values()).map(target => ({
+    const readTargets = () => Array.from(game.users.current.targets.values()).map(target => ({
       name: target.document.name,
       id: target.id,
       tokenUuid: target.document.uuid,
       actorUuid: target.actor?.uuid ?? ""
     }));
+    // What the dialog opens *on*: the range band it defaults to and the abstract per-target tally
+    // are both open-time questions. What it fires *at* is read again in `onConfirm`.
+    const targetTokens = readTargets();
 
     // Setting a charge is a Demolitions check and nothing else — no range band, no fire mode, no
     // aim, because RAW rolls nothing to place one (`07:914`). The dialog adds its own free
@@ -902,17 +905,30 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       modifierGroups = meleeBonkOptions(savedAttackOptions);
     }
 
-    // Read-only, so the player sees what the economy is charging and the value still submits with
-    // the rest of the form.
-    const actionPenalty = actionPenaltyFor(this.actor);
-    if (actionPenalty !== null) {
-      modifierGroups = [...modifierGroups, [{
-        localKey: "ActionPenalty",
-        dataPath: "actionPenalty",
-        defaultValue: actionPenalty,
-        readOnly: true
-      }]];
-    }
+    // D223 — a selector on every attack, opening on whatever the economy has counted and
+    // changeable from there: the counter is bookkeeping, and which of ch. 07:87's successive
+    // actions this shot is stays the player's to say. Outside the rule there is nothing to count
+    // and it opens at 0, so the same row serves a table applying the book's -3 by hand. The choice
+    // prices this roll only — the counter still moves by the one action the attack charges.
+    const countedPenalty = actionPenaltyFor(this.actor) ?? 0;
+    // Four extra actions is the ladder's floor, not its ceiling: nothing caps a turn, so a counter
+    // deeper than the list grows the list rather than falling off the end of it.
+    const penaltySteps = Math.max(4, Math.round(countedPenalty / ACTION_PENALTY_STEP));
+    // A group of its own only until the dialog has one to put it in: `_prepareContext` moves it in
+    // beside the free modifier, which is the row it belongs on.
+    modifierGroups = [...modifierGroups, [{
+      localKey: "ActionPenalty",
+      dataPath: "actionPenalty",
+      defaultValue: countedPenalty,
+      // The option is the penalty itself, which is what the row's own label already names. An
+      // option naming the action as well as its price does not fit: the select measures ~120 px
+      // inside the dialog's two-column grid, and a first attempt at "2 action(s): -3" was clipped
+      // mid-word in both locales, cutting off the one number the row exists to show.
+      choices: Array.from({ length: penaltySteps + 1 }, (_, i) => ({
+        value: ACTION_PENALTY_STEP * i,
+        label: String(ACTION_PENALTY_STEP * i)
+      }))
+    }]];
 
     const dialog = new ModifiersDialog({
       weapon: item,
@@ -930,11 +946,18 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
         // second action. The guard is what stops the second dialog. The charge carries the turn it
         // was declared in, because that wait can outlive the attacker's own next turn start, which
         // is where the counter is cleared (`T67`).
+        // Read again rather than reused from the open: a player may pick their target **after**
+        // the window is up, and the frozen snapshot then had none — so an auto-range attack was
+        // refused for having nothing to measure to while a target sat selected on their own canvas
+        // (D199's notice). The shot is made when this is confirmed, so this is when the targets
+        // are the ones being shot at.
+        const firedAt = readTargets();
+
         this.#attacksInFlight.add(item.id);
         const declaredIn = currentTurnKey();
         let attack;
         try {
-          attack = await item.__weaponRoll(fireOptions, targetTokens, attackerToken);
+          attack = await item.__weaponRoll(fireOptions, firedAt, attackerToken);
         } finally {
           this.#attacksInFlight.delete(item.id);
         }

@@ -31,8 +31,11 @@ import { DefaultRollTemplate, Multiroll } from "./dice.js";
  *     so a card written before this would resolve a Mono round at full SP — and every other field
  *     in it is now gated on its effect being ticked (D176), so an older card may carry values the
  *     round no longer stands behind.
+ * 14: the suppression payload's `behaviour` carries `rounds` and `width` (D222) — the burst the
+ *     turn-start upkeep respends and the divisor it reprices the save by. A card written before
+ *     this lays a zone that holds to the end of the encounter and is never asked about.
  */
-export const ATTACK_FLAG_VERSION = 13;
+export const ATTACK_FLAG_VERSION = 14;
 
 /** The flag a damage-over-time effect burns down from, one tick per turn. */
 export const DOT_FLAG = "dot";
