@@ -783,15 +783,23 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
    * shape `__weaponRoll` already refuses `NoAmmo` in.
    */
   _cpOpenStabilizationDialog() {
-    const token = Array.from(game.users.current.targets.values())[0];
-    const patient = token?.actor ?? null;
+    const targeted = () => Array.from(game.users.current.targets.values())[0] ?? null;
+    const token = targeted();
 
     const dialog = new ModifiersDialog({
       window: { title: "CYBERPUNK.StabilizeModifiers" },
       modifierGroups: stabilizationOptions(),
       targetTokens: token ? [{ name: token.document.name }] : [],
+      liveTargets: true,
       // The targeted token travels with the patient: it is the one the card names (D133, `T306`).
-      onConfirm: (options) => this.actor.rollStabilization(patient, options, token?.document ?? null)
+      // Read when the roll is made rather than when the window opened: the medic may pick the
+      // patient **after** the window is up, and the frozen one then treated nobody (`T437`). An
+      // empty selection at confirm is `rollStabilization`'s own refusal, which is where both
+      // refusals already live.
+      onConfirm: (options) => {
+        const chosen = targeted();
+        return this.actor.rollStabilization(chosen?.actor ?? null, options, chosen?.document ?? null);
+      }
     });
 
     dialog.render(true);
@@ -933,6 +941,7 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     const dialog = new ModifiersDialog({
       weapon: item,
       targetTokens,
+      liveTargets: true,
       modifierGroups,
       onConfirm: async (fireOptions) => {
         if (isRanged) {

@@ -33,6 +33,9 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
       // Use like [[mod1, mod2], [mod3, mod4, mod5]] etc to add groupings,
       modifierGroups: [],
       targetTokens: [], // id and name for each target token
+      // Whether the *Targets* section follows the canvas while the window is open. True where the
+      // roll reads the targets again when it is confirmed, false where the caller froze them.
+      liveTargets: false,
       // Extra mod field for miscellaneous mod
       extraMod: true,
       showAdvDis: false,
@@ -169,14 +172,14 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
      * render here would throw away every modifier the player has set and the field they are typing
      * in. Only the two nodes that carry a name are touched.
      *
-     * Only where the caller is firing something. The stabilization dialog names the patient its own
-     * roll froze at open, and a skill roll has no target section at all — following the canvas in
-     * either would describe something that is not happening.
+     * Only where the caller reads its targets again on confirm — the attack and the stabilization
+     * roll. A skill roll has no target of any kind, and a section appearing there because the player
+     * happens to have something targeted would describe a thing that is not happening.
      *
      * @param {HTMLElement} root
      */
     _cpActivateTargetList(root) {
-      if (!this.options.weapon) return;
+      if (!this.options.liveTargets) return;
 
       const section = root.querySelector(".cp-targets");
       const list = section?.querySelector(".fieldrow");
