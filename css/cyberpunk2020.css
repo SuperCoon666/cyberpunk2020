@@ -804,6 +804,13 @@ div.statderive .value.rightborder {
   margin-left: 3em;
 }
 
+/* D247 — a splash card's tally is one level deeper than a bullet card's: target, then location,
+   then the shares landing on it. The locations are indented under the name they belong to, so a
+   card naming four victims reads as four groups rather than as one flat list. */
+.cyberpunk-card .zone-targets .zone-target-area {
+  margin-left: 1.5em;
+}
+
 /* Two columns the whole way down: everything that acts on the left, the body on the right. The
    right column is the armour diagram's own declared width (`.armor-display` is 16em) plus the
    rule and gutter that divide it from the acting column, so neither column is wider than the
@@ -1672,6 +1679,30 @@ div.statderive .value.rightborder {
 .weapon-modifier {
   min-width: 460px;
   max-width: min(820px, calc(100vw - 60px));
+}
+
+/* -----------------------------------------------------------------
+ *  Combat-automation subsection
+ * ----------------------------------------------------------------- */
+
+/* The subsection is taller than the window once the optional rules grow, and at `height: "auto"`
+   core bounds the frame by `max-height` (`public/css/foundry2.css:6993`, 14.365.0) while
+   `.window-content` clips what does not fit (`:7035`, `overflow: hidden`) — so without this the
+   last rules and the Save button are simply unreachable. `min-height: 0` is the whole of why it
+   works: a flex item will not shrink below its content without it, so the `.scrollable` inside
+   never overflows and never scrolls. */
+.cyberpunk.combat-automation-settings {
+  display: flex;
+  flex-flow: column nowrap;
+  gap: var(--spacer-16);
+  min-height: 0;
+}
+
+.cyberpunk.combat-automation-settings > .automation-body {
+  display: flex;
+  flex-flow: column nowrap;
+  gap: var(--spacer-16);
+  min-height: 0;
 }
 
 /* Ammo Effects: dropdown-multiselect */

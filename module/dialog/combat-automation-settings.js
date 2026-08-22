@@ -9,7 +9,8 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
  */
 const AUTOMATION_SUB_SETTINGS = [
   "damageApplyMode", "pcSaveMode", "armorAblation", "severanceThreshold",
-  "actionEconomy", "dodgeVsRanged"
+  "actionEconomy", "dodgeVsRanged",
+  "spreadZoneRounds", "blastZoneRounds", "sweepZoneRounds"
 ];
 
 /**

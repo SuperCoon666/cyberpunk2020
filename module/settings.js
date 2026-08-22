@@ -180,6 +180,37 @@ export function registerSystemSettings() {
     default: false
   });
 
+  // --- Combat: how long a drawn effect zone stays on the map (D242) ---
+  // A number per kind rather than one for all three: a crater is worth looking at for longer than
+  // the pattern of a shot that is over. 0 is the pre-D242 behaviour — the drawing stands until the
+  // encounter ends (D119) or the GM takes it off.
+  game.settings.register("cyberpunk2020", "spreadZoneRounds", {
+    name: "SETTINGS.SpreadZoneRounds",
+    hint: "SETTINGS.SpreadZoneRoundsHint",
+    scope: "world",
+    config: false,
+    type: Number,
+    default: 1
+  });
+
+  game.settings.register("cyberpunk2020", "blastZoneRounds", {
+    name: "SETTINGS.BlastZoneRounds",
+    hint: "SETTINGS.BlastZoneRoundsHint",
+    scope: "world",
+    config: false,
+    type: Number,
+    default: 1
+  });
+
+  game.settings.register("cyberpunk2020", "sweepZoneRounds", {
+    name: "SETTINGS.SweepZoneRounds",
+    hint: "SETTINGS.SweepZoneRoundsHint",
+    scope: "world",
+    config: false,
+    type: Number,
+    default: 1
+  });
+
   // --- Optional rules: movement allowance is a limit, not a hint ---
   game.settings.register("cyberpunk2020", "blockOverspentMovement", {
     name: "SETTINGS.BlockOverspentMovement",

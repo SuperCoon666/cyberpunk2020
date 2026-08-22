@@ -3,7 +3,7 @@ import { displayName, localizeParam, localizeParamEscaped } from "./utils.js";
 import { createCyberpunkChatMessage } from "./compat.js";
 import { BaseDie } from "./dice.js";
 import { DODGE_SKILL_ID, isCombatAutomationEnabled, martialActions } from "./lookups.js";
-import { COMBAT_FLAG, SUPPRESSION_FLAG, ZONE_FLAG, deleteZone, suppressionZonesOf } from "./zones.js";
+import { COMBAT_FLAG, SUPPRESSION_FLAG, ZONE_FLAG, deleteZone, suppressionZonesOf, sweepExpiredZones } from "./zones.js";
 
 /** Cumulative penalty per extra action taken in the same turn (optional rule). */
 export const ACTION_PENALTY_STEP = -3;
@@ -118,6 +118,16 @@ export class CyberpunkCombat extends Combat {
     if (ra !== rb) return rb - ra;
 
     return a.id > b.id ? 1 : -1;
+  }
+
+  /** @override */
+  async _onStartRound(context) {
+    await super._onStartRound(context);
+
+    // Core runs this on the one designated GM and on nobody else
+    // (`_manageTurnEvents`, `client/documents/combat.mjs:885`, 14.365.0), so the sweep needs no
+    // gate of its own — the same guarantee `_onStartTurn` above already relies on.
+    await sweepExpiredZones(this, context.round);
   }
 
   /** @override */

@@ -1,5 +1,9 @@
 {{!-- Not a <form>: the ApplicationV2 root element is the form, and nesting one here empties the submitted data. --}}
 <div class="cyberpunk combat-automation-settings">
+    {{!-- The rules outgrew the window, and core's `.window-content` clips rather than scrolls, so
+          the body scrolls and the footer below it stays put — the shape core's own settings
+          submenus use (`templates/settings/menus/ui-config.hbs`). --}}
+    <div class="automation-body scrollable">
     <div class="form-group">
         <label>{{localize master.name}}</label>
         <div class="form-fields">
@@ -28,6 +32,7 @@
         </div>
         {{/each}}
     </fieldset>
+    </div>
 
     <footer class="form-footer">
         {{!-- No name attribute: form.submit would shadow HTMLFormElement.prototype.submit. --}}

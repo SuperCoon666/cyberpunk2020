@@ -51,13 +51,13 @@
         </div>
     </div>
 
-    {{!-- A miss with no canvas scatters nothing, so it has no sentence: the manual-fallback
+    {{!-- Only the miss says anything (D251): a shot that landed where it was aimed is what the
+          attack total and the drawing already show, and a sentence saying so again is noise.
+          A miss with no canvas scatters nothing, so it has no sentence either: the manual-fallback
           paragraph below is what that card says. It used to print the grenade's own line with its
           {distance} unsubstituted, because `format` leaves the braces when handed no data
           (`client/helpers/localization.mjs:444`, 14.365.0). --}}
-    {{#if onTarget}}
-    <p><em>{{onTargetCaption}}</em></p>
-    {{else if scatterCaption}}
+    {{#if scatterCaption}}
     <p><em>{{scatterCaption}}</em></p>
     {{/if}}
     {{/if}}
@@ -95,10 +95,40 @@
     <p><em>{{corridorCaption}}</em></p>
     {{/if}}
 
+    {{!-- D241 — the round ran out before the target did. Only a pattern carries this. --}}
+    {{#if fellShort}}
+    <p><em>{{fellShort}}</em></p>
+    {{/if}}
+
     {{!-- D192's ring, said rather than enforced (D54): only a chained autoshotgun pattern past the
           first one carries this, so the line is absent from every other card. --}}
     {{#if adjacency}}
     <p><em>{{adjacency}}</em></p>
+    {{/if}}
+
+    {{!-- D243/D247 — who the shot caught, where each one takes it and how much, so a splash reads
+          as an attack and not only as a shape. Grouped as `multi-hit.hbs` groups a burst, one level
+          deeper: target, then location, then the shares. Written when the shot went off; tokens the
+          players cannot see are left off it (D31/D120) and take their share whispered. --}}
+    {{#if caught}}
+    <div class="damage-tally zone-targets">
+        <label><b>{{CPLocal "ZoneTargets"}}</b></label>
+        {{#each caught as |entry|}}
+            <div class="zone-target">
+                <label><b>{{entry.name}}</b></label>
+                {{#each entry.areaDamages as |damages areaName|}}
+                    <div class="zone-target-area">
+                        <label>{{CPLocal areaName}}</label>
+                        <ul>
+                            {{#each damages as |share|}}
+                                <li>{{CPLocal "Damage"}} {{{share.damageHtml}}}</li>
+                            {{/each}}
+                        </ul>
+                    </div>
+                {{/each}}
+            </div>
+        {{/each}}
+    </div>
     {{/if}}
 
     {{#if rings}}
@@ -115,7 +145,7 @@
     {{#if placed}}
     <div class="cp-card-actions">
         <button type="button" class="cp-apply-zone" data-action="applyZone">
-            {{CPLocal "ApplyZone"}}
+            {{CPLocal "ApplyDamage"}}
         </button>
         {{!-- Decided per client by the hook, which removes it when it does not apply: the drawing is
               laid by the active GM, and with none connected it waits here for one (`T305`). --}}

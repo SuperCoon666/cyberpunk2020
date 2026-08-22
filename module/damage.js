@@ -37,8 +37,11 @@ import { DefaultRollTemplate, Multiroll } from "./dice.js";
  * 15: `penDamageDivisor` replaces `penDamageMult` and is read the other way up (D234) — a card
  *     written before this carries no divisor at all, so the halving `07:460` asks for would be
  *     silently skipped on a round authored to have it.
+ * 16: the blast payload carries `rolled`, the hit location each caught token was given when the
+ *     card was written (D243), and the ammunition snapshot carries `spreadDistance` — the round's
+ *     own reach, which had no reader at all until D241 and so was never snapshotted (`T56`).
  */
-export const ATTACK_FLAG_VERSION = 15;
+export const ATTACK_FLAG_VERSION = 16;
 
 /** The flag a damage-over-time effect burns down from, one tick per turn. */
 export const DOT_FLAG = "dot";
@@ -188,6 +191,7 @@ export function snapshotAmmo(item) {
     blastMultipliers: blast && Array.isArray(a.blastMultipliers) ? [...a.blastMultipliers] : [],
     blastThroughWalls: blast && !!a.blastThroughWalls,
     spreadMode: buckshot ? String(a.spreadMode ?? "single") : "single",
+    spreadDistance: buckshot ? numberOr(a.spreadDistance, 0) : 0,
     spreadWidthShort: buckshot ? numberOr(a.spreadWidthShort, 0) : 0,
     spreadWidthMedium: buckshot ? numberOr(a.spreadWidthMedium, 0) : 0,
     spreadWidthLong: buckshot ? numberOr(a.spreadWidthLong, 0) : 0,

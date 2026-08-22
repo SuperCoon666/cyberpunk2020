@@ -221,6 +221,21 @@ export function spreadProfileFor(range, ammo) {
 }
 
 /**
+ * How far this round's pattern can travel, in scene units.
+ *
+ * D241 gives the ammunition sheet's *Max. Distance* its rule at last: past this the pellets have
+ * spent themselves and the pattern forms where they stop rather than on the target. **0 is "as far
+ * as the shot goes"** — the schema's own default, so every round authored before the rule keeps
+ * reaching whatever it is aimed at.
+ *
+ * @param {object|null} ammo A snapshot from snapshotAmmo
+ * @returns {number}
+ */
+export function spreadReach(ammo) {
+  return Math.max(0, Number(ammo?.spreadDistance) || 0);
+}
+
+/**
  * The stepped cone a shotgun pattern lays between the muzzle and its centre (D193).
  *
  * `07:838-853` gives a pattern a width per band and says nothing at all about the strip between
@@ -337,6 +352,66 @@ async function armPlacement(name, hint = null, actor = null) {
 }
 
 /**
+ * How faint an aiming disc is against the zones the shot itself draws (D245).
+ *
+ * Core renders a Region's highlight at `alpha = 0.5` (`client/canvas/placeables/region.mjs:286`,
+ * 14.365.0), so a third of that reads as an aid to the gesture rather than as an effect.
+ */
+const PATTERN_MARKER_ALPHA = 0.15;
+
+/** The discs already-placed patterns leave behind, on this client and nowhere else (D245). */
+let patternMarkers = null;
+
+/**
+ * Leave a placed pattern's own disc on the map, so a shooter chaining five of them can see the four
+ * already down (D245).
+ *
+ * Drawn into PIXI rather than laid as a Region: this is an aid to the shooter's own gesture and
+ * belongs to their client alone, a player cannot create a Region at all, and it has to come back
+ * off before the shot's own zones are drawn over the same ground.
+ *
+ * @param {{x: number, y: number}} centre In pixels
+ * @param {number} radius In scene units
+ */
+export function markPattern(centre, radius) {
+  if (!patternMarkers) {
+    patternMarkers = canvas.regions.addChild(new PIXI.Graphics());
+    // The confirming click is an ordinary DOM click and goes to whatever is on top (`T417`), so a
+    // marker that could take one would swallow the placement it was drawn to help.
+    patternMarkers.eventMode = "none";
+  }
+
+  patternMarkers.beginFill(foundry.utils.Color.from(ZONE_COLOURS.spread).valueOf(), PATTERN_MARKER_ALPHA)
+    .drawCircle(centre.x, centre.y, metresToPixels(radius))
+    .endFill();
+}
+
+/** Take the aiming discs back off the map: the chain is over, placed or dismissed (D245). */
+export function clearPatternMarkers() {
+  if (patternMarkers && !patternMarkers.destroyed) patternMarkers.destroy();
+  patternMarkers = null;
+}
+
+/**
+ * Refuse a placement confirmed off the map (D248, `T431`).
+ *
+ * The point tested is the one the cursor holds — a circle's centre, and the fire zone's near edge —
+ * never the shape's extent: a pattern hanging half over the edge of the map is the shot the ruling
+ * deliberately keeps. Returning false rejects the click and leaves the placement armed
+ * (`client/canvas/layers/regions.mjs:1115-1118`, 14.365.0), so the shooter is told and clicks
+ * again instead of losing the attack.
+ *
+ * @param {{shape: object}} args Core's own `preConfirm` payload
+ * @returns {false|undefined} false refuses the click
+ */
+function refuseOffMap({ shape }) {
+  if (canvas.dimensions.sceneRect.contains(shape.x, shape.y)) return undefined;
+
+  ui.notifications.warn(localize("PlacementOffMap"));
+  return false;
+}
+
+/**
  * Let the acting client put the blast where they mean it, without writing anything.
  *
  * `create: false` returns the preview document itself and never touches the database, which is why
@@ -365,7 +440,7 @@ export async function pickBlastCentre(radius, name, { onPlacementChange = null, 
       shapes: [{ type: "circle", x: 0, y: 0, radius: metresToPixels(radius) }],
       levels: [canvas.level.id],
       visibility: CONST.REGION_VISIBILITY.ALWAYS
-    }, { create: false, ...(onPlacementChange ? { onChange: onPlacementChange } : {}) });
+    }, { create: false, preConfirm: refuseOffMap, ...(onPlacementChange ? { onChange: onPlacementChange } : {}) });
   } finally {
     await disarm();
   }
@@ -439,6 +514,12 @@ export const ZONE_FLAG = "zone";
 
 /** The encounter a zone was laid in, by combat id — what keeps one fight's sweep out of another. */
 export const COMBAT_FLAG = "combat";
+
+/** Which kind of effect a drawn zone is, so the expiry sweep can price it without reading a card. */
+export const ZONE_KIND_FLAG = "zoneKind";
+
+/** The round a drawn zone was laid in — what the expiry sweep counts from. */
+export const ZONE_ROUND_FLAG = "zoneRound";
 
 /**
  * Every fire zone this actor is holding, on every scene — what the turn-start upkeep asks about.
@@ -669,7 +750,7 @@ export async function placeSuppressionZone(width, name, actor = null) {
       }],
       levels: [canvas.level.id],
       visibility: CONST.REGION_VISIBILITY.ALWAYS
-    }, { create: false });
+    }, { create: false, preConfirm: refuseOffMap });
   } finally {
     await disarm();
   }
@@ -1434,10 +1515,16 @@ export async function drawZone(blast, kind, messageId) {
   // D141 — every Region this system lays names its own encounter, the highlights included: they are
   // swept by the same filter as the zone they belong to. D155 — that encounter is the shooter's,
   // and this path reaches him the same way the suppression zone does, through the card.
+  const combat = zoneCombat(scene, await zoneAttacker(messageId));
   const flags = {
     cyberpunk2020: {
       [ZONE_FLAG]: messageId,
-      [COMBAT_FLAG]: zoneCombat(scene, await zoneAttacker(messageId))?.id ?? ""
+      [COMBAT_FLAG]: combat?.id ?? "",
+      // D242's expiry sweep runs once a round over every scene, so what each Region is and when it
+      // was laid ride on the Region itself: resolving a card per Region would cost the sweep a
+      // lookup apiece, and a card the GM has since deleted would leave its drawing standing for ever.
+      [ZONE_KIND_FLAG]: kind,
+      [ZONE_ROUND_FLAG]: combat?.round ?? 0
     }
   };
   const ZONE_NAMES = { spread: "ZoneRegionSpread", sweep: "ZoneRegionSweep" };
@@ -1541,6 +1628,56 @@ export async function deleteZone(region) {
 }
 
 /**
+ * How long a drawn zone of each kind stays on the map, as a world setting apiece (D242). Separate
+ * numbers because a crater is worth looking at for longer than the pattern of a shot that is over.
+ */
+const ZONE_LIFETIME_SETTINGS = {
+  blast: "blastZoneRounds",
+  spread: "spreadZoneRounds",
+  sweep: "sweepZoneRounds"
+};
+
+/**
+ * Take the drawn zones this round has outlived off the map (D242).
+ *
+ * Before this every drawing stood until the encounter ended (D119), so a long fight finished under
+ * a map of every shot anyone had fired. Only zones carrying a round stamp are swept, and only
+ * their own encounter's: a drawing laid before the stamp existed and one laid outside any
+ * encounter (D134/D145) are both left to the encounter-end sweep and to the GM. A fire zone is
+ * untouched — it carries no kind, and it is live geometry rather than a picture.
+ *
+ * @param {Combat} combat
+ * @param {number} round The round that has just started
+ * @returns {Promise<number>} how many Regions went
+ */
+export async function sweepExpiredZones(combat, round) {
+  if (!isCombatAutomationEnabled()) return 0;
+
+  let swept = 0;
+  for (const scene of game.scenes) {
+    const ids = scene.regions.filter(region => {
+      if (region.getFlag("cyberpunk2020", COMBAT_FLAG) !== combat.id) return false;
+
+      const laid = region.getFlag("cyberpunk2020", ZONE_ROUND_FLAG);
+      if (!Number.isFinite(laid)) return false;
+
+      const key = ZONE_LIFETIME_SETTINGS[region.getFlag("cyberpunk2020", ZONE_KIND_FLAG)];
+      if (!key) return false;
+
+      const lifetime = Math.max(0, Math.floor(Number(game.settings.get("cyberpunk2020", key)) || 0));
+      return lifetime > 0 && round >= laid + lifetime;
+    }).map(region => region.id);
+
+    if (ids.length) {
+      await scene.deleteEmbeddedDocuments("Region", ids);
+      swept += ids.length;
+    }
+  }
+
+  return swept;
+}
+
+/**
  * Take back a placement this client left armed.
  *
  * `T429` — a refused attack leaves the map waiting for a click that belongs to an attack the
@@ -1550,6 +1687,46 @@ export async function deleteZone(region) {
  */
 export function cancelPendingPlacement() {
   if (canvas?.regions?._placementContext) canvas.regions._cancelPlacement();
+}
+
+/**
+ * Everyone a zone catches, each with the location its share lands on.
+ *
+ * One answer for two readers (D243): the card prints this list when the shot goes off and the
+ * apply path resolves it again when the button is clicked. **Occupancy** is whatever the scene says
+ * at the moment of the call, which is what lets a token that walked into the crater since be caught
+ * by the second reading — but a **location** is rolled once and then belongs to the card, off
+ * `blast.rolled`. Re-rolling it would have made the card contradict its own breakdown for a target
+ * that never moved, and would have drawn a second die per victim for an answer nobody kept.
+ *
+ * @param {object} blast The card's blast payload
+ * @param {boolean} overallBody Whether the round resolves against the body as a whole (`T96`/D52)
+ * @returns {Promise<object[]>} the `tokensInBlast` entries, each with `actor`, `tokenDoc`, `hidden`
+ *   and the `zone` it is hit in — `actor` and `zone` null for a token carrying neither
+ */
+export async function zoneHitLocations(blast, overallBody) {
+  const known = new Map((blast?.rolled ?? []).map(entry => [entry.tokenUuid, entry.zone]));
+  const entries = [];
+
+  for (const entry of tokensInBlast(blast)) {
+    const tokenDoc = await fromUuid(entry.tokenUuid);
+    // An unlinked token owns its own delta actor; writing to the base actor would wound every copy.
+    const actor = tokenDoc?.actor ?? await fromUuid(entry.actorUuid);
+
+    // D17: the shot's designated target takes the location it was aimed at — the -4 was paid at
+    // the roll. Everyone else the pattern caught rolls their own, and a blast has no aim at all.
+    // An overall-body hit rolls nothing: `applyHitsToActor` resolves it at the Torso either way,
+    // and a die thrown for a location nobody reads is one a dice module would still animate.
+    const zone = !actor ? null
+      : overallBody ? "Torso"
+        : entry.tokenUuid === blast.aimedTokenUuid && blast.aimedZone
+          ? blast.aimedZone
+          : known.get(entry.tokenUuid) ?? (await rollLocation(actor)).areaHit;
+
+    entries.push({ ...entry, actor, tokenDoc, hidden: !!tokenDoc?.hidden, zone });
+  }
+
+  return entries;
 }
 
 /**
@@ -1576,7 +1753,14 @@ export async function applyBlastFromMessage(message) {
     return null;
   }
 
-  const caught = tokensInBlast(attack.blast);
+  // `T96`/D52 — the round decides, not the card's kind: a shotgun pattern is located pellets, and a
+  // grenade is location-silent in the book (`07:839`), so only a charge authored as an explosive
+  // resolves against the body as a whole.
+  const overallBody = !!attack.ammo?.overallBody;
+
+  // Read **now**, not off the card: the list printed at fire time is a picture of the shot, and
+  // D243 keeps this the authoritative one — a target that walked into the crater since is in it.
+  const caught = await zoneHitLocations(attack.blast, overallBody);
   if (!caught.length) {
     ui.notifications.warn(localize("BlastNoTargets"));
     return null;
@@ -1584,34 +1768,17 @@ export async function applyBlastFromMessage(message) {
 
   await message.update({ "flags.cyberpunk2020.attack.applied.zone": true });
 
-  // `T96`/D52 — the round decides, not the card's kind: a shotgun pattern is located pellets, and a
-  // grenade is location-silent in the book (`07:839`), so only a charge authored as an explosive
-  // resolves against the body as a whole.
-  const overallBody = !!attack.ammo?.overallBody;
-
   const cards = [];
   for (const entry of caught) {
-    const tokenDoc = await fromUuid(entry.tokenUuid);
-    // An unlinked token owns its own delta actor; writing to the base actor would wound every copy.
-    const actor = tokenDoc?.actor ?? await fromUuid(entry.actorUuid);
-    if (!actor) continue;
+    if (!entry.actor) continue;
 
     const damage = blastDamageFor(attack.blast.damage, entry.multiplier);
     if (damage <= 0) continue;
 
-    // D17: the shot's designated target takes the location it was aimed at — the -4 was paid at
-    // the roll. Everyone else the pattern caught rolls their own, and a blast has no aim at all.
-    // An overall-body hit rolls nothing: `applyHitsToActor` resolves it at the Torso either way,
-    // and a die thrown for a location nobody reads is one a dice module would still animate.
-    const zone = overallBody ? "Torso"
-      : entry.tokenUuid === attack.blast.aimedTokenUuid && attack.blast.aimedZone
-        ? attack.blast.aimedZone
-        : (await rollLocation(actor)).areaHit;
-
-    cards.push(await applyHitsToActor(actor, {
-      hits: [{ zone, damage }], ap: attack.ap, ammo: attack.ammo, targetName: entry.name,
-      token: tokenDoc, sceneId: String(attack.blast.sceneId ?? ""),
-      messageMode: hiddenMessageMode(tokenDoc?.hidden),
+    cards.push(await applyHitsToActor(entry.actor, {
+      hits: [{ zone: entry.zone, damage }], ap: attack.ap, ammo: attack.ammo, targetName: entry.name,
+      token: entry.tokenDoc, sceneId: String(attack.blast.sceneId ?? ""),
+      messageMode: hiddenMessageMode(entry.hidden),
       overallBody
     }));
   }
