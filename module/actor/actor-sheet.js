@@ -499,9 +499,18 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
 
         const zone = unsever.dataset.hitLoc;
         const kept = this.actor.system.severedZones.filter(z => z !== zone);
-        if (kept.length !== this.actor.system.severedZones.length) {
-          await this.actor.update({ "system.severedZones": kept });
-        }
+        // The record is what is asked about, so the absence of one ends this before the dialog
+        // (D240): a zone whose flag comes off a spent cyberlimb pool has none, and offering to
+        // restore a limb the click cannot restore reads as a broken prompt, not a declined one.
+        if (kept.length === this.actor.system.severedZones.length) return;
+
+        const confirmed = await foundry.applications.api.DialogV2.confirm({
+          window: { title: localize("UnseverConfirmTitle") },
+          content: `<p>${localizeParamEscaped("UnseverConfirmText", { zone: localize(zone) })}</p>`,
+          modal: true,
+          rejectClose: false
+        });
+        if (confirmed) await this.actor.update({ "system.severedZones": kept });
         return;
       }
 

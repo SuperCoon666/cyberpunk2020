@@ -397,6 +397,8 @@
     "CYBERPUNK.SeveranceLimb": "{zone} is severed",
     "CYBERPUNK.SeveranceDeath": "The head is destroyed — killed outright",
     "CYBERPUNK.SeveredZoneTooltip": "This limb is gone. Click to put it back; a destroyed cyberlimb comes back through its SDP instead.",
+    "CYBERPUNK.UnseverConfirmTitle": "Restore Limb?",
+    "CYBERPUNK.UnseverConfirmText": "{zone} will count as intact again. Continue?",
     "CYBERPUNK.TargetAreaSevered": "{zone} is gone — there is nothing there to hit. Aim somewhere else, or clear the target area.",
     "CYBERPUNK.StatusWoundLight": "Light wound",
     "CYBERPUNK.StatusWoundSerious": "Serious wound",

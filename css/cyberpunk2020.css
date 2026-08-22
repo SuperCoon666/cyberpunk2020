@@ -1172,6 +1172,12 @@ div.statderive .value.rightborder {
   justify-self: center;
   color: #d1502f;
   cursor: pointer;
+  /* The SP box spans the whole segment (`grid-column: 1 / -1 !important` above) and comes after
+     this marker in the partial, so at `z-index: auto` it takes every click aimed at the marker --
+     invisibly, because that box is transparent. Stacking it above is what makes the marker a
+     control rather than a picture; the box it covers is readonly on the actor sheet. */
+  position: relative;
+  z-index: 1;
 }
 .cyberpunk .armor-display .armor-segment .segment-ablate, .cyberpunk .armor-display .armor-segment .segment-repair {
   flex-direction: column;

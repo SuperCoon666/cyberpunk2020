@@ -397,6 +397,8 @@
     "CYBERPUNK.SeveranceLimb": "{zone}: конечность оторвана",
     "CYBERPUNK.SeveranceDeath": "Голова разрушена — смерть на месте",
     "CYBERPUNK.SeveredZoneTooltip": "Этой конечности нет. Щелчок вернёт её; разрушенная киберконечность возвращается через SDP.",
+    "CYBERPUNK.UnseverConfirmTitle": "Вернуть конечность?",
+    "CYBERPUNK.UnseverConfirmText": "{zone} снова будет считаться целой. Продолжить?",
     "CYBERPUNK.TargetAreaSevered": "{zone}: этой конечности нет, попадать некуда. Выберите другую зону или снимите прицеливание.",
     "CYBERPUNK.StatusWoundLight": "Лёгкое ранение",
     "CYBERPUNK.StatusWoundSerious": "Тяжёлое ранение",
