@@ -4,6 +4,48 @@ import { localize, localizeParam } from "./utils.js";
 const RUN_ACTION = "run";
 
 /**
+ * The three bands the grid highlight is painted in: within a walk, within a run, past both.
+ *
+ * Green and red are the system's own pass/fail pair — the colours a chat card already resolves a
+ * turn in (`.part-total.crit` / `.cp-save-outcome.is-success` and their failure twins,
+ * `css/cyberpunk2020.css:761-784`). The middle stop is the midpoint of that same axis taken in
+ * OKLCh with its lightness raised to 0.70; taken in sRGB instead, chroma collapses from 0.15 to
+ * 0.08 and the band lands on khaki.
+ *
+ * Alpha splits where the **rule** splits rather than evenly: a walk and a run are both legal and
+ * share one weight, and only the band that may not be spent is louder. At one flat alpha the red
+ * band measured as the faintest of the three over a dark map, grass, asphalt and night — the
+ * warning disappearing exactly where maps usually are. All three stay under core's own 0.5.
+ *
+ * Numeric because the highlight is drawn into PIXI and never reaches a stylesheet — `.cp-overspent`
+ * on the waypoint label is the CSS half of the same rule, and carries the same vermilion.
+ */
+const BANDS = {
+  walk: { color: 0x77b968, alpha: 0.30 },
+  run: { color: 0xc69700, alpha: 0.30 },
+  over: { color: 0xd1502f, alpha: 0.45 }
+};
+
+/**
+ * Which band a cumulative spend falls in.
+ *
+ * Read off the token's own MA rather than off the waypoint's movement action, because the bands are
+ * what the distance **is**: a player who chose to walk and dragged into running distance is shown
+ * that, and `blockOverspentMovement` is still the only thing that stops him. Null wherever
+ * `movementBudget` has no rule to apply, which leaves core's own colour — the mover's — in place.
+ *
+ * @param {TokenDocument} tokenDocument
+ * @param {number} cost The spend at this waypoint, cumulative from the start of the turn
+ * @returns {{color: number, alpha: number}|null} The band, or null when no budget applies
+ */
+function movementBand(tokenDocument, cost) {
+  const walk = movementBudget(tokenDocument);
+  if (walk === null) return null;
+  if (cost <= walk) return BANDS.walk;
+  return cost <= movementBudget(tokenDocument, RUN_ACTION) ? BANDS.run : BANDS.over;
+}
+
+/**
  * What this token may cover this turn.
  *
  * Null whenever the budget does not apply, which is also exactly when core records nothing:
@@ -63,6 +105,23 @@ export class CyberpunkTokenRuler extends foundry.canvas.placeables.tokens.TokenR
     if (total > budget) context.cssClass = `${context.cssClass} cp-overspent`;
 
     return context;
+  }
+
+  /**
+   * @override
+   * Only the colour is taken over. Core decides *whether* a space is painted — an unreachable
+   * waypoint and the seam between a passed and a planned one are both suppressed there
+   * (`client/canvas/placeables/tokens/ruler.mjs:767-772`, 14.365.0) — and that decision is kept.
+   * The segment and the waypoint markers stay the mover's own colour, which is what tells a table
+   * whose drag it is looking at.
+   */
+  _getGridHighlightStyle(waypoint, offset) {
+    const style = super._getGridHighlightStyle(waypoint, offset);
+    if (!(style.alpha > 0)) return style;
+
+    const cost = Number.isFinite(waypoint.measurement.cost) ? waypoint.measurement.cost : 0;
+    const band = movementBand(this.token.document, cost);
+    return band === null ? style : { ...style, ...band };
   }
 }
 

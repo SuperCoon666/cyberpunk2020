@@ -326,13 +326,23 @@ export class CyberpunkAmmoData extends CyberpunkBaseItemData {
       // Rounds a full box holds; 0 means not configured, which is what disables the box counter.
       perBox: numberField(0),
       quantity: numberField(0),
-      armorMultSoft: numberField(1),
-      armorMultHard: numberField(1),
+      // Ch. 07:460 — an AP round meets half the armour's SP, so the pair is born at the book's own
+      // number rather than at a neutral 1 a GM had to know to change. Only a round carrying the
+      // AP/Slug/Mono family reads them; `snapshotAmmo` neutralises every other round.
+      armorMultSoft: numberField(0.5),
+      armorMultHard: numberField(0.5),
       rawDamageMult: numberField(1),
-      penDamageMult: numberField(1),
+      // D234 — a **divisor**, not a multiplier: the GM types the number the damage is divided by,
+      // which is the direction the field is read in and was the one thing nothing on screen said.
+      // The default is ch. 07:460's own half, so a round the GM ticks AP on already behaves as the
+      // book's. `penDamageMult` is not migrated: it shipped in 1.1.1 with no reader at all — the
+      // whole damage pipeline is new in 1.2.0 — so there is no stored meaning to carry over.
+      penDamageDivisor: numberField(2),
       // Ch. 07:865-873 — a finned slug has "normal AP ability vs. all armors" but the damage that
       // penetrates hard armour is not halved. Both default true, which is the flat AP rule every
-      // existing world already behaves by, so no document changes meaning (`T95`, D53 У3).
+      // existing world already behaves by, so no document changes meaning (`T95`, D53 У3). Both are
+      // offered in both blocks since D234: each block used to hard-wire the half it did not show,
+      // so an AP round could not exempt hard armour and a slug could not exempt soft.
       penHalvesSoft: booleanField(true),
       penHalvesHard: booleanField(true),
       bonusDamageFormula: stringField(""),

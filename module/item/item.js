@@ -2,11 +2,43 @@ import { weaponTypes, rangedAttackTypes, meleeAttackTypes, fireModes, ranges, ra
 import { Multiroll, makeD10Roll } from "../dice.js"
 import { displayName, localize, localizeParam, localizeParamEscaped, rollLocation, cwHasType, cwIsEnabled, isFumbleRoll, buildRangedCombatFumbleData, buildSkillFumbleData, clamp, isRollableFormula } from "../utils.js";
 import { createCyberpunkChatMessage, createCyberpunkRollCard, getGMUserIds, renderCyberpunkTemplate } from "../compat.js";
-import { ATTACK_FLAG_VERSION, attackerIsHidden, hiddenMessageMode, snapshotAmmo } from "../damage.js";
+import { ATTACK_FLAG_VERSION, attackerIsHidden, hiddenMessageMode, snapshotAmmo, zoneIsSevered } from "../damage.js";
 import { declareDodge, dodgeRangedPenalty, resolveDefense } from "../combat.js";
 import { blastProfile, blastRings, cancelPendingPlacement, fireCorridor, isBlastAttack, isSpreadAttack, metresToPixels, PATTERN_TINT_ADJACENT, PATTERN_TINT_WALKED, pickBlastCentre, placeSuppressionZone, scatterCentre, snapPatternCentre, spreadCorridorBands, spreadProfileFor } from "../zones.js";
+/**
+ * The artwork a newly created item of each type is born with.
+ *
+ * Read off the shipped packs rather than chosen here, and they are unanimous per type: program is
+ * 60/60 on `-1`, so `program-icon-2.svg` is deliberately unused, and cyberware is 120 on `-2`
+ * against the 12 on `-1` the cyberweapons pack reserves. `vehicle` and `misc` are absent because
+ * the system ships no icon for them — both are on core's `mystery-man` throughout the packs too.
+ */
+const TYPE_ARTWORK = {
+  skill: "systems/cyberpunk2020/img/skill-icon.svg",
+  program: "systems/cyberpunk2020/img/program-icon-1.svg",
+  weapon: "systems/cyberpunk2020/img/weapon-icon.svg",
+  ammo: "systems/cyberpunk2020/img/ammo-box-icon.svg",
+  armor: "systems/cyberpunk2020/img/armor-icon.svg",
+  cyberware: "systems/cyberpunk2020/img/implant-icon-2.svg"
+};
+
 /** @extends {Item} */
 export class CyberpunkItem extends Item {
+
+  /**
+   * @override
+   * Core reads this from the `img` field's own `initial` (`common/documents/item.mjs:51`,
+   * 14.365.0), so one override covers the sidebar dialog, `Item.create` and the sheet's
+   * reset-image control alike; there is no create hook to repeat it in.
+   *
+   * A type with no artwork of its own falls through to core's rather than to a blank, because the
+   * caller at `client/applications/sidebar/tabs/item-directory.mjs:34` uses the return value as a
+   * displayed src.
+   */
+  static getDefaultArtwork(itemData) {
+    const img = TYPE_ARTWORK[itemData.type];
+    return img ? { img } : super.getDefaultArtwork(itemData);
+  }
 
   /**
    * Cyberpunk 2020: any fractional damage is rounded down
@@ -527,6 +559,15 @@ export class CyberpunkItem extends Item {
     // Hit locations come from the target's own table, so the first target rides along with the
     // modifiers every branch already receives.
     const mods = { ...attackMods, targetActor: CyberpunkItem.__targetActor(targets[0]) };
+
+    // D232, an approved hard restriction: the target-area selector offers all six locations whatever
+    // the target has left, so a shot aimed at a limb that is gone landed there and printed damage
+    // into it. Refused at the shooter, ahead of every fire mode, so nothing is spent and no card is
+    // posted. A *rolled* location is untouched — D38 re-derives that one among the zones that exist.
+    if (mods.targetArea && zoneIsSevered(mods.targetActor, mods.targetArea)) {
+      ui.notifications.warn(localizeParam("TargetAreaSevered", { zone: localize(mods.targetArea) }));
+      return refuse();
+    }
 
     // D196 — «Автоопределение дистанции» is an instruction, not a band, so it is spent here:
     // everything downstream reads `rangeDCs` and `rangeResolve` and must never see the option

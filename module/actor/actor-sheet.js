@@ -488,6 +488,23 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
         return;
       }
 
+      // D232 — the marker is the only way back from a severance: the record is permanent by
+      // design, and a limb the GM did not mean to take off would stay unaimable for good. A zone
+      // whose flag comes from a spent cyberlimb pool holds no record, so this leaves it alone and
+      // the SDP box in the same segment is what restores that one.
+      const unsever = target.closest(".segment-severed");
+      if (unsever) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const zone = unsever.dataset.hitLoc;
+        const kept = this.actor.system.severedZones.filter(z => z !== zone);
+        if (kept.length !== this.actor.system.severedZones.length) {
+          await this.actor.update({ "system.severedZones": kept });
+        }
+        return;
+      }
+
       // Before the row's own handler, the way `.item-delete` is: the icon sits inside the row that
       // detonates, so a click that reached it must not go off.
       const takeBack = target.closest(".charge-remove");

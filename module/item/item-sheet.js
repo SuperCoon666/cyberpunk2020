@@ -20,6 +20,23 @@ const MAX_DOT_TICKS = 10;
  */
 const AP_FAMILY_EFFECTS = new Set(["AP", "Slug", "Mono"]);
 
+/**
+ * Ch. 07's own numbers for the two carriers that have any to author, written when the effect is
+ * **selected**: stock is the book's round and the GM edits from there (owner, 2026-08-22).
+ *
+ * This cannot be a schema default, which is the whole reason it exists: one pair of fields serves
+ * both effects, and `07:867` exempts a finned slug's hard-armour penetration from the halving
+ * `07:460` applies to both — one differing value, and no default can hold two.
+ *
+ * Mono is deliberately absent: `07:1065` states its fractions itself, so its block has no fields.
+ */
+const AP_FAMILY_STOCK = {
+  AP: { armorMultSoft: 0.5, armorMultHard: 0.5, penDamageDivisor: 2,
+    penHalvesSoft: true, penHalvesHard: true },
+  Slug: { armorMultSoft: 0.5, armorMultHard: 0.5, penDamageDivisor: 2,
+    penHalvesSoft: true, penHalvesHard: false }
+};
+
 /** @extends {foundry.applications.sheets.ItemSheetV2} */
 export class CyberpunkItemSheet extends HandlebarsApplicationMixin(ItemSheetV2) {
 
@@ -114,7 +131,7 @@ export class CyberpunkItemSheet extends HandlebarsApplicationMixin(ItemSheetV2) 
     setIfMissing("armorMultSoft", 1);
     setIfMissing("armorMultHard", 1);
     setIfMissing("rawDamageMult", 1);
-    setIfMissing("penDamageMult", 1);
+    setIfMissing("penDamageDivisor", 1);
     setIfMissing("bonusDamageFormula", "");
     setIfMissing("accuracyMod", 0);
 
@@ -1958,9 +1975,19 @@ async _prepareCyberware(sheet) {
       if (plain) plain.checked = true;
     }
 
+    const update = { "system.effectTypes": next };
+
+    // The stock profile of the effect just **selected**, so ticking Slug is `07:867`'s round and
+    // ticking AP is `07:460`'s. Only on the tick that adds it — a `change` arriving with `checked`
+    // true means the box was off a moment ago — so an edit made afterwards stands until the effect
+    // is chosen again. Narrows D176 by exactly that much: values are still never rewritten *while*
+    // an effect is unticked, but re-selecting one is a fresh choice and returns the book's round.
+    const stock = checkbox.checked ? AP_FAMILY_STOCK[checkbox.value] : null;
+    if (stock) for (const [key, value] of Object.entries(stock)) update[`system.${key}`] = value;
+
     // Re-renders on purpose: every substantive section of the template is gated on
     // effectTypes, so the form changes shape.
-    await this.item.update({ "system.effectTypes": next });
+    await this.item.update(update);
   }
 
   async _cpHandleAmmoBlastMultiplierChange(input, event) {

@@ -120,8 +120,10 @@
 
     {{!-- ===== Armour piercing ===== --}}
     {{!-- D175 — the book gives AP and the slug the same two halvings (`07:458`, `07:460`,
-          `07:867`), so both blocks carry both multipliers; the one rule that separates them is
-          which armour exempts the penetrating damage, which is the boolean each block ends on. --}}
+          `07:867`), so both blocks carry both multipliers and, since D234, both division switches:
+          each block used to hard-wire the half it did not show, so an AP round could not exempt
+          hard armour and a slug could not exempt soft. The divisor is offered while either switch
+          is on and hidden when neither is, because with both off there is nothing to divide by. --}}
     {{#if (ammoHasEffect system "AP")}}
         <div class="field span-two-cells" data-tooltip="{{CPLocal 'AmmoPenHalvesHint'}}">
             <label class="larger">{{CPLocal "AmmoSectionAP"}}</label>
@@ -131,8 +133,11 @@
         {{> (template "fields/number") label="AmmoArmorMultSoft" edit="system.armorMultSoft"}}
         {{> (template "fields/number") label="AmmoArmorMultHard" edit="system.armorMultHard"}}
 
-        {{> (template "fields/number") label="AmmoPenDamageMult" edit="system.penDamageMult"}}
-        {{> (template "fields/boolean") label="AmmoPenHalvesSoft" edit="system.penHalvesSoft"}}
+        {{> (template "fields/boolean") label="AmmoPenDividesSoft" edit="system.penHalvesSoft"}}
+        {{> (template "fields/boolean") label="AmmoPenDividesHard" edit="system.penHalvesHard"}}
+        {{#if (or system.penHalvesSoft system.penHalvesHard)}}
+            {{> (template "fields/number") label="AmmoPenDamageDivisor" edit="system.penDamageDivisor"}}
+        {{/if}}
     {{/if}}
 
     {{!-- ===== Slug (D172) ===== --}}
@@ -147,8 +152,11 @@
         {{> (template "fields/number") label="AmmoArmorMultSoft" edit="system.armorMultSoft"}}
         {{> (template "fields/number") label="AmmoArmorMultHard" edit="system.armorMultHard"}}
 
-        {{> (template "fields/number") label="AmmoPenDamageMult" edit="system.penDamageMult"}}
-        {{> (template "fields/boolean") label="AmmoPenHalvesHard" edit="system.penHalvesHard"}}
+        {{> (template "fields/boolean") label="AmmoPenDividesSoft" edit="system.penHalvesSoft"}}
+        {{> (template "fields/boolean") label="AmmoPenDividesHard" edit="system.penHalvesHard"}}
+        {{#if (or system.penHalvesSoft system.penHalvesHard)}}
+            {{> (template "fields/number") label="AmmoPenDamageDivisor" edit="system.penDamageDivisor"}}
+        {{/if}}
     {{/if}}
 
     {{!-- ===== Mono (D174) ===== --}}

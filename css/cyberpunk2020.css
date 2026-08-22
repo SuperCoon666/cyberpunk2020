@@ -1166,6 +1166,13 @@ div.statderive .value.rightborder {
 .cyberpunk .armor-display .armor-segment .segment-repair {
   grid-area: repair;
 }
+.cyberpunk .armor-display .armor-segment .segment-severed {
+  grid-area: ablate;
+  align-self: center;
+  justify-self: center;
+  color: #d1502f;
+  cursor: pointer;
+}
 .cyberpunk .armor-display .armor-segment .segment-ablate, .cyberpunk .armor-display .armor-segment .segment-repair {
   flex-direction: column;
   justify-content: center;
@@ -3265,7 +3272,7 @@ div.statderive .value.rightborder {
    paints the label from these variables (public/css/foundry2.css:559, 14.365.0), so the overspend
    state redefines them instead of overriding what they produce. */
 #measurement .waypoint-label.cp-overspent {
-  --control-bg-color: rgba(120, 20, 20, 0.85);
-  --control-border-color: #ff5555;
-  --control-icon-color: #ffdede;
+  --control-bg-color: rgba(88, 29, 14, 0.85);
+  --control-border-color: #d1502f;
+  --control-icon-color: #ffe4dc;
 }

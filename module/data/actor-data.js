@@ -41,6 +41,10 @@ class CyberpunkBaseActorData extends foundry.abstract.TypeDataModel {
       sdp: objectField(DEFAULT_SDP),
       damage: numberField(0),
       stabilized: booleanField(false),
+      // Ch. 07:530's limbs, kept because nothing else records them: a cyberlimb's loss is readable
+      // from `sdp.current`, a meat limb has no pool of its own, and without this a severed arm was
+      // a line on a chat card and nothing more.
+      severedZones: arrayField(),
 
       // Inventory / UI state
       eurobucks: numberField(0),

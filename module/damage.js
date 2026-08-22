@@ -34,8 +34,11 @@ import { DefaultRollTemplate, Multiroll } from "./dice.js";
  * 14: the suppression payload's `behaviour` carries `rounds` and `width` (D222) — the burst the
  *     turn-start upkeep respends and the divisor it reprices the save by. A card written before
  *     this lays a zone that holds to the end of the encounter and is never asked about.
+ * 15: `penDamageDivisor` replaces `penDamageMult` and is read the other way up (D234) — a card
+ *     written before this carries no divisor at all, so the halving `07:460` asks for would be
+ *     silently skipped on a round authored to have it.
  */
-export const ATTACK_FLAG_VERSION = 14;
+export const ATTACK_FLAG_VERSION = 15;
 
 /** The flag a damage-over-time effect burns down from, one tick per turn. */
 export const DOT_FLAG = "dot";
@@ -167,7 +170,7 @@ export function snapshotAmmo(item) {
     // D174 — the one member of the family with nothing to author: ch. 07:1065's fractions are the
     // book's own, so its tick is the whole mechanism rather than a switch over fields.
     mono: on("Mono"),
-    penDamageMult: armourPiercing ? numberOr(a.penDamageMult, 1) : 1,
+    penDamageDivisor: armourPiercing ? numberOr(a.penDamageDivisor, 1) : 1,
     // A field absent from an older document defaults to the flat AP rule, not to the slug's.
     penHalvesSoft: armourPiercing ? a.penHalvesSoft !== false : true,
     penHalvesHard: armourPiercing ? a.penHalvesHard !== false : true,
@@ -248,7 +251,7 @@ export function resolveHit({ damage = 0, zone = "Torso", ap = false, mono = fals
   }
 
   let penetrating = Math.max(0, Math.floor(damage) - effSp);
-  // D175 — the halving of what got through is the **round's** (`penDamageMult`), and the armour's
+  // D175 — the division of what got through is the **round's** (`penDamageDivisor`), and the armour's
   // hardness decides whether it applies at all: ch. 07:460 halves an AP round's damage against
   // either armour, ch. 07:867 exempts a finned slug from the hard-armour half — *"damage that
   // penetrates Hard armor is not halved"*. Both flags default true, which is the flat AP rule
@@ -257,10 +260,18 @@ export function resolveHit({ damage = 0, zone = "Torso", ap = false, mono = fals
   // A blade never halves its damage: ch. 07:462 limits itself to SP effectiveness, and the halving
   // is the round's "lower damage capacity" (`AB-Q1a`, D53 У2) — which is why a mono edge is out of
   // it, and why leaving it in would hand that blade 1/3 SP and then halve what got through.
-  const penHalves = location.hard
+  const penDivides = location.hard
     ? (ammo?.penHalvesHard !== false)
     : (ammo?.penHalvesSoft !== false);
-  if (!monoEdge && penHalves) penetrating = Math.floor(penetrating * numberOr(ammo?.penDamageMult, 1));
+  // D234 — the divisor runs **both** ways, because a round is a constructor and a table's homebrew
+  // is the point: 2 halves what got through, 0.5 doubles it. Zero is the one value with no
+  // arithmetic behind it — `p / 0` is Infinity — and it is also what a cleared field stores (D198),
+  // so it is the only one skipped. The floor at 0 catches a negative divisor, which is arithmetic
+  // rather than a rule and must not reach the card as a negative wound.
+  const penDivisor = numberOr(ammo?.penDamageDivisor, 1);
+  if (!monoEdge && penDivides && penDivisor !== 0) {
+    penetrating = Math.max(0, Math.floor(penetrating / penDivisor));
+  }
 
   const headDoubled = doubleHead && zone === "Head" && penetrating > 0;
   if (headDoubled) penetrating *= 2;
@@ -286,6 +297,21 @@ export function resolveHit({ damage = 0, zone = "Torso", ap = false, mono = fals
     // greater, per the book's "more than 8 points", which is also what leaves 0 meaning off.
     severed: severanceThreshold > 0 && SEVERABLE_ZONES.has(zone) && final > severanceThreshold
   };
+}
+
+/**
+ * Is this hit location no longer on the target?
+ *
+ * The derived answer, computed once per pass on the actor (`actor.js`, `area.severed`): a limb the
+ * severance rule took off, or a cyberlimb with nothing left of its SDP. D38 treats the two as one
+ * case, and a shot has the same reason to care about either — there is nothing there to hit.
+ *
+ * @param {CyberpunkActor} actor
+ * @param {string} zone Hit location key
+ * @returns {boolean}
+ */
+export function zoneIsSevered(actor, zone) {
+  return !!actor?.system?.hitLocations?.[zone]?.severed;
 }
 
 /**
@@ -655,11 +681,15 @@ export async function applyHitsToActor(actor,
   let ignitionZone = null;
 
   // D38 — a hit into a zone that is no longer there still hits; its location is determined among
-  // the zones that are. A cyberlimb with nothing left of its SDP is that case, and the running
-  // `sdp` tally is what makes a limb shot away *earlier in the same attack* count as gone too.
-  const zoneIsGone = zone => LIMB_ZONES.has(zone)
-    && numberOr(actor.system.sdp?.sum?.[zone], 0) > 0
-    && numberOr(actor.system.sdp?.current?.[zone], 0) - (sdp[zone] ?? 0) <= 0;
+  // the zones that are. `zoneIsSevered` is the state the target arrived in, and the two running
+  // tallies are what make a limb lost *earlier in the same attack* count as gone too: `sdp` for a
+  // cyberlimb shot away, `severedThisAttack` for one the severance rule has just taken off.
+  const severedThisAttack = new Set();
+  const zoneIsGone = zone => zoneIsSevered(actor, zone)
+    || severedThisAttack.has(zone)
+    || (LIMB_ZONES.has(zone)
+      && numberOr(actor.system.sdp?.sum?.[zone], 0) > 0
+      && numberOr(actor.system.sdp?.current?.[zone], 0) - (sdp[zone] ?? 0) <= 0);
 
   for (const hit of hits) {
     // D52/`T96` — an overall-body hit resolves against the body as a whole, and the Torso is what
@@ -694,14 +724,17 @@ export async function applyHitsToActor(actor,
     if (resolved.penetrating > 0) penetratedZones[zone] = (penetratedZones[zone] ?? 0) + 1;
     if (resolved.severed) {
       if (zone === "Head") killed = true;
-      else severedLimbs.push({ zone: localize(zone) });
+      else {
+        severedLimbs.push({ zone: localize(zone) });
+        severedThisAttack.add(zone);
+      }
     }
     // The card names the rule, not the location it was resolved at: "Torso" would read as a rolled
     // location and is exactly what an overall-body hit did not do.
     lines.push({ ...resolved, zone: overallBody ? "OverallBody" : zone, damage: hit.damage });
   }
 
-  await actor.applyDamage({ wound, sdp });
+  await actor.applyDamage({ wound, sdp, severed: [...severedThisAttack] });
 
   // Ch. 07:614 — stabilization holds *"unless another wound is taken"*, and nothing else in the
   // system ever clears the flag (`T219`, D52).
@@ -748,6 +781,11 @@ export async function applyHitsToActor(actor,
     await actor.toggleStatusEffect("dead", { active: true, overlay: true });
     return card;
   }
+
+  // A body that has already failed its Death Save takes the damage and is asked for nothing more:
+  // `_onStartTurn` returns on the same status (`combat.js:162`), and the branch above ends a burn
+  // on death rather than starting one, so a corpse neither saves nor catches fire.
+  if (actor.statuses.has("dead")) return card;
 
   // A hit that landed entirely in a cyberlimb ignites too (D26.4): ch. 07:910 conditions ignition
   // on nothing — *"Anything caught in the sweep between the two points is ignited"* — and a burning

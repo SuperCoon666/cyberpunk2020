@@ -9,6 +9,9 @@ import { evaluateCyberpunkRoll } from "../compat.js";
 /** The stabilization hand-off has no human in the loop — it is one flag write on the GM's client. */
 const STABILIZE_QUERY_TIMEOUT_MS = 5000;
 
+/** Ch. 07:530 severs limbs. A severed head kills outright, and the Torso is not on the list. */
+const SEVERABLE_LIMBS = new Set(["lArm", "rArm", "lLeg", "rLeg"]);
+
 export function combineSP(curr, add) {
   const a = Number(curr) || 0;
   const b = Number(add) || 0;
@@ -436,6 +439,25 @@ export class CyberpunkActor extends Actor {
       }
     }
 
+    // D38's "the zone is no longer there" as one derived answer, for the sheet and for the shot
+    // alike. A zone with a cyberlimb pool is answered by what is **left** of that pool, which is
+    // also what lets a limb fitted onto the stump count as a limb again; a zone without one falls
+    // back to the severance record. Head and Torso are never severed — a severed head kills
+    // outright and the Torso is not on the book's list.
+    //
+    // **After** the block above, not with the rest of the hit-location derivation: until it runs,
+    // `sdp.current` is the raw stored map, which is all zeros on an actor that has never been hit —
+    // so a fresh cyberlimb read as a destroyed one and every hit into it was re-derived away.
+    {
+      const severedZones = new Set(system.severedZones);
+      for (const [areaKey, area] of Object.entries(system.hitLocations)) {
+        area.severed = SEVERABLE_LIMBS.has(areaKey)
+          && (Number(system.sdp.sum[areaKey]) > 0
+            ? Number(system.sdp.current[areaKey]) <= 0
+            : severedZones.has(areaKey));
+      }
+    }
+
     // calculate humanity & EMP (include cyberware and temp mods before loss)
     const emp = stats.emp;
 
@@ -514,7 +536,7 @@ export class CyberpunkActor extends Actor {
    * @param {number} damage.wound Points to add to the wound track
    * @param {Object<string, number>} damage.sdp Points to take off a cyberlimb, keyed by zone
    */
-  async applyDamage({ wound = 0, sdp = {} } = {}) {
+  async applyDamage({ wound = 0, sdp = {}, severed = [] } = {}) {
     const update = {};
 
     if (wound > 0) {
@@ -527,6 +549,12 @@ export class CyberpunkActor extends Actor {
       // A zone damage drove to exactly 0 is indistinguishable from an untouched default, and the
       // reconciliation in _prepareCharacterData reseeds it from the sum without this marker.
       update[`system.sdp.touched.${zone}`] = true;
+    }
+
+    // Ch. 07:530 — the limb is gone for good, so the record is a union rather than a replacement:
+    // a later attack must not un-sever what an earlier one took off.
+    if (severed.length) {
+      update["system.severedZones"] = [...new Set([...this.system.severedZones, ...severed])];
     }
 
     if (foundry.utils.isEmpty(update)) return null;

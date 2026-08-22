@@ -15,6 +15,14 @@
         <span class="segment-repair action" title="{{CPLocalParam "AblationCurrent" hitLoc}}" data-hit-loc="{{name}}">+</span>
       {{/if}}
 
+      {{!-- D232 — the limb is gone, and the marker is the only way back from a severance the GM did
+            not mean. A destroyed cyberlimb raises the same derived flag off `sdp.current`, and its
+            own way back is the SDP box below, so a click that finds no record to clear is inert
+            rather than wrong. The armor item sheet never renders this: it has no derived flag. --}}
+      {{#if hitLoc.severed}}
+        <i class="fas fa-ban segment-severed" data-tooltip="{{CPLocal "SeveredZoneTooltip"}}" data-hit-loc="{{name}}"></i>
+      {{/if}}
+
       {{!-- The name is emitted only on the editable path: this partial is shared with the armor
             item sheet, where this input is the real control, while on the actor sheet the same
             field is derived and submitOnChange would persist it over prepareData's own value. --}}
