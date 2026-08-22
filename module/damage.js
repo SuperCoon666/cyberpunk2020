@@ -1,5 +1,5 @@
 import { createCyberpunkChatMessage, evaluateCyberpunkRoll, renderCyberpunkTemplate } from "./compat.js";
-import { displayName, localize, localizeParam, localizeParamEscaped, rollLocation, isRollableFormula } from "./utils.js";
+import { displayName, localize, localizeParam, rollLocation, isRollableFormula } from "./utils.js";
 import { CyberpunkActor } from "./actor/actor.js";
 import { ATHLETICS_SKILL_ID, isCombatAutomationEnabled } from "./lookups.js";
 import { DefaultRollTemplate, Multiroll } from "./dice.js";
@@ -225,7 +225,11 @@ export function resolveHit({ damage = 0, zone = "Torso", ap = false, mono = fals
     ? numberOr(ammo?.armorMultHard, 1)
     : numberOr(ammo?.armorMultSoft, 1);
 
-  let effSp = Math.floor(sp * armorMult);
+  // Rounded to the nearest rather than floored: the GM types a decimal for the fraction he means,
+  // and under a floor no typed precision ever reaches it — 0.3333333 × 30 is 9.9999999, so dividing
+  // armour by 3 was unreachable at every precision. Halves go up, the direction the book takes when
+  // it divides a character's own numbers (`07:525-526`).
+  let effSp = Math.round(sp * armorMult);
 
   // D174 — a weapon carries no effects unless it strikes. A melee blade's edge is its own property;
   // a thrown or shot one is the round's `Mono` effect, so a ranged weapon's `mono` flag is
@@ -247,7 +251,7 @@ export function resolveHit({ damage = 0, zone = "Torso", ap = false, mono = fals
     // weapon-side armour-piercing left: a ranged weapon's `ap` selects nothing, because after
     // D169/D173 armour-piercing belongs to the round (`armorMultSoft`/`armorMultHard`, applied
     // above) and a weapon-side half would have been the one AP effect a homebrew flag still got.
-    effSp = Math.floor(numberOr(location.edgedSp, sp) * armorMult);
+    effSp = Math.round(numberOr(location.edgedSp, sp) * armorMult);
   }
 
   let penetrating = Math.max(0, Math.floor(damage) - effSp);
@@ -630,15 +634,21 @@ export async function tickDot(actor, { messageMode, token = null } = {}) {
 
   // Posted even for a turn that dealt nothing: the fire is still burning and the count still fell,
   // and silence reads at the table as the fire having gone out.
-  await createCyberpunkChatMessage({
-    // The token as well as the actor (`T316`): `getSpeaker` fixes `alias` to `actor.name` before it
-    // looks for a token at all (`client/documents/chat-message.mjs:228`, 14.365.0), so this card's
-    // header carried the sheet name over a body that already names the token.
-    speaker: ChatMessage.getSpeaker({ actor, token }),
-    content: localizeParamEscaped("DotTick",
-      { name: displayName(actor, token), damage, turns: dot.turns - 1 }),
-    rolls: roll ? [roll] : []
-  }, { useDefaultRollMode: true, messageMode });
+  //
+  // The system's own roll card, and it has to be one: core throws a message's content away and
+  // renders its own bare dice in its place whenever that content holds no element
+  // (`client/documents/chat-message.mjs:472`, 14.365.0), so the plain sentence this used to post
+  // never reached the log at all. The template escapes the flavor, so the sentence goes in raw.
+  const card = new Multiroll(localize("StatusBurning"),
+    localizeParam("DotTick", { name: displayName(actor, token), damage, turns: dot.turns - 1 }),
+    { messageMode });
+  // Neither threshold means anything on a burning turn — it is not an attack, so a maximum 4d6 is
+  // no critical and a minimum one no fumble. `addRoll` derives both from the die when left out.
+  if (roll) card.addRoll(roll, { name: localize(zone), critThreshold: null, fumbleThreshold: null });
+  // The token as well as the actor (`T316`): `getSpeaker` fixes `alias` to `actor.name` before it
+  // looks for a token at all (`client/documents/chat-message.mjs:228`, 14.365.0), so this card's
+  // header carried the sheet name over a body that already names the token.
+  await card.execute(ChatMessage.getSpeaker({ actor, token }), DefaultRollTemplate);
 
   const turns = Math.floor(dot.turns) - 1;
   if (turns > 0) await actor.setFlag("cyberpunk2020", DOT_FLAG, { ...dot, turns });
@@ -679,6 +689,7 @@ export async function applyHitsToActor(actor,
   let wound = 0;
   let killed = false;
   let ignitionZone = null;
+  let firstStruckZone = null;
 
   // D38 — a hit into a zone that is no longer there still hits; its location is determined among
   // the zones that are. `zoneIsSevered` is the state the target arrived in, and the two running
@@ -719,6 +730,8 @@ export async function applyHitsToActor(actor,
     wound += resolved.final;
     // The first hit that actually got *in* is where a burn catches (D26.2): a burst across five
     // zones whose first hit the armour stopped ignites at the one that wounded, not at that one.
+    // D237 dropped the condition on getting in at all, so a zone merely struck is the fallback.
+    if (firstStruckZone === null) firstStruckZone = zone;
     if (ignitionZone === null && (resolved.final > 0 || resolved.toSdp > 0)) ignitionZone = zone;
     if (resolved.toSdp > 0) sdp[zone] = (sdp[zone] ?? 0) + resolved.toSdp;
     if (resolved.penetrating > 0) penetratedZones[zone] = (penetratedZones[zone] ?? 0) + 1;
@@ -787,11 +800,12 @@ export async function applyHitsToActor(actor,
   // on death rather than starting one, so a corpse neither saves nor catches fire.
   if (actor.statuses.has("dead")) return card;
 
-  // A hit that landed entirely in a cyberlimb ignites too (D26.4): ch. 07:910 conditions ignition
-  // on nothing — *"Anything caught in the sweep between the two points is ignited"* — and a burning
-  // metal arm burns. Only a hit the armour stopped leaves nothing to catch.
-  if (ignitionZone !== null) {
-    await startDot(actor, ammo, ignitionZone);
+  // Ignition is conditioned on nothing but connecting (D237): ch. 07:910 ignites *"Anything caught
+  // in the sweep between the two points"*, and 07:776-778's acid burns on from outside armour that
+  // stopped the pellet whole. A hit that landed entirely in a cyberlimb ignites too (D26.4).
+  const catchZone = ignitionZone ?? firstStruckZone;
+  if (catchZone !== null) {
+    await startDot(actor, ammo, catchZone);
   }
 
   // The mortality state is read once, before either Death Save below, because D57 makes them one
