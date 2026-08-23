@@ -1,0 +1,7 @@
+{{#if buttons.length}}
+<div class="cp-card-actions">
+    {{#each buttons as |button|}}
+    <button type="button" class="{{button.cls}}" data-action="{{button.action}}">{{button.label}}</button>
+    {{/each}}
+</div>
+{{/if}}

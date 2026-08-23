@@ -1,6 +1,7 @@
 import { isCombatAutomationEnabled, ranges } from "./lookups.js";
-import { applyHitsToActor, attackerIsHidden, hiddenMessageMode, requestSave, ATTACK_FLAG_VERSION } from "./damage.js";
-import { createCyberpunkChatMessage } from "./compat.js";
+import { applyHitsToActor, attackerIsHidden, hiddenMessageMode, requestSave, resolveSaves, saveOwner, ATTACK_FLAG_VERSION } from "./damage.js";
+import { createCyberpunkChatMessage, renderCyberpunkTemplate } from "./compat.js";
+import { eventRows as eventRowsOf, hitRows as hitRowsOf, renderAttackCard, rollRecord, updateAttackCard } from "./attack-card.js";
 import { displayName, localize, localizeParam, localizeParamEscaped, rollLocation, isRollableFormula } from "./utils.js";
 
 /**
@@ -685,34 +686,70 @@ async function resolveZoneCrossing(zone, token) {
       ? localizeParamEscaped("ZoneCrossingHidden", { target: token.name })
       : localizeParamEscaped("ZoneCrossing",
         { target: token.name, attacker: displayName(attacker, attackerToken) });
-  await createCyberpunkChatMessage({
+  // §3.6 - the notice **is** the crossing's card: a failed save grows it in place rather than
+  // posting a second message. The whole card is the GM's when the crossing token is hidden, which
+  // is what `hiddenMessageMode` already did for the notice alone.
+  const attack = {
+    version: ATTACK_FLAG_VERSION,
+    kind: "crossing",
+    attackerActorUuid: attacker?.uuid ?? "",
+    ap: !!zone.ap,
+    melee: false,
+    mono: false,
+    ammo: zone.ammo ?? null,
+    card: { notice: content, tally: null },
+    targets: [{
+      name: token.name, tokenId: token.id, tokenUuid: token.uuid, actorUuid: actor.uuid,
+      // Decided before the post because the wait opens at `requestSave` below and the registry
+      // writes nothing onto the flag: a card first rendered without the strip carries no
+      // `StopWaiting` button for the waiting GM to press (§3.6, §7).
+      hits: [], applied: false, result: null, pending: saveOwner(actor) ? "save" : null
+    }],
+    pending: null
+  };
+  const message = await createCyberpunkChatMessage({
     // The crossing token as well as its actor (`T316`): `getSpeaker` sets `alias` from the actor
     // before it looks for a token (`client/documents/chat-message.mjs:228`, 14.365.0), so the header
     // carried the sheet name while the body already named the token.
     speaker: ChatMessage.getSpeaker({ actor, token }),
-    content
+    content: await renderAttackCard(attack),
+    flags: { cyberpunk2020: { attack } }
   }, { messageMode: hiddenMessageMode(token.hidden) });
 
+  const target = attack.targets[0];
   const save = await requestSave(actor, "zone", {
-    dc: zone.saveDC, messageMode: hiddenMessageMode(token.hidden), token, cause: "SaveCauseZone"
+    dc: zone.saveDC, messageMode: hiddenMessageMode(token.hidden), token, cause: "SaveCauseZone",
+    messageId: message.id
   });
-  if (save.success) return;
+  if (save.success) {
+    if (!target.pending) return;
+    target.pending = null;
+    if (game.messages.has(message.id)) await updateAttackCard(message, attack);
+    return;
+  }
 
   const hitsRoll = await new Roll("1d6").evaluate();
   const hits = [];
   for (let i = 0; i < hitsRoll.total; i++) {
     const damageRoll = await new Roll(String(zone.damageFormula)).evaluate();
-    hits.push({
-      zone: (await rollLocation(actor)).areaHit,
-      damage: Math.max(0, Math.floor(damageRoll.total))
-    });
+    const damage = Math.max(0, Math.floor(damageRoll.total));
+    hits.push({ zone: (await rollLocation(actor)).areaHit, damage,
+      roll: rollRecord(damageRoll, damage) });
   }
 
-  await applyHitsToActor(actor, {
-    hits, ap: zone.ap, ammo: zone.ammo, targetName: token.name,
-    token, sceneId: zone.scene?.id ?? "",
-    messageMode: hiddenMessageMode(token.hidden)
+  const { result, saves } = await applyHitsToActor(actor, {
+    hits, ap: zone.ap, ammo: zone.ammo, sceneId: zone.scene?.id ?? ""
   });
+  Object.assign(target, { hits, applied: true, result, pending: saves.length ? "save" : null });
+  attack.card.tally = { hits: hitsRoll.total };
+  if (game.messages.has(message.id)) await updateAttackCard(message, attack);
+
+  if (saves.length) {
+    await resolveSaves(actor, saves,
+      { messageMode: hiddenMessageMode(token.hidden), token, messageId: message.id });
+    target.pending = null;
+    if (game.messages.has(message.id)) await updateAttackCard(message, attack);
+  }
 }
 
 /**
@@ -1082,7 +1119,8 @@ export function blastCoverage(scene, region, blast, point, isShooter = false, is
  * it, and a GM running with the canvas disabled gets the same answer.
  *
  * @param {object} blast The card's blast payload
- * @returns {Array<{name: string, tokenUuid: string, actorUuid: string, distance: number, multiplier: number}>}
+ * @returns {Array<{name: string, tokenId: string, tokenUuid: string, actorUuid: string,
+ *   distance: number, multiplier: number}>}
  */
 export function tokensInBlast(blast) {
   const scene = zoneScene(blast);
@@ -1108,6 +1146,7 @@ export function tokensInBlast(blast) {
 
     caught.push({
       name: token.name,
+      tokenId: token.id,
       tokenUuid: token.uuid,
       actorUuid: token.actor?.uuid ?? "",
       distance,
@@ -1569,7 +1608,9 @@ export async function drawZone(blast, kind, messageId) {
  */
 export function zoneRegions(message) {
   const attack = message?.flags?.cyberpunk2020?.attack;
-  const scene = zoneScene(attack?.blast ?? attack?.zone);
+  // Two shapes, and both are current: a zone card carries a geometry per pattern, the suppression
+  // card one fire zone of its own.
+  const scene = zoneScene(attack?.patterns?.find(pattern => pattern.blast)?.blast ?? attack?.zone);
   if (!scene) return [];
 
   return scene.regions.filter(region =>
@@ -1730,58 +1771,96 @@ export async function zoneHitLocations(blast, overallBody) {
 }
 
 /**
- * Apply a blast or a shotgun pattern over everyone standing in it.
+ * Apply every pattern of one zone card over everyone standing in it, and update the card.
  *
  * Occupancy is read **now**, not at roll time: a token that walked into the crater between the roll
- * and the click is in it. Each target takes the zone's own rolled damage scaled by the ring it is
- * standing in, on a location of its own.
+ * and the click is in it. Each victim takes the zone's own rolled damage scaled by the ring it
+ * stands in, on a location of its own - and a token under two patterns takes both hits in **one**
+ * resolution (D255), which is what makes it one Stun Save for the burst.
  *
  * @param {ChatMessage} message
- * @returns {Promise<ChatMessage[]|null>} the breakdown cards, or null when nothing was applied
+ * @returns {Promise<ChatMessage|null>} the card, or null when nothing was applied
  */
 export async function applyBlastFromMessage(message) {
   // Same reason as `applyAttackFromMessage`: a card written before the flip keeps a valid payload.
   if (!isCombatAutomationEnabled()) return null;
 
-  const attack = message?.flags?.cyberpunk2020?.attack;
+  const attack = foundry.utils.deepClone(message?.flags?.cyberpunk2020?.attack);
   if (attack?.version !== ATTACK_FLAG_VERSION) return null;
-  if (!attack.blast || attack.applied?.zone) return null;
+  if (attack.applied) return null;
 
+  if (!Array.isArray(attack.patterns)) return null;
+  const placed = attack.patterns.filter(pattern => pattern.blast);
+  if (!placed.length) return null;
   // The payload's coordinates are pixels on one scene and mean nothing without it.
-  if (!zoneScene(attack.blast)) {
+  if (!placed.every(pattern => zoneScene(pattern.blast))) {
     ui.notifications.warn(localize("ZoneSceneGone"));
     return null;
   }
 
-  // `T96`/D52 — the round decides, not the card's kind: a shotgun pattern is located pellets, and a
+  // `T96`/D52 - the round decides, not the card's kind: a shotgun pattern is located pellets, and a
   // grenade is location-silent in the book (`07:839`), so only a charge authored as an explosive
   // resolves against the body as a whole.
   const overallBody = !!attack.ammo?.overallBody;
 
   // Read **now**, not off the card: the list printed at fire time is a picture of the shot, and
-  // D243 keeps this the authoritative one — a target that walked into the crater since is in it.
-  const caught = await zoneHitLocations(attack.blast, overallBody);
-  if (!caught.length) {
+  // D243 keeps this the authoritative one.
+  const victims = new Map();
+  for (const pattern of placed) {
+    for (const entry of await zoneHitLocations(pattern.blast, overallBody)) {
+      if (!entry.actor) continue;
+      const damage = blastDamageFor(pattern.blast.damage, entry.multiplier);
+      if (damage <= 0) continue;
+      if (!victims.has(entry.tokenUuid)) victims.set(entry.tokenUuid, { entry, hits: [] });
+      victims.get(entry.tokenUuid).hits.push({ zone: entry.zone, damage, pattern: pattern.index,
+        roll: pattern.damageRoll });
+    }
+  }
+  if (!victims.size) {
     ui.notifications.warn(localize("BlastNoTargets"));
     return null;
   }
 
-  await message.update({ "flags.cyberpunk2020.attack.applied.zone": true });
+  // Marked before anything is written, as the direct family's targets are: a second click, or a
+  // second GM, finds the card already spent.
+  attack.applied = true;
+  await message.update({ "flags.cyberpunk2020.attack.applied": true });
 
-  const cards = [];
-  for (const entry of caught) {
-    if (!entry.actor) continue;
-
-    const damage = blastDamageFor(attack.blast.damage, entry.multiplier);
-    if (damage <= 0) continue;
-
-    cards.push(await applyHitsToActor(entry.actor, {
-      hits: [{ zone: entry.zone, damage }], ap: attack.ap, ammo: attack.ammo, targetName: entry.name,
-      token: entry.tokenDoc, sceneId: String(attack.blast.sceneId ?? ""),
-      messageMode: hiddenMessageMode(entry.hidden),
-      overallBody
-    }));
+  const visible = [];
+  const hidden = [];
+  const pendingSaves = [];
+  for (const { entry, hits } of victims.values()) {
+    const { result, saves } = await applyHitsToActor(entry.actor, {
+      hits, ap: attack.ap, ammo: attack.ammo, overallBody,
+      sceneId: String(placed[0].blast.sceneId ?? "")
+    });
+    const target = { name: entry.name, tokenId: entry.tokenDoc?.id ?? "", tokenUuid: entry.tokenUuid,
+      actorUuid: entry.actor.uuid, shares: [], hits, applied: true, result,
+      pending: saves.length && !entry.hidden ? "save" : null };
+    (entry.hidden ? hidden : visible).push(target);
+    pendingSaves.push({ target, entry, saves });
   }
 
-  return cards;
+  attack.targets = visible;
+  await updateAttackCard(message, attack);
+  if (hidden.length) await whisperHiddenVictims(hidden, message);
+
+  for (const { target, entry, saves } of pendingSaves) {
+    if (!saves.length) continue;
+    await resolveSaves(entry.actor, saves,
+      { messageMode: hiddenMessageMode(entry.hidden), token: entry.tokenDoc, messageId: message.id });
+    if (!target.pending) continue;
+    target.pending = null;
+    if (game.messages.has(message.id)) await updateAttackCard(message, attack);
+  }
+  return message;
+}
+
+/** D257 - a hidden victim's result reaches the GMs alone, in one whisper for the whole attack. */
+async function whisperHiddenVictims(targets, message) {
+  const content = await renderCyberpunkTemplate(
+    "systems/cyberpunk2020/templates/chat/hidden-victims.hbs",
+    { targets: targets.map(target => ({ name: target.name, rows: hitRowsOf(target),
+      events: eventRowsOf(target) })) });
+  return createCyberpunkChatMessage({ content, speaker: message.speaker }, { messageMode: "gm" });
 }

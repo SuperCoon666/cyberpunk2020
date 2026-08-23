@@ -26,9 +26,14 @@ export const preloadHandlebarsTemplates = async function() {
 
         // Roll templates
         "systems/cyberpunk2020/templates/chat/default-roll.hbs",
-        "systems/cyberpunk2020/templates/chat/multi-hit.hbs",
-        "systems/cyberpunk2020/templates/chat/damage-applied.hbs",
-        "systems/cyberpunk2020/templates/chat/blast.hbs",
+        "systems/cyberpunk2020/templates/chat/attack.hbs",
+        "systems/cyberpunk2020/templates/chat/zone.hbs",
+        "systems/cyberpunk2020/templates/chat/crossing.hbs",
+        "systems/cyberpunk2020/templates/chat/hidden-victims.hbs",
+        "systems/cyberpunk2020/templates/chat/parts/dice-bar.hbs",
+        "systems/cyberpunk2020/templates/chat/parts/hit-rows.hbs",
+        "systems/cyberpunk2020/templates/chat/parts/events.hbs",
+        "systems/cyberpunk2020/templates/chat/parts/actions.hbs",
 
         // Item sheet
         "systems/cyberpunk2020/templates/item/item-sheet.hbs",

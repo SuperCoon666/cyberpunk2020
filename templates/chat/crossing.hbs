@@ -1,0 +1,12 @@
+<div class="cyberpunk cyberpunk-card cp-attack-card flexcol">
+    <p class="cp-notice">{{{notice}}}</p>
+    {{#if tally}}<p class="cp-tally">{{tally}}</p>{{/if}}
+
+    {{#each targets as |t|}}
+        {{#if t.rows.length}}
+        <div class="cp-section"><span>{{CPLocal "Damage"}}</span><span class="cp-state cp-state-on">{{CPLocal "DamageApplied"}}</span></div>
+        {{> "systems/cyberpunk2020/templates/chat/parts/hit-rows.hbs" rows=t.rows}}
+        {{/if}}
+        {{> "systems/cyberpunk2020/templates/chat/parts/events.hbs" events=t.events pending=t.pendingSave}}
+    {{/each}}
+</div>

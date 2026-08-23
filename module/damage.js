@@ -1,4 +1,5 @@
-import { createCyberpunkChatMessage, evaluateCyberpunkRoll, renderCyberpunkTemplate } from "./compat.js";
+import { evaluateCyberpunkRoll } from "./compat.js";
+import { damageChain, updateAttackCard, waitForAnswer } from "./attack-card.js";
 import { displayName, localize, localizeParam, rollLocation, isRollableFormula } from "./utils.js";
 import { CyberpunkActor } from "./actor/actor.js";
 import { ATHLETICS_SKILL_ID, isCombatAutomationEnabled } from "./lookups.js";
@@ -40,8 +41,34 @@ import { DefaultRollTemplate, Multiroll } from "./dice.js";
  * 16: the blast payload carries `rolled`, the hit location each caught token was given when the
  *     card was written (D243), and the ammunition snapshot carries `spreadDistance` — the round's
  *     own reach, which had no reader at all until D241 and so was never snapshotted (`T56`).
+ * 17: the card is rendered from the flag (D252): `card` carries what the renderer needs, each
+ *     target carries its own `hits` with their roll records, `applied`, `result` and `pending`;
+ *     `applied` as a map and the per-token apply are gone. A card written before this has no
+ *     `targets[].hits` and is ignored, as every bump before it was. A zone card's `patterns[]`
+ *     also carry `radius` and `fullDamageWithin` (D260): the renderer reads them so the geometry
+ *     prints whether or not the shape reached the map, and the apply path reads neither, so the
+ *     number stays 17 and an older card simply prints no radius row rather than a wrong one.
+ *     The fields of 17 by their reader, because "what the renderer needs" is not a contract:
+ *     **the renderer alone** reads `card.title` and the `card.titleText` a martial swing sends in
+ *     its place, `card.weaponName`, `card.rangeKey`/`rangeValue`, `card.dc`, `card.attackRoll`,
+ *     `card.defense`, `card.tally`, `card.fumble`, `card.uncovered`, `card.roundsLabel`/
+ *     `roundsLine`, `card.patternsLine`, a crossing's `card.notice`,
+ *     `targets[].attack` (`{roll, dc}`) and `targets[].tally`, which are what let one card carry a
+ *     roll and a tally per target, `targets[].fumble`, and the zone family's `targets[].shares`
+ *     (`{pattern, zone, damage, printed}`), `rings[]`, `placed` and `patterns[]` in place of the
+ *     single `blast` (each pattern with its own geometry, rolls, band, width, scatter, `walked`,
+ *     `fellShort`/`reach` and `fumble`).
+ *     **Both sides** touch `targets[].hits[].roll`, a `rollRecord` frozen at fire time so the chip
+ *     and its tooltip never re-roll, and `targets[].result` (`lines[]` carrying each hit's `final`
+ *     and its `chain`, plus `events[]`), which the apply path writes and the renderer prints.
+ *     **The waits own** `pending`: `"defense"` on the card while a melee swing waits for its
+ *     contest, which is also why such a card is stored with `hits: []`, and `"save"` on a target
+ *     while its owner's prompt is open. The renderer prints the strip, the `updateChatMessage`
+ *     hook gates the auto-apply on `pending` appearing in the diff, and the registry itself is
+ *     keyed by the message id and writes nothing onto the flag. A suppression card's
+ *     `applied.laid` predates all of this and is unchanged.
  */
-export const ATTACK_FLAG_VERSION = 16;
+export const ATTACK_FLAG_VERSION = 17;
 
 /** The flag a damage-over-time effect burns down from, one tick per turn. */
 export const DOT_FLAG = "dot";
@@ -94,13 +121,6 @@ export function attackerIsHidden(actor) {
   const tokens = actor?.getActiveTokens?.(false, true) ?? [];
   return tokens.length > 0 && tokens.every(token => token.hidden);
 }
-
-/**
- * The querying side gives up at 30 s, so the owner's dialog closes at 25 and rolls itself: the
- * answer has to be sent before the deadline, not on it.
- */
-const SAVE_QUERY_TIMEOUT_MS = 30000;
-export const SAVE_PROMPT_DEADLINE_MS = 25000;
 
 function numberOr(value, fallback) {
   const n = Number(value);
@@ -217,8 +237,8 @@ export function snapshotAmmo(item) {
  * @param {object} [options]
  * @param {number} [options.severanceThreshold] 0 disables the severance rule
  * @param {boolean} [options.doubleHead] Ch. 07's head rule. Off for damage that is not an attack
- * @returns {{sp: number, effSp: number, penetrating: number, headDoubled: boolean, btm: number,
- *            final: number, toSdp: number, severed: boolean}}
+ * @returns {{sp: number, effSp: number, penetrating: number, divisor: number, headDoubled: boolean,
+ *            btm: number, final: number, toSdp: number, severed: boolean}}
  */
 export function resolveHit({ damage = 0, zone = "Torso", ap = false, mono = false, melee = false,
   ammo = null }, targetActor, { severanceThreshold = 0, doubleHead = true } = {}) {
@@ -277,7 +297,8 @@ export function resolveHit({ damage = 0, zone = "Torso", ap = false, mono = fals
   // so it is the only one skipped. The floor at 0 catches a negative divisor, which is arithmetic
   // rather than a rule and must not reach the card as a negative wound.
   const penDivisor = numberOr(ammo?.penDamageDivisor, 1);
-  if (!monoEdge && penDivides && penDivisor !== 0) {
+  const divided = !monoEdge && penDivides && penDivisor !== 0;
+  if (divided) {
     penetrating = Math.max(0, Math.floor(penetrating / penDivisor));
   }
 
@@ -297,6 +318,9 @@ export function resolveHit({ damage = 0, zone = "Torso", ap = false, mono = fals
     sp,
     effSp,
     penetrating,
+    // The chain on the card walks the same steps this function took (D254); this is the one it
+    // cannot re-derive from the other fields.
+    divisor: divided ? penDivisor : 1,
     headDoubled,
     btm,
     final,
@@ -410,6 +434,19 @@ export function rollSaveOf(actor, kind, dc, mod = 0, messageMode = undefined, to
 }
 
 /**
+ * The player who is asked to roll a save: an active owner of a character, under `pcSaveMode:
+ * manual`. An NPC is never asked, so its saves roll on the client resolving the hit.
+ *
+ * @param {CyberpunkActor} actor
+ * @returns {User|null}
+ */
+export function saveOwner(actor) {
+  if (game.settings.get("cyberpunk2020", "pcSaveMode") !== "manual") return null;
+  if (actor.type === "npc") return null;
+  return game.users.players.find(u => u.active && actor.testUserPermission(u, "OWNER")) ?? null;
+}
+
+/**
  * Roll one save for the target. The GM's own client rolls unless the world asks a player
  * character's owner to roll their own, in which case the owner is queried.
  *
@@ -421,27 +458,24 @@ export function rollSaveOf(actor, kind, dc, mod = 0, messageMode = undefined, to
  * @param {TokenDocument} [options.token] The token the save is about — the prompt names it (D133)
  * @param {string} [options.cause] Localization key suffix for what forced the save, printed on the
  *   prompt (`T411`). A key rather than a sentence: it is localized on the client that reads it.
+ * @param {string} [options.messageId] The card the save belongs to, and the key its wait is held
+ *   under
  * @returns {Promise<{total: number, threshold: number, success: boolean}>}
  */
-export async function requestSave(actor, kind, { dc = null, messageMode, token = null, cause = "" } = {}) {
-  const manual = game.settings.get("cyberpunk2020", "pcSaveMode") === "manual" && actor.type !== "npc";
-  const owner = manual
-    ? game.users.players.find(u => u.active && actor.testUserPermission(u, "OWNER"))
-    : null;
+export async function requestSave(actor, kind, { dc = null, messageMode, token = null, cause = "",
+  messageId = "" } = {}) {
+  const owner = saveOwner(actor);
   if (!owner) return rollSaveOf(actor, kind, dc, 0, messageMode, token);
 
-  try {
-    return await owner.query(
-      "cyberpunk2020.savePrompt",
-      // The token rides beside the actor: the prompt renders on the owner's client, which cannot
-      // tell which of a linked actor's placed tokens is being shot at (`T296`).
-      { actorUuid: actor.uuid, tokenUuid: token?.uuid ?? "", kind, dc, messageMode, cause },
-      { timeout: SAVE_QUERY_TIMEOUT_MS }
-    );
-  } catch (err) {
-    // The owner disconnected or the query outlived its deadline; the save still has to happen.
-    return rollSaveOf(actor, kind, dc, 0, messageMode, token);
-  }
+  // A turn-start save has no card, so no stop button and nothing to key the wait by; "" would be
+  // one shared key for every such save, and the actor is the only other thing identifying it.
+  const answer = await waitForAnswer(messageId || actor.uuid, owner, "cyberpunk2020.savePrompt",
+    // The token rides beside the actor: the prompt renders on the owner's client, which cannot
+    // tell which of a linked actor's placed tokens is being shot at (`T296`).
+    { actorUuid: actor.uuid, tokenUuid: token?.uuid ?? "", kind, dc, messageMode, cause });
+  // Ended from outside (the owner disconnected, or somebody stopped waiting): the save still has
+  // to happen, and it happens here.
+  return answer ?? rollSaveOf(actor, kind, dc, 0, messageMode, token);
 }
 
 /**
@@ -660,10 +694,11 @@ export async function tickDot(actor, { messageMode, token = null } = {}) {
 }
 
 /**
- * Resolve a set of hits against one actor, write the result and post the breakdown.
+ * Resolve a set of hits against one actor, write the result and return it.
  *
  * The single place damage lands on anybody, whichever card sent it: one target off an attack card,
- * or one of everybody a blast caught. Runs on a GM client only.
+ * or one of everybody a blast caught. Runs on a GM client only. It posts nothing: the caller owns
+ * the message the result is rendered onto (D252), and asks for the saves through `resolveSaves`.
  *
  * @param {CyberpunkActor} actor
  * @param {object} attack
@@ -672,18 +707,16 @@ export async function tickDot(actor, { messageMode, token = null } = {}) {
  * @param {boolean} [attack.melee] The hits came from a melee weapon (`T94`)
  * @param {boolean} [attack.mono] The striking weapon's own mono edge, read only with `melee` (D174)
  * @param {object|null} attack.ammo
- * @param {string} attack.targetName
- * @param {string} [attack.messageMode] Visibility of the breakdown and of the saves behind it
  * @param {boolean} [attack.overallBody] An area effect that damages the body rather than a location
  *   (`07:960`/`:966`): every hit resolves at the Torso, so head doubling, severance and cyberlimb
  *   absorption are all out of reach and a burn it starts catches there too
- * @param {TokenDocument} [attack.token] The token that was hit — the save prompts name it (`T296`)
  * @param {string} [attack.sceneId] The scene the hit happened on, for the shock ladder's fallback
- * @returns {Promise<ChatMessage>} the breakdown card
+ * @returns {Promise<{result: {lines: object[], events: object[]}, saves: object[]}>} what the card
+ *   prints, and the saves this application asks for in the order they are due
  */
 export async function applyHitsToActor(actor,
-  { hits = [], ap = false, mono = false, melee = false, ammo = null, targetName = "", messageMode,
-    overallBody = false, token = null, sceneId = "" } = {}) {
+  { hits = [], ap = false, mono = false, melee = false, ammo = null,
+    overallBody = false, sceneId = "" } = {}) {
   const severanceThreshold = game.settings.get("cyberpunk2020", "severanceThreshold");
 
   const lines = [];
@@ -742,12 +775,12 @@ export async function applyHitsToActor(actor,
     if (resolved.severed) {
       if (zone === "Head") killed = true;
       else {
-        severedLimbs.push({ zone: localize(zone) });
+        severedLimbs.push({ zone });
         severedThisAttack.add(zone);
       }
     }
-    // The card names the rule, not the location it was resolved at: "Torso" would read as a rolled
-    // location and is exactly what an overall-body hit did not do.
+    // "OverallBody" rather than "Torso": the applied card labels each row by this zone, and "Torso"
+    // there would read as a rolled location, which is exactly what an overall-body hit did not do.
     lines.push({ ...resolved, zone: overallBody ? "OverallBody" : zone, damage: hit.damage });
   }
 
@@ -759,19 +792,9 @@ export async function applyHitsToActor(actor,
 
   if (game.settings.get("cyberpunk2020", "armorAblation")) await ablateArmor(actor, penetratedZones);
 
-  const limbs = Object.keys(sdp).map(zone => {
-    const current = numberOr(actor.system.sdp?.current?.[zone], 0);
-    return {
-      zone,
-      current,
-      destroyed: current <= 0,
-      useless: current > 0 && current <= LIMB_USELESS_AT_OR_BELOW
-    };
-  });
-
   // `T218`/D52 — an electroshock round asks for its Stun Save on the hit itself, at the round's own
-  // number, whether or not anything reached the wound track. Armed before the card so the ladder's
-  // state is printed rather than only felt; the roll itself is below, with the other saves.
+  // number, whether or not anything reached the wound track. Armed before the events so the ladder's
+  // state is printed rather than only felt; the roll itself is `resolveSaves`'.
   //
   // D62 — but a bullet has to get in first: only a round whose charge reaches through armour asks
   // on a hit the armour stopped. `penetratedZones` is damage past SP, which is the intended reading
@@ -780,29 +803,28 @@ export async function applyHitsToActor(actor,
     && (ammo.stunIgnoresArmor || Object.keys(penetratedZones).length > 0);
   const shock = asksForShock ? await armShockSave(actor, ammo, hits.length, sceneId) : null;
 
-  const content = await renderCyberpunkTemplate(
-    "systems/cyberpunk2020/templates/chat/damage-applied.hbs",
-    { targetName, lines, wound, limbs, severedLimbs, killed, shock,
-      totalDamage: actor.system.damage }
-  );
+  const events = [];
+  for (const zone of Object.keys(sdp)) {
+    const current = numberOr(actor.system.sdp?.current?.[zone], 0);
+    if (current <= 0) events.push({ key: "limbDestroyed", zone });
+    else if (current <= LIMB_USELESS_AT_OR_BELOW) events.push({ key: "limbUseless", zone });
+  }
+  if (shock) events.push({ key: "shock", threshold: shock.threshold, shot: shock.shot });
+  for (const limb of severedLimbs) events.push({ key: "severed", zone: limb.zone });
+  if (killed) events.push({ key: "death" });
 
-  const card = await createCyberpunkChatMessage({
-    // The token as well as the actor (`T316`) — `targetName` in the body is already the token's, and
-    // the header printed the sheet's beside it.
-    speaker: ChatMessage.getSpeaker({ actor, token }),
-    content
-  }, { useDefaultRollMode: true, messageMode });
+  const result = { lines: lines.map(line => ({ ...line, chain: damageChain(line) })), events };
 
   if (killed) {
     await endDot(actor);
     await actor.toggleStatusEffect("dead", { active: true, overlay: true });
-    return card;
+    return { result, saves: [] };
   }
 
   // A body that has already failed its Death Save takes the damage and is asked for nothing more:
   // `_onStartTurn` returns on the same status (`combat.js:162`), and the branch above ends a burn
   // on death rather than starting one, so a corpse neither saves nor catches fire.
-  if (actor.statuses.has("dead")) return card;
+  if (actor.statuses.has("dead")) return { result, saves: [] };
 
   // Ignition is conditioned on nothing but connecting (D237): ch. 07:910 ignites *"Anything caught
   // in the sweep between the two points"*, and 07:776-778's acid burns on from outside armour that
@@ -816,6 +838,7 @@ export async function applyHitsToActor(actor,
   // roll rather than two: a hit that both severs a limb and drives the victim to Mortal asks for a
   // single save, and each branch needs to know whether the other has a claim on it (`T231`).
   const atMortal = wound > 0 && actor.woundState() >= MORTAL_WOUND_STATE;
+  const saves = [];
 
   // Ch. 07:530 — a severed limb means *"an immediate Death Save at Mortal 0"*: the Save number with
   // no mortality penalty, i.e. BT itself (`07:435`) — not the victim's own current, harsher
@@ -823,85 +846,109 @@ export async function applyHitsToActor(actor,
   // same hit also reached Mortal the roll is at the victim's own post-hit mortality instead, the
   // stricter of the two, and it is the only one asked.
   if (severedLimbs.length) {
-    const death = await requestSave(actor, "death",
-      { dc: atMortal ? null : actor.system.stats.bt.total, messageMode, token,
-        cause: "SaveCauseSevered" });
-    if (!death.success) {
-      await endDot(actor);
-      await actor.toggleStatusEffect("dead", { active: true, overlay: true });
-    }
+    saves.push({ kind: "death", dc: atMortal ? null : actor.system.stats.bt.total,
+      cause: "SaveCauseSevered", onFail: "dead" });
   }
 
   // One save for the whole attack, and — for the wound path — none at all when every hit went into
   // a cyberlimb: ch. 06, "no saving roll against shock and stun". An electroshock round is asked
   // for regardless, at its own threshold: RAW conditions that save on being hit, not on wounding.
   if (wound > 0 || shock) {
-    const stun = await requestSave(actor, "stun",
-      { dc: shock?.threshold ?? null, messageMode, token,
-        cause: shock ? "SaveCauseShock" : "SaveCauseWound" });
-    if (!stun.success) await actor.toggleStatusEffect("cpStunned", { active: true });
+    saves.push({ kind: "stun", dc: shock?.threshold ?? null,
+      cause: shock ? "SaveCauseShock" : "SaveCauseWound", onFail: "stunned" });
   }
 
   // The mortality check reads a state rather than a delta, so it stays under the wound: an
   // electroshock hit that changed nothing must not ask a Mortal character to die again. D57 — and
   // a severing hit has already asked, at this same threshold, so it is not asked twice.
   if (atMortal && !severedLimbs.length) {
-    const death = await requestSave(actor, "death",
-      { messageMode, token, cause: "SaveCauseMortal" });
-    if (!death.success) {
-      await endDot(actor);
-      await actor.toggleStatusEffect("dead", { active: true, overlay: true });
-    }
+    saves.push({ kind: "death", dc: null, cause: "SaveCauseMortal", onFail: "dead" });
   }
 
-  return card;
+  return { result, saves };
 }
 
 /**
- * Apply every hit an attack card recorded against one of its targets, then post the breakdown.
+ * Roll the saves an application asked for, in the order `applyHitsToActor` listed them, and apply
+ * each one's consequence. Separate from the application so the card can show the wait between them.
+ *
+ * @param {CyberpunkActor} actor
+ * @param {Array<{kind: string, dc: number|null, cause: string, onFail: string}>} saves
+ * @param {object} [options]
+ * @param {string} [options.messageMode] Visibility of the save cards, for a hidden token
+ * @param {TokenDocument} [options.token]
+ * @param {string} [options.messageId] The card the save belongs to
+ * @returns {Promise<void>}
+ */
+export async function resolveSaves(actor, saves, { messageMode, token = null, messageId = "" } = {}) {
+  for (const ask of saves) {
+    const outcome = await requestSave(actor, ask.kind,
+      { dc: ask.dc, messageMode, token, cause: ask.cause, messageId });
+    if (outcome.success) continue;
+    if (ask.onFail === "dead") {
+      await endDot(actor);
+      await actor.toggleStatusEffect("dead", { active: true, overlay: true });
+    } else {
+      await actor.toggleStatusEffect("cpStunned", { active: true });
+    }
+  }
+}
+
+/**
+ * Apply every hit an attack card recorded, against every target it names, and update the card.
  *
  * Runs on a GM client only — either the click, or the active GM under the auto setting. The flags
  * are user-authored data, so their shape is validated rather than trusted.
  *
  * @param {ChatMessage} message
- * @param {object} options
- * @param {string} options.tokenId Which of the card's targets to apply to
- * @returns {Promise<ChatMessage|null>} the breakdown card, or null when nothing was applied
+ * @returns {Promise<ChatMessage|null>} the card, or null when nothing was due
  */
-export async function applyAttackFromMessage(message, { tokenId } = {}) {
+export async function applyAttackFromMessage(message) {
   // Not defence in depth: a card written while automation was on keeps a valid payload after the
   // flip, so its button is what this refuses.
   if (!isCombatAutomationEnabled()) return null;
 
-  const attack = message?.flags?.cyberpunk2020?.attack;
-  if (attack?.version !== ATTACK_FLAG_VERSION) return null;
-  if (attack.applied?.[tokenId]) return null;
+  const attack = foundry.utils.deepClone(message?.flags?.cyberpunk2020?.attack);
+  if (attack?.version !== ATTACK_FLAG_VERSION || attack.kind !== "attack") return null;
+  if (!Array.isArray(attack.targets)) return null;
+  const due = attack.targets.filter(t => !t.applied && Array.isArray(t.hits) && t.hits.length);
+  if (!due.length) return null;
 
-  const target = attack.targets?.find(t => t.tokenId === tokenId);
-  if (!target) {
-    ui.notifications.warn(localize("NoTargetForApply"));
-    return null;
+  // Marked before anything is written, as the per-token flag was: a second click, or a second GM,
+  // finds nothing due. The content is left as it is until the results exist.
+  for (const target of due) target.applied = true;
+  await message.update({ "flags.cyberpunk2020.attack.targets": attack.targets });
+
+  const applied = [];
+  for (const target of due) {
+    const tokenDoc = await fromUuid(target.tokenUuid);
+    // An unlinked token owns its own delta actor; writing to the base actor would wound every copy.
+    const actor = tokenDoc?.actor ?? await fromUuid(target.actorUuid);
+    if (!actor) {
+      ui.notifications.warn(localize("NoTargetForApply"));
+      continue;
+    }
+    const { result, saves } = await applyHitsToActor(actor, {
+      hits: target.hits, ap: attack.ap, mono: attack.mono, melee: attack.melee, ammo: attack.ammo,
+      // The card's own scene. `speaker.scene` is empty on an attack card (`Multiroll.execute`
+      // posts it with no speaker at all), so the target token the payload names is what carries it
+      // there; both are the card's own record, and neither is the applying client's canvas (D144).
+      sceneId: message.speaker?.scene || tokenDoc?.parent?.id || ""
+    });
+    target.result = result;
+    target.pending = saves.length ? "save" : null;
+    applied.push({ target, actor, tokenDoc, saves });
   }
+  await updateAttackCard(message, attack);
 
-  const tokenDoc = await fromUuid(target.tokenUuid);
-  // An unlinked token owns its own delta actor; writing to the base actor would wound every copy.
-  const actor = tokenDoc?.actor ?? await fromUuid(target.actorUuid);
-  if (!actor) {
-    ui.notifications.warn(localize("NoTargetForApply"));
-    return null;
+  for (const { target, actor, tokenDoc, saves } of applied) {
+    if (!saves.length) continue;
+    await resolveSaves(actor, saves,
+      { messageMode: hiddenMessageMode(tokenDoc?.hidden), token: tokenDoc, messageId: message.id });
+    target.pending = null;
+    // A save has no clock, so a GM can delete the card while one is open. Writing to a deleted
+    // message throws, and that would abandon the saves the remaining targets still owe.
+    if (game.messages.has(message.id)) await updateAttackCard(message, attack);
   }
-
-  // Keyed by token id rather than uuid: a uuid carries dots, and a dotted key in an update is
-  // expanded into nested objects instead of being stored whole.
-  await message.update({ [`flags.cyberpunk2020.attack.applied.${tokenId}`]: true });
-
-  return applyHitsToActor(actor, {
-    hits: attack.hits ?? [], ap: attack.ap, mono: attack.mono, melee: attack.melee,
-    ammo: attack.ammo, targetName: target.name, token: tokenDoc,
-    // The card's own scene. `speaker.scene` is empty on an attack card — `Multiroll.execute` posts
-    // it with no speaker at all — so the target token the payload names is what carries it there;
-    // both are the card's own record, and neither is the applying client's canvas (D144).
-    sceneId: message.speaker?.scene || tokenDoc?.parent?.id || "",
-    messageMode: hiddenMessageMode(tokenDoc?.hidden)
-  });
+  return message;
 }

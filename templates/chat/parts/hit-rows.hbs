@@ -1,0 +1,11 @@
+{{#each rows as |row|}}
+<div class="cp-zone">
+    <span class="cp-zone-name">{{row.zone}}</span>
+    <span class="cp-chips">
+        {{#each row.chips as |chip|}}
+        <a class="inline-roll inline-result cp-inline-roll cp-chip cp-chip-{{chip.state}}"
+           data-roll="{{chip.roll}}"{{#if chip.chain}} data-chain="{{chip.chain}}"{{/if}}>{{chip.value}}</a>
+        {{/each}}
+    </span>
+</div>
+{{/each}}

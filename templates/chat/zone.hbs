@@ -1,0 +1,48 @@
+<div class="cyberpunk cyberpunk-card cp-attack-card flexcol">
+    <h2>{{title}}</h2>
+    {{#if weaponName}}<p class="cp-weapon">{{weaponName}}</p>{{/if}}
+
+    {{#if hasKv}}
+    <dl class="cp-kv">
+        {{#if patternsLine}}<dt>{{CPLocal "PatternsLabel"}}</dt><dd>{{patternsLine}}</dd>{{/if}}
+        {{#if radiusLine}}<dt>{{CPLocal "BlastRadius"}}</dt><dd>{{radiusLine}}</dd>{{/if}}
+    </dl>
+    {{/if}}
+
+    {{!-- One bar and one row per pattern, in placement order: the number carries information,
+          because "1 m from the previous pattern" only reads in sequence (D3.4). --}}
+    {{#each patterns as |p|}}
+        {{#if p.attackBar}}{{> "systems/cyberpunk2020/templates/chat/parts/dice-bar.hbs" p.attackBar}}{{/if}}
+        <div class="cp-zone">
+            <span class="cp-zone-name">{{p.bandLine}}</span>
+            <span class="cp-chips"><a class="inline-roll inline-result cp-inline-roll cp-chip cp-chip-rolled" data-roll="{{p.roll}}">{{p.damage}}</a></span>
+        </div>
+        {{#if p.scatterText}}<p class="cp-note">{{p.scatterText}}</p>{{/if}}
+        {{#if p.fellShortText}}<p class="cp-note">{{p.fellShortText}}</p>{{/if}}
+        {{#if p.walkedText}}<p class="cp-note">{{p.walkedText}}</p>{{/if}}
+        {{#if p.fumble}}<hr/><div class="fumble-block"><h3>{{p.fumble.title}}</h3>{{{p.fumble.html}}}</div>{{/if}}
+    {{/each}}
+
+    {{#if rings.length}}
+    <div class="cp-tally">{{CPLocal "BlastFalloff"}}: {{#each rings as |ring|}}{{ring}}{{#unless @last}} · {{/unless}}{{/each}}</div>
+    {{/if}}
+
+    {{#if targets.length}}
+    <div class="cp-section"><span>{{CPLocal "ZoneTargets"}}</span>{{#if applied}}<span class="cp-state cp-state-on">{{CPLocal "DamageApplied"}}</span>{{/if}}</div>
+    {{#each targets as |t|}}
+        <p class="cp-target-name">{{t.name}}</p>
+        <div class="cp-target">
+        {{> "systems/cyberpunk2020/templates/chat/parts/hit-rows.hbs" rows=t.rows}}
+        {{> "systems/cyberpunk2020/templates/chat/parts/events.hbs" events=t.events pending=t.pendingSave}}
+        </div>
+    {{/each}}
+    {{/if}}
+
+    {{!-- D10.1: the zone the shooter could not place is a state on the damage section, not a
+          paragraph telling the GM what to do about it. --}}
+    {{#if noCanvas}}
+    <div class="cp-section"><span>{{CPLocal "Damage"}}</span><span class="cp-state">{{CPLocal "ZoneNoCanvas"}}</span></div>
+    {{/if}}
+
+    {{> "systems/cyberpunk2020/templates/chat/parts/actions.hbs" buttons=buttons}}
+</div>

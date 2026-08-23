@@ -1,9 +1,10 @@
 import { weaponTypes, rangedAttackTypes, meleeAttackTypes, fireModes, ranges, rangeBandFor, rangeDCs, rangeResolve, effectiveRange, strengthDamageBonus, getMartialActionBonus, martialActions, isCombatAutomationEnabled, isFnff2Enabled, getFnff2DamageBonusSymbol, unarmedManeuverFormula, JUMP_KICK_TO_HIT, UNARMED_STRIKE_ID } from "../lookups.js"
 import { Multiroll, makeD10Roll } from "../dice.js"
 import { displayName, localize, localizeParam, localizeParamEscaped, rollLocation, cwHasType, cwIsEnabled, isFumbleRoll, buildRangedCombatFumbleData, buildSkillFumbleData, clamp, isRollableFormula } from "../utils.js";
-import { createCyberpunkChatMessage, createCyberpunkRollCard, getGMUserIds, renderCyberpunkTemplate } from "../compat.js";
-import { ATTACK_FLAG_VERSION, attackerIsHidden, hiddenMessageMode, snapshotAmmo, zoneIsSevered } from "../damage.js";
-import { declareDodge, dodgeRangedPenalty, resolveDefense } from "../combat.js";
+import { createCyberpunkChatMessage, getGMUserIds, renderCyberpunkTemplate } from "../compat.js";
+import { hitRows, postAttackCard, rollRecord, updateAttackCard } from "../attack-card.js";
+import { ATTACK_FLAG_VERSION, attackerIsHidden, snapshotAmmo, zoneIsSevered } from "../damage.js";
+import { declareDodge, defenseOwner, dodgeRangedPenalty, resolveDefense } from "../combat.js";
 import { blastDamageFor, blastProfile, blastRings, cancelPendingPlacement, clearPatternMarkers, fireCorridor, isBlastAttack, isSpreadAttack, markPattern, metresToPixels, PATTERN_TINT_ADJACENT, PATTERN_TINT_WALKED, pickBlastCentre, placeSuppressionZone, scatterCentre, snapPatternCentre, spreadCorridorBands, spreadProfileFor, spreadReach, zoneHitLocations } from "../zones.js";
 /**
  * The artwork a newly created item of each type is born with.
@@ -746,12 +747,6 @@ export class CyberpunkItem extends Item {
     return fromUuidSync(target.tokenUuid) ?? null;
   }
 
-  /** A card about a token the players cannot see is whispered — the target's own state decides. */
-  static __targetMessageMode(target) {
-    if (!target?.tokenUuid) return undefined;
-    return hiddenMessageMode(fromUuidSync(target.tokenUuid)?.hidden);
-  }
-
   /**
    * Whether this attacker is an ambusher. The implementation moved to `damage.js` when `zones.js`
    * needed it too; this stays as the name every call site and check already uses.
@@ -780,180 +775,137 @@ export class CyberpunkItem extends Item {
   }
 
   /**
-   * The card payload the damage-apply path reads. Undefined when there is nothing to apply, which
-   * is what leaves an untargeted or missing attack card exactly as it was.
+   * The card's payload (D252). `hits` carry their own roll records so the card can render every
+   * state from the flag alone; the apply path reads `hits`, never the content.
+   *
+   * @param {object} card What the renderer prints above the targets
+   * @param {object[]} targets One entry per target: its snapshot as `token`, plus its own `hits`
+   * @param {object|null} ammo Snapshot from snapshotAmmo
+   */
+  __attackPayload({ card, targets, ammo, fireMode, range }) {
+    return {
+      version: ATTACK_FLAG_VERSION,
+      kind: "attack",
+      itemId: this.id,
+      attackerActorUuid: this.actor?.uuid ?? "",
+      fireMode: fireMode ?? "",
+      range: range ?? "",
+      ap: !!this._getWeaponSystem()?.ap,
+      // A blade meets armour by its own rules, and the ammunition channel cannot carry them:
+      // melee always snapshots `ammo: null`, so these ride the payload instead (`T94`).
+      melee: !this.isRanged(),
+      mono: !!this._getWeaponSystem()?.mono,
+      ammo,
+      card,
+      targets: targets.map(target => ({
+        name: target.token?.name ?? "", tokenId: target.token?.id ?? "",
+        tokenUuid: target.token?.tokenUuid ?? "", actorUuid: target.token?.actorUuid ?? "",
+        attack: target.attack ?? null, tally: target.tally ?? null,
+        hits: target.hits, applied: false, result: null, pending: null, fumble: target.fumble ?? null
+      })),
+      pending: null
+    };
+  }
+
+  /**
+   * Whether the card is worth storing its payload on. With automation off, with nobody targeted or
+   * with nothing that landed there is nothing for the apply path to read, and the card would carry
+   * a button over a breakdown of nothing. The card itself is posted either way.
+   *
+   * @param {object[]} targets The entries handed to `__attackPayload`
+   */
+  static __storesAttack(targets) {
+    return isCombatAutomationEnabled() && targets.some(t => t.token && t.hits.length > 0);
+  }
+
+  /**
+   * The zone family's card (D255): every pattern's geometry, the caught list read now, one message.
+   *
+   * `blast.rolled` is frozen per pattern before the payload is stored, as D243 requires: the apply
+   * path is another client's, minutes later, and a location it re-rolled would contradict the card
+   * it is applying. Occupancy is not frozen with it - the apply reads the scene again, so whoever
+   * walked into the crater meanwhile is resolved by that reading.
+   *
+   * Static, and the shooter's own facts are arguments rather than reads off `this`: a planted
+   * charge outlives the weapon it came from, so `detonateCharge` posts the same card with no item
+   * to ask. The instance form below is what the four item paths call.
    *
    * @param {object} card
-   * @param {object} card.target One entry of the sheet's target snapshot
-   * @param {Object<string, Array>} card.areaDamages Zone -> rolled damage entries
-   * @param {object|null} card.ammo Snapshot from snapshotAmmo
+   * @param {"spread"|"blast"|"sweep"} card.kind
+   * @param {string} card.title Localization key suffix for the card's own heading
+   * @param {object[]} card.patterns One entry per pattern, each with its own `blast` geometry
+   * @param {object[]} [card.rings] `blastRings(profile)`, for the blast kind
+   * @returns {Promise<ChatMessage>}
    */
-  __attackFlags({ target, areaDamages, ammo, fireMode, range }) {
-    // One site kills the apply payload for every fire mode: with no flag the card carries nothing
-    // to apply, and the render handler removes the button it came with.
-    if (!isCombatAutomationEnabled()) return undefined;
-    if (!target) return undefined;
-
-    const hits = [];
-    for (const [zone, entries] of Object.entries(areaDamages ?? {})) {
-      for (const entry of entries) hits.push({ zone, damage: Number(entry.damage) || 0 });
+  static async __postZoneCardFor({ itemId, actorUuid, weaponLabel, ap, mono, speaker, kind, title,
+    patterns, fireMode = "", rangeKey = "", rangeValue = 0, ammo, rolls, rings = [] }) {
+    const overallBody = !!ammo?.overallBody;
+    const targets = new Map();
+    for (const pattern of patterns) {
+      const entries = pattern.blast ? await zoneHitLocations(pattern.blast, overallBody) : [];
+      if (pattern.blast) {
+        pattern.blast.rolled = entries.filter(entry => entry.zone)
+          .map(entry => ({ tokenUuid: entry.tokenUuid, zone: entry.zone }));
+      }
+      for (const entry of entries) {
+        // Only tokens the players can see: this card is public, and naming a hidden NPC on it is
+        // the disclosure D31/D120 refuse. They take their share, whispered, when the zone is
+        // applied.
+        if (!entry.zone || entry.hidden) continue;
+        if (!targets.has(entry.tokenUuid)) {
+          targets.set(entry.tokenUuid, { name: entry.name, tokenId: entry.tokenId ?? "",
+            tokenUuid: entry.tokenUuid, actorUuid: entry.actorUuid, shares: [], hits: [],
+            applied: false, result: null, pending: null });
+        }
+        const share = blastDamageFor(pattern.blast.damage, entry.multiplier);
+        // 3.5 - the share is printed at fire time only when a ring reduced it, because only then
+        // does it differ from the roll already standing beside that pattern's own bar.
+        targets.get(entry.tokenUuid).shares.push({ pattern: pattern.index, zone: entry.zone,
+          damage: share, printed: share !== pattern.blast.damage });
+      }
     }
-    if (!hits.length) return undefined;
 
-    return {
-      cyberpunk2020: {
-        attack: {
-          version: ATTACK_FLAG_VERSION,
-          kind: "attack",
-          itemId: this.id,
-          attackerActorUuid: this.actor?.uuid ?? "",
-          fireMode: fireMode ?? "",
-          range: range ?? "",
-          ap: !!this._getWeaponSystem()?.ap,
-          // A blade meets armour by its own rules, and the ammunition channel cannot carry them:
-          // melee always snapshots `ammo: null`, so these ride the payload instead (`T94`).
-          melee: !this.isRanged(),
-          mono: !!this._getWeaponSystem()?.mono,
-          ammo,
-          targets: [{
-            name: target.name,
-            tokenId: target.id,
-            tokenUuid: target.tokenUuid,
-            actorUuid: target.actorUuid
-          }],
-          hits,
-          applied: {}
-        }
-      }
+    const attack = {
+      version: ATTACK_FLAG_VERSION,
+      kind,
+      itemId,
+      attackerActorUuid: actorUuid,
+      fireMode,
+      range: rangeKey,
+      ap,
+      melee: false,
+      mono,
+      ammo,
+      card: { title, weaponName: weaponLabel, rangeKey, rangeValue,
+        patternsLine: patterns.length > 1 ? String(patterns.length) : "" },
+      patterns,
+      rings,
+      targets: [...targets.values()],
+      placed: patterns.some(pattern => pattern.blast),
+      applied: false,
+      pending: null
     };
+
+    return postAttackCard({ attack, store: attack.placed && isCombatAutomationEnabled(), rolls,
+      speaker });
   }
 
-  /**
-   * The card payload the apply-over-zone button reads. Undefined when no zone was placed, which is
-   * what leaves a blast with no canvas as a card the GM applies by hand.
-   *
-   * @param {object} card
-   * @param {"blast"|"spread"} card.kind
-   * @param {object|null} card.blast Centre, geometry and the rolled damage
-   */
-  __zoneFlags({ kind, ammo, fireMode, range, blast }) {
-    if (!blast) return undefined;
-
-    return {
-      cyberpunk2020: {
-        attack: {
-          version: ATTACK_FLAG_VERSION,
-          kind,
-          itemId: this.id,
-          attackerActorUuid: this.actor?.uuid ?? "",
-          fireMode: fireMode ?? "",
-          range: range ?? "",
-          ap: !!this._getWeaponSystem()?.ap,
-          // A blade meets armour by its own rules, and the ammunition channel cannot carry them:
-          // melee always snapshots `ammo: null`, so these ride the payload instead (`T94`).
-          melee: !this.isRanged(),
-          mono: !!this._getWeaponSystem()?.mono,
-          ammo,
-          blast,
-          targets: [],
-          hits: [],
-          applied: {}
-        }
-      }
-    };
-  }
-
-  /**
-   * The one card both area-effect paths post. Occupancy is deliberately not part of it: the zone
-   * is collected when the GM applies it, so a target that walked into the crater meanwhile is in.
-   *
-   * @param {object} card
-   * @param {object} card.profile The blast geometry, printed so a GM with no tokens can apply it
-   * @param {object|null} card.blast The same geometry with a centre, or null when none was placed
-   */
-  async __zoneCard({ title, kind, attackMods, attackRoll, ammo, profile, blast, damage, damageRoll,
-    scatter, target, fumble, adjacency = "", fellShort = "" }) {
+  /** The zone card an item posts: everything above, with this weapon's own facts filled in. */
+  async __postZoneCard({ kind, title, patterns, attackMods, ammo, rolls, rings = [] }) {
     const system = this._getWeaponSystem();
-    const roll = new Multiroll(title).addRoll(attackRoll, { name: localize("Attack") });
-
-    // D243 — the card names who the shot caught, where each one takes it and how much, so a splash
-    // reads as an attack rather than as a shape. It is a picture of the moment it went off: the
-    // apply path reads occupancy again, so whoever walks in or out between the two is resolved by
-    // *that* reading and not by this one.
-    //
-    // Only tokens the players can see. This card is public, and putting a hidden NPC's name on it
-    // is exactly the disclosure D31/D120 keep off the cards and out of the player-visible drawing —
-    // they still take their share, whispered, when the zone is applied.
-    const entries = blast ? await zoneHitLocations(blast, !!ammo?.overallBody) : [];
-    // Written onto the payload **before** `__zoneFlags` freezes it: the apply path is another
-    // client's, minutes later, and a location it re-rolled would contradict the card it is applying.
-    if (blast) {
-      blast.rolled = entries.filter(entry => entry.zone)
-        .map(entry => ({ tokenUuid: entry.tokenUuid, zone: entry.zone }));
-    }
-    // D247 — grouped the way `multi-hit.hbs` groups a burst, one level deeper: target, then
-    // location, then the shares landing on it. Today every victim of a splash takes exactly one
-    // share on one location; the shape is what a single card covering a whole burst will need.
-    // The share is the ring's, off the same `blastDamageFor` the apply path scales by, so the two
-    // cannot print different numbers for the same victim.
-    const caught = entries.filter(entry => entry.zone && !entry.hidden).map(entry => {
-      const share = blastDamageFor(blast.damage, entry.multiplier);
-      return {
-        name: entry.name,
-        areaDamages: {
-          [entry.zone]: [{ damageHtml: CyberpunkItem._inlineRollHtml(share, damageRoll, "damage") }]
-        }
-      };
+    return CyberpunkItem.__postZoneCardFor({
+      itemId: this.id,
+      actorUuid: this.actor?.uuid ?? "",
+      weaponLabel: CyberpunkItem.__weaponLabel(this.name, this.actor),
+      ap: !!system?.ap,
+      mono: !!system?.mono,
+      kind, title, patterns, ammo, rolls, rings,
+      fireMode: attackMods.fireMode ?? "",
+      // Under automatic range the card names no band of its own: each pattern was played at the
+      // one its own placed centre fell in (D196), and each row says so.
+      rangeKey: attackMods.range === ranges.auto ? "" : attackMods.range,
+      rangeValue: rangeResolve[attackMods.range]?.(effectiveRange(this)) ?? 0
     });
-
-    await roll.execute(
-      undefined,
-      "systems/cyberpunk2020/templates/chat/blast.hbs",
-      {
-        weaponName: CyberpunkItem.__weaponLabel(this.name, this.actor),
-        target,
-        range: attackMods.range,
-        toHit: rangeDCs[attackMods.range],
-        attackRoll,
-        scatter,
-        // The miss needs the same split since D140: the Grenade Table's second die is a landing
-        // distance for a thrown charge (`07:839`, *"how many meters away it hit"*) and the blast
-        // still honours it, but a stream **pivots** about the muzzle, so the die supplies a bearing
-        // and nothing travelled that far (`T308`). A pattern slides like the charge (D201).
-        scatterCaption: scatter
-          ? localizeParam(kind === "sweep" ? "SweepScattered"
-              : kind === "spread" ? "SpreadScattered" : "BlastScattered", scatter)
-          : "",
-        placed: !!blast,
-        // A shotgun pattern (and now a flamethrower sweep) shares this template with a grenade but
-        // is not one: it has a width rather than a radius, and the corridor `tokensInBlast` collects
-        // went unmentioned entirely, so *Apply over zone* damaged victims the card never described
-        // (`T162`). `T252` widened the shape to a second kind, so the caption and the width's own
-        // label are resolved here rather than hard-coded to the shotgun's wording.
-        // `T100`'s eighth clause, D192's ring stated rather than enforced: a chained pattern says
-        // on its own card whether it landed inside the previous one's 1 m ring or the burst walked
-        // (`T379`). Empty for everything that is not a chained pattern, the first one included —
-        // it has nothing to be adjacent to.
-        adjacency,
-        // D241 — a pattern that never reached the target says so on its own card.
-        fellShort,
-        caught,
-        isCorridor: kind === "spread" || kind === "sweep",
-        corridorWidthLabel: localize(kind === "sweep" ? "SweepWidth" : "SpreadWidth"),
-        corridorCaption: localize(kind === "sweep" ? "SweepCorridor" : "SpreadCorridor"),
-        spreadWidth: profile.radius * 2,
-        radius: profile.radius,
-        fullDamageWithin: profile.fullDamageWithin,
-        rings: blastRings(profile),
-        damage,
-        damageHtml: CyberpunkItem._inlineRollHtml(damage, damageRoll, "damage"),
-        fumble: fumble ?? null,
-        locals: { range: { range: rangeResolve[attackMods.range](effectiveRange(this)) } }
-      },
-      this.__zoneFlags({ kind, ammo, fireMode: attackMods.fireMode, range: attackMods.range, blast })
-    );
-
-    return roll;
   }
 
   /**
@@ -1048,7 +1000,8 @@ export class CyberpunkItem extends Item {
       blastFullDamageWithin: charge.fullDamageWithin,
       blastMultipliers: charge.multipliers
     });
-    // With automation off the card is the v1.1.x one: the damage and the geometry, applied by hand.
+    // With automation off nothing places or applies a zone, so the card is the announcement: the
+    // damage, and the geometry the pattern carries below, with nothing on the map to gather.
     const blast = (charge.sceneId && isCombatAutomationEnabled())
       ? {
         x: charge.x, y: charge.y, ...profile, damage,
@@ -1060,41 +1013,34 @@ export class CyberpunkItem extends Item {
       }
       : null;
 
-    return createCyberpunkRollCard({
-      rolls: [damageRoll],
+    // The charge was rolled for when it was set (`07:914`), so its pattern carries no attack roll
+    // and the card grows no bar.
+    return CyberpunkItem.__postZoneCardFor({
+      itemId: charge.itemId,
+      actorUuid: actor.uuid,
+      weaponLabel: CyberpunkItem.__weaponLabel(charge.name, actor),
+      ap: !!charge.ap,
+      mono: false,
+      // There is no item to speak through, so the actor the charge was laid by is the speaker.
       speaker: ChatMessage.getSpeaker({ actor }),
-      content: await renderCyberpunkTemplate("systems/cyberpunk2020/templates/chat/blast.hbs", {
-        title: localize("DetonateTitle"),
-        weaponName: CyberpunkItem.__weaponLabel(charge.name, actor),
-        placed: !!blast,
+      kind: "blast",
+      title: "DetonateTitle",
+      patterns: [{
+        index: 1,
+        attackRoll: null,
+        // The card prints the geometry off the pattern, so it reads the same whether or not the
+        // blast reached a scene: `blast` is the placement, this is the round.
         radius: profile.radius,
         fullDamageWithin: profile.fullDamageWithin,
-        rings: blastRings(profile),
         damage,
-        damageHtml: CyberpunkItem._inlineRollHtml(damage, damageRoll, "damage")
-      }),
-      flags: blast
-        ? {
-          cyberpunk2020: {
-            attack: {
-              version: ATTACK_FLAG_VERSION,
-              kind: "blast",
-              itemId: charge.itemId,
-              attackerActorUuid: actor.uuid,
-              fireMode: "",
-              range: "",
-              ap: !!charge.ap,
-              melee: false,
-              mono: false,
-              ammo: charge.ammo,
-              blast,
-              targets: [],
-              hits: [],
-              applied: {}
-            }
-          }
-        }
-        : undefined
+        damageRoll: rollRecord(damageRoll, damage),
+        scatter: null,
+        fumble: null,
+        blast
+      }],
+      ammo: charge.ammo,
+      rolls: [damageRoll],
+      rings: blastRings(profile)
     });
   }
 
@@ -1105,7 +1051,7 @@ export class CyberpunkItem extends Item {
    * @param {object} attackMods
    * @param {Array} targetTokens
    * @param {TokenDocument} [attackerToken] The acting client's own token
-   * @returns {Promise<Multiroll|null>} null when the placement was dismissed
+   * @returns {Promise<ChatMessage|null>} null when the placement was dismissed
    */
   async __blastAttack(attackMods, targetTokens = [], attackerToken = null) {
     const system = this._getWeaponSystem();
@@ -1156,28 +1102,38 @@ export class CyberpunkItem extends Item {
     await this.__setWeaponField("shotsLeft",
       rangedFumble?.outcome?.discharge ? 0 : Math.max(0, Number(system.shotsLeft) - 1));
 
-    return this.__zoneCard({
-      title: localize("BlastTitle"),
+    return this.__postZoneCard({
       kind: "blast",
+      title: "BlastTitle",
+      patterns: [{
+        index: 1,
+        attackRoll: rollRecord(attackRoll),
+        dc: rangeDCs[attackMods.range],
+        rangeKey: attackMods.range,
+        rangeValue: rangeResolve[attackMods.range](effectiveRange(this)),
+        // The card prints the geometry off the pattern, so it reads the same whether or not the
+        // blast was placed: `blast` is the placement, this is the round.
+        radius: profile.radius,
+        fullDamageWithin: profile.fullDamageWithin,
+        damage,
+        damageRoll: rollRecord(damageRoll, damage),
+        scatter,
+        fumble: rangedFumble?.fumble ?? null,
+        blast: centre
+          ? {
+            ...centre, ...profile, damage,
+            sceneId: canvas.scene.id,
+            // Which level's walls the blast meets, taken where it was placed: edges are stored per
+            // level, and the GM applying the card may be looking at another scene entirely.
+            levelId: canvas.level.id,
+            throughWalls: !!ammo?.blastThroughWalls
+          }
+          : null
+      }],
       attackMods,
-      attackRoll,
       ammo,
-      profile,
-      blast: centre
-        ? {
-          ...centre, ...profile, damage,
-          sceneId: canvas.scene.id,
-          // Which level's walls the blast meets, taken where it was placed: edges are stored per
-          // level, and the GM applying the card may be looking at another scene entirely.
-          levelId: canvas.level.id,
-          throughWalls: !!ammo?.blastThroughWalls
-        }
-        : null,
-      damage,
-      damageRoll,
-      scatter,
-      target: targetTokens[0],
-      fumble: rangedFumble?.fumble
+      rolls: [attackRoll],
+      rings: blastRings(profile)
     });
   }
 
@@ -1192,7 +1148,7 @@ export class CyberpunkItem extends Item {
    *
    * @param {object} attackMods
    * @param {TokenDocument} [attackerToken] The acting client's own token
-   * @returns {Promise<Multiroll|null>} null when either placement was dismissed
+   * @returns {Promise<ChatMessage|null>} null when either placement was dismissed
    */
   async __flamethrowerSweep(attackMods, attackerToken = null) {
     const system = this._getWeaponSystem();
@@ -1256,32 +1212,38 @@ export class CyberpunkItem extends Item {
     await this.__setWeaponField("shotsLeft",
       rangedFumble?.outcome?.discharge ? 0 : Math.max(0, Number(system.shotsLeft) - 1));
 
-    return this.__zoneCard({
-      title: localize("SweepTitle"),
+    return this.__postZoneCard({
       kind: "sweep",
-      attackMods,
-      attackRoll,
-      ammo,
-      profile,
-      blast: (start && end)
-        ? {
-          x: end.x, y: end.y, ...profile, damage,
-          sceneId: canvas.scene.id,
-          // Which level's walls the sweep meets, taken where it was placed (D69: a splash mechanic
-          // reads walls the same way a blast does; T284's binary gate is what actually applies).
-          levelId: canvas.level.id,
-          corridor: {
-            from: { x: start.x, y: start.y },
-            to: { x: end.x, y: end.y },
-            shooterTokenUuid: shooterToken?.document?.uuid ?? ""
+      title: "SweepTitle",
+      patterns: [{
+        index: 1,
+        attackRoll: rollRecord(attackRoll),
+        dc: rangeDCs[attackMods.range],
+        rangeKey: attackMods.range,
+        rangeValue: rangeResolve[attackMods.range](effectiveRange(this)),
+        width,
+        damage,
+        damageRoll: rollRecord(damageRoll, damage),
+        scatter,
+        fumble: rangedFumble?.fumble ?? null,
+        blast: (start && end)
+          ? {
+            x: end.x, y: end.y, ...profile, damage,
+            sceneId: canvas.scene.id,
+            // Which level's walls the sweep meets, taken where it was placed (D69: a splash mechanic
+            // reads walls the same way a blast does; T284's binary gate is what actually applies).
+            levelId: canvas.level.id,
+            corridor: {
+              from: { x: start.x, y: start.y },
+              to: { x: end.x, y: end.y },
+              shooterTokenUuid: shooterToken?.document?.uuid ?? ""
+            }
           }
-        }
-        : null,
-      damage,
-      damageRoll,
-      scatter,
-      target: null,
-      fumble: rangedFumble?.fumble
+          : null
+      }],
+      attackMods,
+      ammo,
+      rolls: [attackRoll]
     });
   }
 
@@ -1476,7 +1438,7 @@ export class CyberpunkItem extends Item {
 
     const rollData = this.actor?.getRollData?.() ?? {};
 
-    let last = null;
+    const laid = [];
     for (const [index, centre] of centres.entries()) {
       const { attackRoll, fumble } = shots[index];
       // Per pattern, because under auto range each one was laid at its own distance: the width it
@@ -1515,13 +1477,23 @@ export class CyberpunkItem extends Item {
         landed = scatterCentre(centre, scatter.direction, scatter.distance);
       }
 
-      last = await this.__zoneCard({
-        title: localizeParam("SpreadPatternTitle", { index: index + 1, count: patterns }),
-        kind: "spread",
-        attackMods: mods,
-        attackRoll,
-        ammo,
-        profile,
+      laid.push({
+        index: index + 1,
+        attackRoll: rollRecord(attackRoll),
+        dc: rangeDCs[mods.range],
+        rangeKey: mods.range,
+        rangeValue: rangeResolve[mods.range](effectiveRange(this)),
+        width: patternSpread.width,
+        damage,
+        damageRoll: rollRecord(damageRoll, damage),
+        scatter,
+        // D192's ring, stated and never enforced (D54). The first pattern has nothing to be
+        // adjacent to, so it never says the burst walked (`T379`). Read off the centres the shooter
+        // *chained*, not off where they landed: the ring is a statement about how the burst was
+        // walked, and a scatter is the dice answering afterwards (`CA-Q1`).
+        walked: index > 0 && !centre.adjacent,
+        fellShort: false,
+        fumble: fumble?.fumble ?? null,
         blast: {
           x: landed.x,
           y: landed.y,
@@ -1531,27 +1503,17 @@ export class CyberpunkItem extends Item {
           levelId: canvas.level.id,
           corridor: fireCorridor(shooterToken, landed, spreadCorridorBands(effectiveRange(this), ammo)),
           // **No aimed token.** D17's wall exemption is for *"the shot's designated target"*, and on
-          // this path the shooter designated a point rather than a body — pairing pattern *i* with
+          // this path the shooter designated a point rather than a body: pairing pattern *i* with
           // the *i*-th targeted token exempted whoever happened to sit at that index from the wall
           // gate, wherever they were standing (`T380`).
           aimedTokenUuid: "",
           aimedZone: ""
-        },
-        damage,
-        damageRoll,
-        scatter,
-        // D192's ring, stated and never enforced (D54). The first pattern has nothing to be
-        // adjacent to, so it carries no caption at all (`T379`). Read off the centres the shooter
-        // *chained*, not off where they landed: the ring is a statement about how the burst was
-        // walked, and a scatter is the dice answering afterwards (`CA-Q1`).
-        adjacency: index === 0
-          ? ""
-          : localize(centre.adjacent ? "SpreadPatternAdjacent" : "SpreadPatternWalked"),
-        fumble: fumble?.fumble ?? null
+        }
       });
     }
 
-    return last;
+    return this.__postZoneCard({ kind: "spread", title: "Autofire", patterns: laid, attackMods,
+      ammo, rolls: shots.map(shot => shot.attackRoll) });
   }
 
   /**
@@ -1618,15 +1580,16 @@ export class CyberpunkItem extends Item {
 
   /**
    * The autoshotgun burst with no canvas to place it on: `N` patterns shared out over the targets,
-   * the surplus on the last of them (D54). Every pattern is still its own attack and its own card;
-   * what it loses is the ground, so it resolves against the target it was allocated to.
+   * the surplus on the last of them (D54). Every pattern is still its own attack, on its own row of
+   * the burst's one card; what it loses is the ground, so it resolves against the target it was
+   * allocated to.
    *
    * @param {object} attackMods
    * @param {object[]} targetTokens
    * @param {number} patterns Total patterns fired
    * @param {{width: number, damage: string}} spread
    * @param {object|null} ammo
-   * @returns {Promise<object|null>} the last card
+   * @returns {Promise<object|null>} the burst's one card
    */
   async __autoshotgunPerTarget(attackMods, targetTokens, patterns, spread, ammo) {
     const system = this._getWeaponSystem();
@@ -1673,55 +1636,38 @@ export class CyberpunkItem extends Item {
     await this.__setWeaponField("shotsLeft",
       discharged ? 0 : Math.max(0, Number(system.shotsLeft) - patterns));
 
-    let last = null;
-    // Numbered off the flat list rather than off `(t * share) + i`, which repeats and skips as soon
-    // as the shares are uneven — the surplus is on the last target by construction.
-    for (const [index, { t, mods, attackRoll, fumble }] of shots.entries()) {
+    // Every target the burst was divided over gets a section, the uncovered ones included: an
+    // empty section is what says the pattern never reached them (D202).
+    const targets = Array.from({ length: targetCount },
+      (unused, t) => ({ token: targetTokens[t], attack: null, tally: null, hits: [], fumble: null }));
+    for (const { t, mods, attackRoll, fumble } of shots) {
       const damageRoll = await new Roll(damageFormula, rollData).evaluate({ maximize: maximizeDamage });
       const damage = CyberpunkItem._floorDamageTotal(damageRoll.total);
       const hit = attackRoll.total >= DC && !fumble?.forceMiss;
       const location = (await rollLocation(mods.targetActor, attackMods.targetArea)).areaHit;
 
-      const areaDamages = {};
-      if (hit) {
-        areaDamages[location] = [{
-          damage,
-          damageHtml: CyberpunkItem._inlineRollHtml(damage, damageRoll, "damage")
-        }];
-      }
-
-      last = await new Multiroll(localizeParam("SpreadPatternTitle",
-        { index: index + 1, count: patterns }))
-        .addRoll(attackRoll, { name: localize("Attack") })
-        .execute(undefined, "systems/cyberpunk2020/templates/chat/multi-hit.hbs", {
-          target: targetTokens[t],
-          range: attackMods.range,
-          toHit: DC,
-          attackRoll,
-          fired: 1,
-          hits: hit ? 1 : 0,
-          hit,
-          areaDamages,
-          fumble: fumble?.fumble ?? null,
-          // On the burst's last card only: the allocation is one event, and repeating the list on
-          // every pattern reads as several separate misses.
-          uncoveredTargets: index === shots.length - 1 ? uncoveredNames : "",
-          locals: { range: { range: actualRangeBracket } }
-        },
-        // Without these the card carries no `flags.cyberpunk2020.attack` at all, so the version
-        // gate rejects it, no *apply damage* button is rendered and the auto-apply hook never
-        // fires — the one arm written for a table with no map was the one whose damage a GM had to
-        // enter by hand (`T378`). The three fire modes beside it pass exactly this.
-        this.__attackFlags({
-          target: targetTokens[t],
-          areaDamages,
-          ammo,
-          fireMode: attackMods.fireMode,
-          range: attackMods.range
-        }));
+      // The section carries its first pattern's roll, and the first fumble any of its patterns
+      // rolled: the surplus lands on the last target, whose later patterns are rows under that
+      // same bar.
+      targets[t].attack ??= { roll: rollRecord(attackRoll), dc: DC };
+      targets[t].fumble ??= fumble?.fumble ?? null;
+      if (hit) targets[t].hits.push({ zone: location, damage, roll: rollRecord(damageRoll, damage) });
     }
 
-    return last;
+    const attack = this.__attackPayload({
+      card: {
+        title: "Autofire", weaponName: CyberpunkItem.__weaponLabel(this.name, this.actor),
+        rangeKey: attackMods.range, rangeValue: actualRangeBracket, dc: DC,
+        attackRoll: null, defense: null, tally: null, fumble: null,
+        // Once for the whole burst: the allocation is one event, and it used to be repeated on
+        // every pattern's own card, which read as several separate misses.
+        uncovered: uncoveredNames,
+        roundsLabel: "PatternsLabel", roundsLine: String(patterns)
+      },
+      targets, ammo, fireMode: attackMods.fireMode, range: attackMods.range
+    });
+    return postAttackCard({ attack, store: CyberpunkItem.__storesAttack(targets),
+      rolls: shots.map(shot => shot.attackRoll) });
   }
 
   async __fullAuto(attackMods, targetTokens) {
@@ -1744,6 +1690,8 @@ export class CyberpunkItem extends Item {
       
       // This is a somewhat flawed multi-target thing - given target tokens, we could calculate distance (& therefore penalty) for each, and apply damage to them
       let rolls = [];
+      const targets = [];
+      let spent = 0;
       let shotsLeft = Number(system.shotsLeft) || 0;
       let roundsToAllocate = Math.min(totalRounds, shotsLeft);
       // Ch. 07:712 — *"divide the ROF of the weapon by the total number of targets (round down)"*.
@@ -1798,13 +1746,10 @@ export class CyberpunkItem extends Item {
             roundsHit = 0;
           }
 
-          let areaDamages = {};
+          const hits = [];
           // Roll damage for each of the bullets that hit
-          for (let i = 0; i < roundsHit; i++) {
+          for (let r = 0; r < roundsHit; r++) {
               let location = (await rollLocation(attackModsForTarget.targetActor, attackMods.targetArea)).areaHit;
-              if (!areaDamages[location]) {
-                  areaDamages[location] = [];
-              }
               const dmgRoll = maximizeDamage
                 ? maxDamageRoll
                 : await new Roll(damageFormula, rollData).evaluate();
@@ -1813,45 +1758,35 @@ export class CyberpunkItem extends Item {
                 ? maxDamage
                 : CyberpunkItem._floorDamageTotal(dmgRoll.total);
 
-              areaDamages[location].push({
-                damage: dmg,
-                damageHtml: CyberpunkItem._inlineRollHtml(dmg, dmgRoll, "damage")
-              });
+              hits.push({ zone: location, damage: dmg, roll: rollRecord(dmgRoll, dmg) });
           }
 
-          let templateData = {
-              target: targetTokens[i] || undefined,
-              range: attackMods.range,
-              toHit: DC,
-              attackRoll: attackRoll,
-              fired: roundsFired,
-              hits: roundsHit,
-              hit: roundsHit > 0,
-              areaDamages: areaDamages,
-              locals: {
-                  range: { range: actualRangeBracket }
-              },
-              fumble: rangedFumble?.fumble ?? null,
-          };
-
-          let roll = new Multiroll(`${localize("Autofire")}`, `${localize("Range")}: ${localizeParam(attackMods.range, {range: actualRangeBracket})}`)
-            .addRoll(attackRoll, { name: localize("Attack") });
-          await roll.execute(
-            undefined,
-            "systems/cyberpunk2020/templates/chat/multi-hit.hbs",
-            templateData,
-            this.__attackFlags({
-              target: targetTokens[i],
-              areaDamages,
-              ammo,
-              fireMode: attackMods.fireMode,
-              range: attackMods.range
-            })
-          );
-          rolls.push(roll);
+          spent += roundsFired;
+          targets.push({
+            token: targetTokens[i],
+            attack: { roll: rollRecord(attackRoll), dc: DC },
+            tally: { hits: roundsHit, fired: roundsFired },
+            hits,
+            fumble: rangedFumble?.fumble ?? null
+          });
+          rolls.push(attackRoll);
       }
 
-      return rolls;
+      const attack = this.__attackPayload({
+        card: {
+          title: "Autofire", weaponName: CyberpunkItem.__weaponLabel(this.name, this.actor),
+          rangeKey: attackMods.range, rangeValue: actualRangeBracket, dc: DC,
+          attackRoll: null, defense: null, tally: null, fumble: null, uncovered: "",
+          // What left the magazine, not what was asked for: `07:712` leaves the remainder unfired.
+          // A burst nobody had to share says nothing here, because the one section's own tally
+          // already states both numbers.
+          roundsLine: targetCount > 1
+            ? localizeParam("RoundsOverTargets", { rounds: spent, targets: targetCount })
+            : ""
+        },
+        targets, ammo, fireMode: attackMods.fireMode, range: attackMods.range
+      });
+      return postAttackCard({ attack, store: CyberpunkItem.__storesAttack(targets), rolls });
   }
 
   async __threeRoundBurst(attackMods, targetTokens = []) {
@@ -1880,7 +1815,7 @@ export class CyberpunkItem extends Item {
       if (rangedFumble?.forceMiss) {
         attackHits = false;
       }
-      let areaDamages = {};
+      let hits = [];
       let roundsHit;
       if (attackHits) {
           // Ch. 07:704 is `1D6/2`, which the book never says how to round. `1d3` is that roll
@@ -1889,9 +1824,6 @@ export class CyberpunkItem extends Item {
           roundsHit = await new Roll("1d3").evaluate();
           for (let i = 0; i < roundsHit.total; i++) {
               let location = (await rollLocation(attackMods.targetActor, attackMods.targetArea)).areaHit;
-              if (!areaDamages[location]) {
-                  areaDamages[location] = [];
-              }
               const dmgRoll = maximizeDamage
                 ? maxDamageRoll
                 : await new Roll(damageFormula, rollData).evaluate();
@@ -1900,46 +1832,33 @@ export class CyberpunkItem extends Item {
                 ? maxDamage
                 : CyberpunkItem._floorDamageTotal(dmgRoll.total);
 
-              areaDamages[location].push({
-                damage: dmg,
-                damageHtml: CyberpunkItem._inlineRollHtml(dmg, dmgRoll, "damage")
-              });
+              hits.push({ zone: location, damage: dmg, roll: rollRecord(dmgRoll, dmg) });
           }
       }
-      let templateData = {
-          target: targetTokens[0],
-          range: attackMods.range,
-          toHit: DC,
-          attackRoll: attackRoll,
-          fired: roundsFired,
-          hits: attackHits ? roundsHit.total : 0,
-          hit: attackHits,
-          areaDamages: areaDamages,
-          locals: {range: { range: actualRangeBracket }},
-          fumble: rangedFumble?.fumble ?? null,
-      };
-      let roll = new Multiroll(localize("ThreeRoundBurst"))
-        .addRoll(attackRoll, { name: localize("Attack") });
-      // The ammo write goes first: rounds are spent whether or not the card renders. Awaiting the
-      // card at all is what stops a chat failure being swallowed as an unhandled rejection.
+      const targets = [{ token: targetTokens[0], hits }];
+      const attack = this.__attackPayload({
+        card: {
+          title: "ThreeRoundBurst", weaponName: CyberpunkItem.__weaponLabel(this.name, this.actor),
+          rangeKey: attackMods.range, rangeValue: actualRangeBracket, dc: DC,
+          attackRoll: rollRecord(attackRoll), defense: null,
+          tally: { hits: attackHits ? roundsHit.total : 0, fired: roundsFired },
+          fumble: rangedFumble?.fumble ?? null, uncovered: ""
+        },
+        targets,
+        ammo, fireMode: attackMods.fireMode, range: attackMods.range
+      });
+      // The ammo write goes first: rounds are spent whether or not the card renders. Returning the
+      // card's promise is what stops a chat failure being swallowed as an unhandled rejection.
       if (rangedFumble?.outcome?.discharge) {
         await this.__setWeaponField("shotsLeft", 0);
       } else {
         await this.__setWeaponField("shotsLeft", system.shotsLeft - roundsFired);
       }
-      await roll.execute(
-        undefined,
-        "systems/cyberpunk2020/templates/chat/multi-hit.hbs",
-        templateData,
-        this.__attackFlags({
-          target: targetTokens[0],
-          areaDamages,
-          ammo,
-          fireMode: attackMods.fireMode,
-          range: attackMods.range
-        })
-      );
-      return roll;
+      return postAttackCard({
+        attack,
+        store: CyberpunkItem.__storesAttack(targets),
+        rolls: [attackRoll]
+      });
   }
 
   async __suppressiveFire(mods = {}) {
@@ -1951,6 +1870,13 @@ export class CyberpunkItem extends Item {
     const rounds = maxRounds > 0
       ? clamp(requestedRounds, 1, maxRounds)
       : 0;
+    // D262, under the approved empty-weapon refusal: a burst with nothing to spend is refused
+    // before anything is placed or posted. ROF 0 is the state that reaches here (`T113`), because
+    // `__weaponRoll` refuses an empty magazine ahead of every fire mode.
+    if (rounds <= 0) {
+      ui.notifications.warn(localize("NoRateOfFire"));
+      return false;
+    }
     const width = Math.max(2, Math.floor(Number(mods.zoneWidth ?? 2)));
     const targets = Math.max(1, Math.floor(Number(mods.targetsCount ?? 1)));
 
@@ -1959,12 +1885,9 @@ export class CyberpunkItem extends Item {
     const dmgFormula = sys.damage || "1d6";
 
     let zone = null;
-    // A burst that can spend no round lays no zone and rolls no hits: it posts a card saying so.
-    // Display over veto, per the no-hard-limits rule — the fire mode is still offered, and a
-    // cyberweapon left at the schema's default ROF 0 is how a GM reaches this (`T113`).
     // With automation off the burst takes the existing no-canvas branch: the abstract per-target
     // tally and `placed: false`, which is the v1.1.x card.
-    if (rounds > 0 && canvas.ready && isCombatAutomationEnabled()) {
+    if (canvas.ready && isCombatAutomationEnabled()) {
       // D220 — the zone is the declared width square, and the range band has no part in it: the
       // book prices the save by that one number and never measures a distance in this mode
       // (`07:726-749`), so a second axis would be free. A wider zone is the trade the book does
@@ -1985,30 +1908,25 @@ export class CyberpunkItem extends Item {
     const results = [];
     // With a zone on the map every crossing rolls its own hits, so the abstract per-target tally is
     // the no-canvas fallback and not a second answer to the same question.
-    for (let t = 0; rounds > 0 && !zone && t < targets; t++) {
+    for (let t = 0; !zone && t < targets; t++) {
       const hitsRoll = await new Roll("1d6").evaluate();
-      const areaDamages = {};
+      const hits = [];
 
       for (let i = 0; i < hitsRoll.total; i++) {
         const loc = (await rollLocation(mods.targetActor, mods.targetArea)).areaHit;
         const dmgRoll = await new Roll(dmgFormula, rollData).evaluate();
         const dmg = CyberpunkItem._floorDamageTotal(dmgRoll.total);
 
-        if (!areaDamages[loc]) areaDamages[loc] = [];
-
-        areaDamages[loc].push({
-          dmg,
-          dmgHtml: CyberpunkItem._inlineRollHtml(dmg, dmgRoll, "damage")
-        });
+        hits.push({ zone: loc, damage: dmg, roll: rollRecord(dmgRoll, dmg) });
       }
 
-      results.push({ hitsRoll, areaDamages });
+      results.push({ rows: hitRows({ hits, applied: false }) });
     }
 
     const html = await renderCyberpunkTemplate(
       "systems/cyberpunk2020/templates/chat/suppressive.hbs",
-      { weaponName: CyberpunkItem.__weaponLabel(this.name, this.actor), rounds, width, saveDC, dmgFormula, results, placed: !!zone,
-        noRounds: rounds <= 0 }
+      { weaponName: CyberpunkItem.__weaponLabel(this.name, this.actor),
+        rounds, width, saveDC, dmgFormula, results, placed: !!zone }
     );
 
     // Returned, not merely posted: `null` is how a dismissed placement is told apart from a burst
@@ -2106,35 +2024,12 @@ export class CyberpunkItem extends Item {
       }
       const roundsFired = Math.min(system.shotsLeft, 1);
       let location = locationRoll.areaHit;
-      let areaDamages = {};
-      
-      if (attackHits) {
-          if (!areaDamages[location]) {
-              areaDamages[location] = [];
-          }
-          areaDamages[location].push({
-            damage: dmg,
-            damageHtml: CyberpunkItem._inlineRollHtml(dmg, damageRoll, "damage"),
-          });
-      }
-      
-      let templateData = {
-        target: targetTokens[0],
-        range: attackMods.range,
-        toHit: DC,
-        attackRoll: attackRoll,
-        fired: roundsFired,
-        hits: attackHits ? 1 : 0,
-        hit: attackHits,
-        areaDamages: areaDamages,
-        fumble: rangedFumble?.fumble ?? null,
-        locals: {
-            range: { range: actualRangeBracket }
-        }
-      };
+      const hits = attackHits
+        ? [{ zone: location, damage: dmg, roll: rollRecord(damageRoll, dmg) }]
+        : [];
 
-      // The ammo write goes first: rounds are spent whether or not the card renders. Awaiting the
-      // card at all is what stops a chat failure being swallowed as an unhandled rejection.
+      // The ammo write goes first: rounds are spent whether or not the card renders. Returning the
+      // card's promise is what stops a chat failure being swallowed as an unhandled rejection.
       if (rangedFumble?.outcome?.discharge) {
         await this.__setWeaponField("shotsLeft", 0);
       } else {
@@ -2172,71 +2067,105 @@ export class CyberpunkItem extends Item {
           scatter = { direction: direction.total, distance: distance.total };
           patternCentre = scatterCentre(patternCentre, scatter.direction, scatter.distance);
         }
-        return this.__zoneCard({
-          title: localize("SpreadTitle"),
+        return this.__postZoneCard({
           kind: "spread",
-          attackMods,
-          attackRoll,
-          ammo,
-          profile,
-          blast: {
-            x: patternCentre.x,
-            y: patternCentre.y,
-            ...profile,
+          title: "SpreadTitle",
+          patterns: [{
+            index: 1,
+            attackRoll: rollRecord(attackRoll),
+            dc: DC,
+            rangeKey: attackMods.range,
+            rangeValue: actualRangeBracket,
+            width: spread.width,
             damage: dmg,
-            sceneId: canvas.scene.id,
-            // Which level's walls the pattern meets, taken where it was fired from — D115's gate
-            // reads it the same way a blast's does (`T284`).
-            levelId: canvas.level.id,
-            corridor: fireCorridor(this.__attackerToken(attackerToken), patternCentre,
-              spreadCorridorBands(effectiveRange(this), ammo)),
-            // D17's wall exemption is for *"the shot's designated target"*, and a scattered pattern
-            // is no longer aimed at anybody — exempting the token it missed would carry the
-            // exemption to ground they are not standing on, which is `T380`'s reasoning on the
-            // autoshotgun's own patterns.
-            // D241 — a pattern that fell short has no designated target either: the token it was
-            // aimed at is beyond the pellets, so carrying D17's wall exemption and aimed location
-            // over to it would exempt ground nobody is standing on, which is `T380`'s reasoning.
-            aimedTokenUuid: attackHits && !short ? (targetTokens[0]?.tokenUuid ?? "") : "",
-            aimedZone: attackHits && !short ? location : ""
-          },
-          damage: dmg,
-          damageRoll,
-          fellShort: short ? localizeParam("SpreadFellShort", { reach }) : "",
-          scatter,
-          target: targetTokens[0],
-          fumble: rangedFumble?.fumble
+            damageRoll: rollRecord(damageRoll, dmg),
+            scatter,
+            fellShort: short,
+            reach,
+            fumble: rangedFumble?.fumble ?? null,
+            blast: {
+              x: patternCentre.x,
+              y: patternCentre.y,
+              ...profile,
+              damage: dmg,
+              sceneId: canvas.scene.id,
+              // Which level's walls the pattern meets, taken where it was fired from: D115's gate
+              // reads it the same way a blast's does (`T284`).
+              levelId: canvas.level.id,
+              corridor: fireCorridor(this.__attackerToken(attackerToken), patternCentre,
+                spreadCorridorBands(effectiveRange(this), ammo)),
+              // D17's wall exemption is for *"the shot's designated target"*, and a scattered pattern
+              // is no longer aimed at anybody, and exempting the token it missed would carry the
+              // exemption to ground they are not standing on, which is `T380`'s reasoning on the
+              // autoshotgun's own patterns.
+              // D241 - a pattern that fell short has no designated target either: the token it was
+              // aimed at is beyond the pellets, so carrying D17's wall exemption and aimed location
+              // over to it would exempt ground nobody is standing on, which is `T380`'s reasoning.
+              aimedTokenUuid: attackHits && !short ? (targetTokens[0]?.tokenUuid ?? "") : "",
+              aimedZone: attackHits && !short ? location : ""
+            }
+          }],
+          attackMods,
+          ammo,
+          rolls: [attackRoll]
         });
       }
 
-      let roll = new Multiroll(localize("SemiAuto"))
-        .addRoll(attackRoll, { name: localize("Attack") });
-
-      await roll.execute(
-        undefined,
-        "systems/cyberpunk2020/templates/chat/multi-hit.hbs",
-        templateData,
-        this.__attackFlags({
-          target: targetTokens[0],
-          areaDamages,
-          ammo,
-          fireMode: attackMods.fireMode,
-          range: attackMods.range
-        })
-      );
-      return roll;
+      const targets = [{ token: targetTokens[0], hits }];
+      const attack = this.__attackPayload({
+        card: {
+          title: "SemiAuto", weaponName: CyberpunkItem.__weaponLabel(this.name, this.actor),
+          rangeKey: attackMods.range, rangeValue: actualRangeBracket, dc: DC,
+          attackRoll: rollRecord(attackRoll), defense: null,
+          tally: { hits: attackHits ? 1 : 0, fired: roundsFired },
+          fumble: rangedFumble?.fumble ?? null, uncovered: ""
+        },
+        targets,
+        ammo, fireMode: attackMods.fireMode, range: attackMods.range
+      });
+      return postAttackCard({
+        attack,
+        store: CyberpunkItem.__storesAttack(targets),
+        rolls: [attackRoll]
+      });
   }
 
   async __meleeBonk(attackMods, targetTokens = [], attackerToken = null) {
       // Melee attacks do not have a fixed DC; they are contested instead
       let attackRoll = await this.attackRoll(attackMods);
 
+      // The awaiting state and the state it grows into are one message off one bag (D259), so the
+      // two fields that differ are filled in below rather than the whole card being re-typed.
+      const card = {
+        title: "MeleeAttackTitle", weaponName: CyberpunkItem.__weaponLabel(this.name, this.actor),
+        rangeKey: "", rangeValue: 0, dc: 0,
+        attackRoll: rollRecord(attackRoll), defense: null,
+        tally: null, fumble: null, uncovered: ""
+      };
+
+      // Only a contest that will really wait on a person earns the awaiting card: an NPC, and an
+      // owner with nothing to defend with, are both answered on this client with nothing to watch.
+      const owner = attackMods.targetActor && isCombatAutomationEnabled()
+        ? defenseOwner(attackMods.targetActor)
+        : null;
+      let message = null;
+      if (owner && attackMods.targetActor.defenseOptions().length) {
+        const waiting = this.__attackPayload({
+          card, targets: [{ token: targetTokens[0], hits: [] }],
+          ammo: null, fireMode: "", range: ""
+        });
+        waiting.pending = "defense";
+        // Stored with no hits on it: the flag is what the contest is written onto when it lands,
+        // and the apply path reads `hits` and finds nothing due until there are some.
+        message = await postAttackCard({ attack: waiting, store: true, rolls: [attackRoll] });
+      }
+
       const defense = attackMods.targetActor
         ? await resolveDefense(attackMods.targetActor, attackRoll.total,
             { attackerName: displayName(this.actor, attackerToken), itemName: this.name,
               defenderToken: CyberpunkItem.__targetToken(targetTokens[0]),
-              messageMode: CyberpunkItem.__targetMessageMode(targetTokens[0]),
-              hideAttacker: CyberpunkItem.__attackerIsHidden(this.actor) })
+              hideAttacker: CyberpunkItem.__attackerIsHidden(this.actor),
+              messageId: message?.id ?? "" })
         : null;
 
       let fumble = null;
@@ -2253,7 +2182,7 @@ export class CyberpunkItem extends Item {
       // would have rolled, and the fumble block below still posts.
       const hit = (defense ? defense.hit : true) && !fumble;
 
-      const areaDamages = {};
+      const hits = [];
       if (hit) {
         // Take into account the CyberTerminus modifier for damage
         const system = this._getWeaponSystem ? this._getWeaponSystem() : this.system;
@@ -2283,37 +2212,27 @@ export class CyberpunkItem extends Item {
 
         const locationRoll = await rollLocation(attackMods.targetActor, attackMods.targetArea);
 
-        areaDamages[locationRoll.areaHit] = [{
-          damage,
-          damageHtml: CyberpunkItem._inlineRollHtml(damage, damageRoll, "damage")
-        }];
+        hits.push({ zone: locationRoll.areaHit, damage, roll: rollRecord(damageRoll, damage) });
       }
 
-      let bigRoll = new Multiroll(CyberpunkItem.__weaponLabel(this.name, this.actor), this.system.flavor)
-        .addRoll(attackRoll, { name: localize("Attack") });
-
+      const targets = [{ token: targetTokens[0], hits }];
+      card.defense = defense
+        ? { label: defense.label, roll: defense.roll ? rollRecord(defense.roll) : null,
+            total: defense.total, skipped: !!defense.skipped }
+        : null;
+      card.fumble = fumble;
+      const attack = this.__attackPayload({ card, targets, ammo: null, fireMode: "", range: "" });
       // One opposed check is one message with two rolls: the card draws the defense die from the
-      // template data either way, but only a message roll is animated and stored (`T40`). D163's
+      // payload either way, but only a message roll is animated and stored (`T40`). D163's
       // All-Out Parry is the one defence with no die to add.
-      if (defense?.roll) bigRoll.addRoll(defense.roll, { name: localize("Defense") });
-
-      await bigRoll.execute(
-        undefined,
-        "systems/cyberpunk2020/templates/chat/multi-hit.hbs",
-        {
-          target: targetTokens[0],
-          attackRoll,
-          defense,
-          hit,
-          hits: 1,
-          areaDamages,
-          suppressHitTally: true,
-          fumble
-        },
-        this.__attackFlags({ target: targetTokens[0], areaDamages, ammo: null })
-      );
-
-      return bigRoll;
+      if (message) {
+        return updateAttackCard(message, attack, { rolls: defense?.roll ? [defense.roll] : [] });
+      }
+      return postAttackCard({
+        attack,
+        store: CyberpunkItem.__storesAttack(targets),
+        rolls: defense?.roll ? [attackRoll, defense.roll] : [attackRoll]
+      });
   }
   async __martialBonk(attackMods, targetTokens = [], attackerToken = null) {
     let actor = this.actor;
@@ -2329,10 +2248,6 @@ export class CyberpunkItem extends Item {
     let flavor = game.i18n.has(`CYBERPUNK.${action + "Text"}`) ? localize(action + "Text") : "";
 
     const martialArtLabel = actor.getMartialDisplayName?.(martialArt) ?? localize("Skill" + martialArt);
-    let results = new Multiroll(
-      localizeParam("MartialTitle", { action: localize(action), martialArt: martialArtLabel }),
-      flavor
-    );
 
     // Bonus for a specific action from the selected martial art
     const actionBonus = getMartialActionBonus(martialArt, action);
@@ -2400,8 +2315,6 @@ export class CyberpunkItem extends Item {
         jumpKickMod
       }
     );
-
-    results.addRoll(attackRoll, { name: localize("Attack") });
 
     // At this stage, martial damage is taken only from the selected weapon item.
     // Non-damaging actions keep the compact roll-only chat card.
@@ -2493,26 +2406,55 @@ export class CyberpunkItem extends Item {
       if (action === martialActions.dodge || action === martialActions.allOutDodge) {
         await declareDodge(actor);
       }
+      const results = new Multiroll(
+        localizeParam("MartialTitle", { action: localize(action), martialArt: martialArtLabel }),
+        flavor
+      );
+      results.addRoll(attackRoll, { name: localize("Attack") });
       await results.defaultExecute({ img: this.img, fumble });
       return results;
+    }
+
+    // The awaiting state and the state it grows into are one message off one bag (D259), so the
+    // two fields that differ are filled in below rather than the whole card being re-typed.
+    const card = {
+      titleText: localizeParam("MartialTitle",
+        { action: localize(action), martialArt: martialArtLabel }),
+      weaponName: flavor,
+      rangeKey: "", rangeValue: 0, dc: 0,
+      attackRoll: rollRecord(attackRoll), defense: null,
+      tally: null, fumble: null, uncovered: ""
+    };
+
+    // Only a contest that will really wait on a person earns the awaiting card: an NPC, and an
+    // owner with nothing to defend with, are both answered on this client with nothing to watch.
+    const owner = attackMods.targetActor && isCombatAutomationEnabled()
+      ? defenseOwner(attackMods.targetActor)
+      : null;
+    let message = null;
+    if (owner && attackMods.targetActor.defenseOptions().length) {
+      const waiting = this.__attackPayload({
+        card, targets: [{ token: targetTokens[0], hits: [] }],
+        ammo: null, fireMode: "", range: ""
+      });
+      waiting.pending = "defense";
+      // Stored with no hits on it: the flag is what the contest is written onto when it lands,
+      // and the apply path reads `hits` and finds nothing due until there are some.
+      message = await postAttackCard({ attack: waiting, store: true, rolls: [attackRoll] });
     }
 
     const defense = attackMods.targetActor
       ? await resolveDefense(attackMods.targetActor, attackRoll.total,
           { attackerName: displayName(actor, attackerToken), itemName: this.name,
             defenderToken: CyberpunkItem.__targetToken(targetTokens[0]),
-            messageMode: CyberpunkItem.__targetMessageMode(targetTokens[0]),
-            hideAttacker: CyberpunkItem.__attackerIsHidden(actor) })
+            hideAttacker: CyberpunkItem.__attackerIsHidden(actor),
+            messageId: message?.id ?? "" })
       : null;
     // D152 — the same forced miss the plain swing and the four ranged sites take: the fumble block
     // built above still posts, and the contest cannot land the hit (`T276`).
     const hit = (defense ? defense.hit : true) && !fumble;
 
-    // One opposed check is one message with two rolls (`T40`) — D163's All-Out Parry is the one
-    // defence with no die to add.
-    if (defense?.roll) results.addRoll(defense.roll, { name: localize("Defense") });
-
-    const areaDamages = {};
+    const hits = [];
     if (hit) {
       const locationRoll = await rollLocation(attackMods.targetActor, attackMods.targetArea);
       const damageRoll = await new Roll(damageFormula, {
@@ -2523,28 +2465,25 @@ export class CyberpunkItem extends Item {
       const damage = CyberpunkItem._floorDamageTotal(damageRoll.total);
       damageRoll._total = damage;
 
-      areaDamages[locationRoll.areaHit] = [{
-        damage,
-        damageHtml: CyberpunkItem._inlineRollHtml(damage, damageRoll, "damage")
-      }];
+      hits.push({ zone: locationRoll.areaHit, damage, roll: rollRecord(damageRoll, damage) });
     }
 
-    await results.execute(
-      undefined,
-      "systems/cyberpunk2020/templates/chat/multi-hit.hbs",
-      {
-        target: targetTokens[0],
-        attackRoll,
-        defense,
-        hit,
-        hits: 1,
-        areaDamages,
-        suppressHitTally: true,
-        fumble
-      },
-      this.__attackFlags({ target: targetTokens[0], areaDamages, ammo: null })
-    );
-
-    return results;
+    const targets = [{ token: targetTokens[0], hits }];
+    card.defense = defense
+      ? { label: defense.label, roll: defense.roll ? rollRecord(defense.roll) : null,
+          total: defense.total, skipped: !!defense.skipped }
+      : null;
+    card.fumble = fumble;
+    const attack = this.__attackPayload({ card, targets, ammo: null, fireMode: "", range: "" });
+    // One opposed check is one message with two rolls (`T40`); D163's All-Out Parry is the one
+    // defence with no die to add.
+    if (message) {
+      return updateAttackCard(message, attack, { rolls: defense?.roll ? [defense.roll] : [] });
+    }
+    return postAttackCard({
+      attack,
+      store: CyberpunkItem.__storesAttack(targets),
+      rolls: defense?.roll ? [attackRoll, defense.roll] : [attackRoll]
+    });
   }
 }

@@ -1,0 +1,15 @@
+{{#if events.length}}
+<div class="cp-events">
+    {{#each events as |event|}}
+    <div class="cp-event{{#if event.bad}} cp-event-bad{{/if}}">{{event.text}}</div>
+    {{/each}}
+</div>
+{{/if}}
+{{#if pending}}
+<div class="cp-events">
+    <div class="cp-event cp-event-wait">
+        <span class="cp-wait-who">{{pending}}</span>
+        <button type="button" class="cp-stop-waiting" data-action="stopWaiting">{{CPLocal "StopWaiting"}}</button>
+    </div>
+</div>
+{{/if}}

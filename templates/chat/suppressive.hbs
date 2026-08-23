@@ -1,50 +1,35 @@
-<div class="cyberpunk cyberpunk-card flexcol">
-    <h2>{{CPLocal 'SuppressiveFire'}} – {{weaponName}}</h2>
+<div class="cyberpunk cyberpunk-card cp-attack-card flexcol">
+    <h2>{{CPLocal "SuppressiveFire"}}</h2>
+    <p class="cp-weapon">{{weaponName}}</p>
 
-    <ul class="condensed">
-    <li><b>{{CPLocal "SuppressiveRoundsLine"}}:</b> {{rounds}}</li>
-    <li><b>{{CPLocal "SuppressiveWidthLine"}}:</b> {{width}} {{CPLocal "UnitMetres"}}</li>
-    <li><b>{{CPLocal "DifficultyClassShort"}}</b> {{saveDC}}</li>
-    </ul>
+    <dl class="cp-kv">
+        <dt>{{CPLocal "SuppressiveRoundsLine"}}</dt><dd>{{rounds}}</dd>
+        <dt>{{CPLocal "SuppressiveWidthShort"}}</dt><dd>{{width}} {{CPLocal "UnitMetres"}}</dd>
+        <dt>{{CPLocal "DamagePerHit"}}</dt><dd>{{dmgFormula}}</dd>
+    </dl>
 
-    <hr/>
-
-    {{#if noRounds}}
-    <p>{{CPLocal "SuppressiveNoRounds"}}</p>
-    {{else}}
-    <p>{{CPLocal "SuppressiveDesc" save=saveDC rounds=rounds width=width}}</p>
-
-    <p>{{CPLocal "SuppressiveHitsDesc" dmg=dmgFormula}}</p>
+    <div class="cp-bar">
+        <span class="cp-bar-label">{{CPLocal "SaveShort"}}</span>
+        <span class="cp-bar-total">{{saveDC}}</span>
+        <span class="cp-bar-dc">· {{CPLocal "SuppressiveSaveFormula"}}</span>
+    </div>
+    <p class="cp-tally">{{CPLocal "SuppressiveOnFail"}}</p>
 
     {{#if placed}}
-    <p class="cp-zone-state">{{CPLocal "ZonePlaced"}}</p>
+    {{!-- The state is the template's own only while the zone really is on the map: with no GM
+          connected the render hook rewrites it, and the button below is what puts one there. --}}
+    <div class="cp-section"><span>{{CPLocal "ZoneOfFire"}}</span><span class="cp-state cp-zone-state">{{CPLocal "ZoneOnMap"}}</span></div>
     <div class="cp-card-actions">
-        {{!-- Both are decided per client by the hook, which removes whichever does not apply: the
-              zone is laid by the active GM, and with none connected it waits here for one. --}}
         <button type="button" class="cp-lay-zone" data-action="layZone">{{CPLocal "LayZone"}}</button>
     </div>
     {{/if}}
-    {{/if}}
 
     {{#each results as |t idx|}}
-    <hr/>
-    <h3>{{CPLocal "Target"}} {{math idx "+" 1}}</h3>
-
-    {{#if (gt t.hitsRoll.total 0)}}
-    <div class="damage-tally">
-        {{#each t.areaDamages as |damages areaName|}}
-        <div>
-            <label><b>{{CPLocal areaName}}</b></label>
-            <ul>
-            {{#each damages}}
-                <li>{{CPLocal "Damage"}} {{{dmgHtml}}}</li>
-            {{/each}}
-            </ul>
-        </div>
-        {{/each}}
-    </div>
+    <div class="cp-section"><span>{{CPLocal "Target"}} {{math idx "+" 1}}</span></div>
+    {{#if t.rows.length}}
+    {{> "systems/cyberpunk2020/templates/chat/parts/hit-rows.hbs" rows=t.rows}}
     {{else}}
-    <p>{{CPLocal "NoHits"}}</p>
+    <p class="cp-tally">{{CPLocal "NoHits"}}</p>
     {{/if}}
     {{/each}}
 </div>

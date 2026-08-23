@@ -4,6 +4,7 @@ import { createCyberpunkChatMessage } from "./compat.js";
 import { BaseDie } from "./dice.js";
 import { DODGE_SKILL_ID, isCombatAutomationEnabled, martialActions } from "./lookups.js";
 import { COMBAT_FLAG, SUPPRESSION_FLAG, ZONE_FLAG, deleteZone, suppressionZonesOf, sweepExpiredZones } from "./zones.js";
+import { waitForAnswer } from "./attack-card.js";
 
 /** Cumulative penalty per extra action taken in the same turn (optional rule). */
 export const ACTION_PENALTY_STEP = -3;
@@ -25,13 +26,6 @@ const ALL_OUT_DODGE_PENALTY = -2;
  * "means the character is out of combat" — and `cpStunned` is exactly that state.
  */
 const INCAPACITATED_STATUSES = ["dead", "cpStunned"];
-
-/**
- * The querying side gives up at 30 s, so the owner's dialog closes at 25 and the defense rolls
- * itself: the answer has to be sent before the deadline, not on it.
- */
-const DEFENSE_QUERY_TIMEOUT_MS = 30000;
-export const DEFENSE_PROMPT_DEADLINE_MS = 25000;
 
 /** The dodge hand-off has no human in the loop — it is one flag write on the GM's client. */
 const DODGE_QUERY_TIMEOUT_MS = 5000;
@@ -406,25 +400,39 @@ export async function clearTurnFlags(combatants) {
 }
 
 /**
+ * The player who is asked for a defence: an active owner of a character. An NPC is never asked,
+ * so its defence rolls itself on the attacker's own client.
+ *
+ * @param {CyberpunkActor} defender
+ * @returns {User|null}
+ */
+export function defenseOwner(defender) {
+  if (defender.type === "npc") return null;
+  return game.users.players.find(u => u.active && defender.testUserPermission(u, "OWNER")) ?? null;
+}
+
+/**
  * Roll the defender's side of an opposed melee attack. An NPC defends on the spot; a player
- * character's owner is asked which skill to use, and the best one is rolled anyway if they do not
- * answer in time — ignoring the prompt must never cost the player anything.
+ * character's owner is asked which skill to use, and the best one is rolled anyway when the wait
+ * ends without an answer: by the owner declining, by their disconnect, or by the card's stop
+ * button (D259). Ignoring the prompt must never cost the player anything.
  *
  * @param {CyberpunkActor} defender
  * @param {number} attackTotal
  * @param {object} context
  * @param {string} context.attackerName
  * @param {string} context.itemName
- * @param {TokenDocument} [context.defenderToken] The token being attacked — the notice and the
+ * @param {TokenDocument} [context.defenderToken] The token being attacked: the card and the
  *   prompt name it (D133), and the defender's own client cannot tell which token it was (`T296`)
- * @param {string} [context.messageMode] Visibility of the pending notice, for a hidden defender
- * @param {boolean} [context.hideAttacker] The attacker is an ambusher — see the query below
+ * @param {boolean} [context.hideAttacker] The attacker is an ambusher, see the query below
+ * @param {string} [context.messageId] The awaiting card the wait belongs to, so the client holding
+ *   it can offer the stop button (D259). Empty when the caller posted no card
  * @returns {Promise<{total: number, label: string, roll: Roll, hit: boolean}|null>} hit is the
- *   attacker's result: ch. 04 gives a tie to the defender. Null when the defender is incapacitated,
- *   which is what leaves the attack uncontested
+ *   attacker's result: ch. 04 gives a tie to the defender. Null when there is nothing to contest,
+ *   and the skipped record when the defender is incapacitated
  */
 export async function resolveDefense(defender, attackTotal,
-  { attackerName, itemName, defenderToken = null, messageMode, hideAttacker = false }) {
+  { attackerName, itemName, defenderToken = null, hideAttacker = false, messageId = "" }) {
   // One gate covers both call sites: `__meleeBonk` and `__martialBonk` already read
   // `hit = defense ? defense.hit : true`, so a null here is the uncontested v1.1.x attack.
   if (!isCombatAutomationEnabled()) return null;
@@ -432,62 +440,31 @@ export async function resolveDefense(defender, attackTotal,
   // A Mortal but conscious defender still defends: his severity already reaches the roll through
   // the wound penalties folded into `ref.total`.
   //
-  // `T412` — the gate (`T43`) stands; what it used to do silently is announced. Without this the
-  // notice, the prompt and the card's Defense term all vanish together and the result is shaped
-  // exactly like a swing at nobody, so the table cannot tell a refused defence from a missed
-  // target. Display only: the return is unchanged.
+  // `T412`: the gate (`T43`) stands and the card says so, because `skipped` is what prints
+  // `DefenseSkippedRow` where the contest would have been, so a refused defence is not shaped
+  // exactly like a swing at nobody. `hit` is the uncontested attack the two call sites read.
   if (INCAPACITATED_STATUSES.some(id => defender.statuses.has(id))) {
-    await createCyberpunkChatMessage({
-      speaker: ChatMessage.getSpeaker({ actor: defender, token: defenderToken }),
-      // Names the defender alone, so an ambusher stays unnamed here without needing D31's split.
-      content: localizeParamEscaped("DefenseSkipped",
-        { defender: displayName(defender, defenderToken) })
-    }, { messageMode });
-    return null;
+    return { total: null, label: "", action: "", roll: null, hit: true, skipped: true };
   }
 
   const options = defender.defenseOptions();
-  const owner = defender.type === "npc"
-    ? null
-    : game.users.players.find(u => u.active && defender.testUserPermission(u, "OWNER"));
+  const owner = defenseOwner(defender);
 
   let choice = null;
   if (owner && options.length) {
-    // Nothing else is posted until the answer arrives, so without this the attacker and the GM
-    // watch a blank screen for up to 30 s while the defender is the only one who can see why.
-    await createCyberpunkChatMessage({
-      // The token as well as the actor (`T316`): `getSpeaker` sets `alias = actor.name` before it
-      // ever looks for one (`client/documents/chat-message.mjs:228`, 14.365.0) and then honours the
-      // alias it was handed (`:275`), so the card's header printed the sheet name beside a body
-      // that names the token. Never an explicit `alias` — core's CASE 1 is what the two turn-start
-      // notices above already take.
-      speaker: ChatMessage.getSpeaker({ actor: defender, token: defenderToken }),
-      // D31 — the notice is public, so an ambusher is not named on it either. `hideAttacker` is
-      // the same flag the prompt takes, so the three surfaces move together (`T103`).
-      content: hideAttacker
-        ? localizeParamEscaped("DefensePendingHidden", { defender: displayName(defender, defenderToken) })
-        : localizeParamEscaped("DefensePending",
-          { attacker: attackerName, defender: displayName(defender, defenderToken) })
-    }, { messageMode });
-
-    try {
-      // D29.5 — an ambusher's prompt keeps the number, which is what makes the defender's choice
-      // informed, and drops what identifies them. The item name goes with the name: a weapon called
-      // by its own name gives the ambusher away almost as surely.
-      choice = await owner.query(
-        "cyberpunk2020.defensePrompt",
-        {
-          attackerName: hideAttacker ? "" : attackerName,
-          itemName: hideAttacker ? "" : itemName,
-          defenderActorUuid: defender.uuid,
-          defenderTokenUuid: defenderToken?.uuid ?? "",
-          attackTotal, choices: options
-        },
-        { timeout: DEFENSE_QUERY_TIMEOUT_MS }
-      );
-    } catch (err) {
-      // The owner disconnected or the query outlived its deadline; the defense still has to happen.
-    }
+    // D29.5/D31 - an ambusher's prompt keeps the number, which is what makes the defender's choice
+    // informed, and drops what identifies them. The item name goes with the name: a weapon called
+    // by its own name gives the ambusher away almost as surely.
+    //
+    // D259 - no timeout: the wait ends by the answer, by the owner's disconnect or by the card's
+    // own stop button, and a null from any of the three falls through to `options[0]` below.
+    choice = await waitForAnswer(messageId, owner, "cyberpunk2020.defensePrompt", {
+      attackerName: hideAttacker ? "" : attackerName,
+      itemName: hideAttacker ? "" : itemName,
+      defenderActorUuid: defender.uuid,
+      defenderTokenUuid: defenderToken?.uuid ?? "",
+      attackTotal, choices: options
+    });
   }
 
   const picked = options.find(o => o.skillId === choice?.skillId) ?? options[0] ?? null;

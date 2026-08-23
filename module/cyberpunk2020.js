@@ -19,8 +19,9 @@ import { registerHandlebarsHelpers } from "./handlebars-helpers.js"
 import * as migrations from "./migrate.js";
 import { registerSystemSettings } from "./settings.js"
 import { getHtmlElement } from "./compat.js";
-import { ATTACK_FLAG_VERSION, DOT_FLAG, SAVE_PROMPT_DEADLINE_MS, applyAttackFromMessage, rollSaveOf } from "./damage.js";
-import { CyberpunkCombat, announceTurn, applyDeclaredDodge, clearSuppressionZones, clearTurnFlags, DEFENSE_PROMPT_DEADLINE_MS } from "./combat.js";
+import { ATTACK_FLAG_VERSION, DOT_FLAG, applyAttackFromMessage, rollSaveOf } from "./damage.js";
+import { CyberpunkCombat, announceTurn, applyDeclaredDodge, clearSuppressionZones, clearTurnFlags } from "./combat.js";
+import { isWaiting, stopWaiting } from "./attack-card.js";
 import { allOutEffectKeys, isCombatAutomationEnabled, isFnff2Enabled } from "./lookups.js";
 import { CyberpunkTokenRuler, vetoOverspentMovement } from "./movement.js";
 import { applyBlastFromMessage, drawZone, layZoneFromMessage, SuppressiveFireBehavior, zoneRegions } from "./zones.js";
@@ -62,6 +63,11 @@ async function syncDerivedStatuses(actor) {
   if (actor.statuses.has("cpBurning") !== burning) {
     await actor.toggleStatusEffect("cpBurning", { active: burning });
   }
+}
+
+/** Every zone one card describes: one per pattern (D255), and none at all for anything else. */
+function zonePayloads(attack) {
+  return (attack?.patterns ?? []).filter(pattern => pattern.blast).map(pattern => pattern.blast);
 }
 
 const { Actors, Items } = foundry.documents.collections;
@@ -158,9 +164,22 @@ Hooks.once('init', async function () {
       id: "cpBurning", name: "CYBERPUNK.StatusBurning", img: "icons/svg/fire.svg", hud: false
     };
 
-    // The owner of a player character rolls their own save when the world asks for it. The reply
-    // has to beat the sender's timeout, so the dialog is closed here rather than waited on forever.
-    CONFIG.queries["cyberpunk2020.savePrompt"] = async ({ actorUuid, tokenUuid, kind, dc, messageMode, cause }) => {
+    // D259 - the client that stopped waiting closes the prompt it had opened here, so nobody
+    // fills in a form whose answer is going to be dropped. Finding no dialog is not an error: the
+    // owner may have answered, or closed it, between the two messages crossing.
+    const openPrompts = new Map();
+    CONFIG.queries["cyberpunk2020.promptCancel"] = ({ messageId }) => {
+      const dialog = openPrompts.get(messageId);
+      if (!dialog) return false;
+      openPrompts.delete(messageId);
+      dialog.close();
+      ui.notifications.info(localize("PromptCancelled"));
+      return true;
+    };
+
+    // The owner of a player character rolls their own save when the world asks for it. No
+    // deadline: the asking client waits until it is answered or stops waiting itself (D259).
+    CONFIG.queries["cyberpunk2020.savePrompt"] = async ({ actorUuid, tokenUuid, kind, dc, messageMode, cause, messageId = "" }) => {
       const actor = await fromUuid(actorUuid);
       if (!actor) throw new Error(`No actor for save prompt: ${actorUuid}`);
 
@@ -186,37 +205,22 @@ Hooks.once('init', async function () {
       // is the one fact a player cannot infer — the same two sentences D186 put on the card.
       const direction = localize(zone ? "OverThresholdMessage" : "UnderThresholdMessage");
 
-      let dialog = null;
-      let deadlineTimer = null;
-      let expired = false;
-      const deadline = new Promise(resolve => deadlineTimer = setTimeout(() => {
-        expired = true;
-        dialog?.close();
-        resolve(null);
-      }, SAVE_PROMPT_DEADLINE_MS));
-
-      const answer = await Promise.race([
-        foundry.applications.api.DialogV2.input({
-          window: { title: titles[kind] ?? "CYBERPUNK.SaveStun" },
-          // The cause key rides in over the socket and a key core cannot find is echoed back
-          // verbatim, so the one string here that is not this client's own is escaped.
-          content: `<p>${localizeParamEscaped("SavePrompt", { name: displayName(actor, token) })}</p>
-            ${cause ? `<p>${foundry.utils.escapeHTML(localize(cause))}</p>` : ""}
-            <p>${localizeParamEscaped("SavePromptThreshold",
-              { label: thresholdLabel, threshold, direction })}</p>
-            <p>${localizeParamEscaped("SaveDeadline",
-              { seconds: Math.round(SAVE_PROMPT_DEADLINE_MS / 1000) })}</p>
-            <input type="number" name="mod" value="0" step="1" autofocus>`,
-          ok: { label: "CYBERPUNK.SaveRollButton" },
-          render: (event, app) => { dialog = app; }
-        }),
-        deadline
-      ]);
-      clearTimeout(deadlineTimer);
-
-      // The card is posted under this player's own name whether or not they answered, so the one
-      // person who can tell the difference is told (`T411`).
-      if (expired) ui.notifications.warn(localize("SaveExpired"));
+      const answer = await foundry.applications.api.DialogV2.input({
+        window: { title: titles[kind] ?? "CYBERPUNK.SaveStun" },
+        // The cause key rides in over the socket and a key core cannot find is echoed back
+        // verbatim, so the one string here that is not this client's own is escaped.
+        content: `<p>${localizeParamEscaped("SavePrompt", { name: displayName(actor, token) })}</p>
+          ${cause ? `<p>${foundry.utils.escapeHTML(localize(cause))}</p>` : ""}
+          <p>${localizeParamEscaped("SavePromptThreshold",
+            { label: thresholdLabel, threshold, direction })}</p>
+          <input type="number" name="mod" value="0" step="1" autofocus>`,
+        ok: { label: "CYBERPUNK.SaveRollButton" },
+        render: (event, app) => { openPrompts.set(messageId, app); }
+      });
+      // `promptCancel` deletes the entry before it closes the dialog, so a missing entry means the
+      // asking client stopped waiting and is rolling this save itself: rolling here as well would
+      // post the same save twice. Closing the dialog by hand keeps the entry and still rolls.
+      if (!openPrompts.delete(messageId)) return null;
 
       const mod = Number(answer?.mod) || 0;
       return rollSaveOf(actor, kind, dc, mod, messageMode, token);
@@ -295,8 +299,8 @@ Hooks.once('init', async function () {
     };
 
     // The defender picks the skill; the attacker's client rolls it, so this returns a choice and
-    // never a result. Null means "decide for me" — the timeout path answers that way too.
-    CONFIG.queries["cyberpunk2020.defensePrompt"] = async ({ attackerName, itemName, defenderActorUuid, defenderTokenUuid, attackTotal, choices }) => {
+    // never a result. Null means "decide for me", which is also what a cancelled prompt answers.
+    CONFIG.queries["cyberpunk2020.defensePrompt"] = async ({ attackerName, itemName, defenderActorUuid, defenderTokenUuid, attackTotal, choices, messageId = "" }) => {
       // Named, not "you": a player may own more than one character, and only the uuid says which
       // of them is being attacked.
       const defender = await fromUuid(defenderActorUuid);
@@ -305,13 +309,6 @@ Hooks.once('init', async function () {
       // Which of that actor's tokens is under attack — this client has no other way to know, and a
       // linked actor would otherwise be named off its prototype (`T296`).
       const defenderToken = defenderTokenUuid ? await fromUuid(defenderTokenUuid) : null;
-
-      let dialog = null;
-      let deadlineTimer = null;
-      const deadline = new Promise(resolve => deadlineTimer = setTimeout(() => {
-        dialog?.close();
-        resolve(null);
-      }, DEFENSE_PROMPT_DEADLINE_MS));
 
       // Every value here is user-authored data arriving from another client — item and actor names
       // included — so all of it is escaped before it is interpolated into markup.
@@ -357,44 +354,41 @@ Hooks.once('init', async function () {
         ? `<p class="notes cp-defense-trade">${localize("DefenseAllOutTrade")}</p>`
         : "";
 
-      const answer = await Promise.race([
-        foundry.applications.api.DialogV2.input({
-          window: { title: "CYBERPUNK.Defense" },
-          content: `<p>${asked}</p>
-            <label>${localize("DefenseSkill")} <select name="skillId">${options}</select></label>
-            <label class="cp-defense-action">${localize("DefenseAction")} <select name="action">${maneuverOptions(choices[0]?.skillId)}</select></label>
-            ${trade}
-            <label>${localize("DefenseMod")} <input type="number" name="extraMod" value="0" step="1"></label>`,
-          ok: { label: "CYBERPUNK.DefenseRollButton" },
-          render: (event, app) => {
-            dialog = app;
-            // The maneuvers belong to the chosen skill, so the second level is rebuilt on every
-            // change of the first — and the row hides itself for a skill that has none.
-            const root = app.element;
-            const skill = root.querySelector('select[name="skillId"]');
-            const action = root.querySelector('select[name="action"]');
-            const row = root.querySelector(".cp-defense-action");
-            // The trade sentence names the two maneuvers, so it lives and dies with the row that
-            // offers them: the four skills `07:982` gives no maneuver list to left it on screen
-            // describing a choice that was no longer there (`T336`). Absent entirely with FNFF2
-            // off, which is the only reason for the guard.
-            const tradeLine = root.querySelector(".cp-defense-trade");
-            const sync = () => {
-              action.innerHTML = maneuverOptions(skill.value);
-              const offered = action.options.length > 0;
-              row.style.display = offered ? "" : "none";
-              if (tradeLine) tradeLine.style.display = offered ? "" : "none";
-            };
-            sync();
-            skill.addEventListener("change", sync);
-          }
-        }),
-        deadline
-      ]);
-      clearTimeout(deadlineTimer);
+      const answer = await foundry.applications.api.DialogV2.input({
+        window: { title: "CYBERPUNK.Defense" },
+        content: `<p>${asked}</p>
+          <label>${localize("DefenseSkill")} <select name="skillId">${options}</select></label>
+          <label class="cp-defense-action">${localize("DefenseAction")} <select name="action">${maneuverOptions(choices[0]?.skillId)}</select></label>
+          ${trade}
+          <label>${localize("DefenseMod")} <input type="number" name="extraMod" value="0" step="1"></label>`,
+        ok: { label: "CYBERPUNK.DefenseRollButton" },
+        render: (event, app) => {
+          openPrompts.set(messageId, app);
+          // The maneuvers belong to the chosen skill, so the second level is rebuilt on every
+          // change of the first, and the row hides itself for a skill that has none.
+          const root = app.element;
+          const skill = root.querySelector('select[name="skillId"]');
+          const action = root.querySelector('select[name="action"]');
+          const row = root.querySelector(".cp-defense-action");
+          // The trade sentence names the two maneuvers, so it lives and dies with the row that
+          // offers them: the four skills `07:982` gives no maneuver list to left it on screen
+          // describing a choice that was no longer there (`T336`). Absent entirely with FNFF2
+          // off, which is the only reason for the guard.
+          const tradeLine = root.querySelector(".cp-defense-trade");
+          const sync = () => {
+            action.innerHTML = maneuverOptions(skill.value);
+            const offered = action.options.length > 0;
+            row.style.display = offered ? "" : "none";
+            if (tradeLine) tradeLine.style.display = offered ? "" : "none";
+          };
+          sync();
+          skill.addEventListener("change", sync);
+        }
+      });
+      openPrompts.delete(messageId);
 
       // `action` is absent for a skill with no maneuvers, and `resolveDefense` falls back to the
-      // option's own total there — the same answer the timeout path gives.
+      // option's own total there, which is the same answer a prompt nobody answered gives.
       return answer
         ? { skillId: answer.skillId, action: answer.action ?? null, extraMod: Number(answer.extraMod) || 0 }
         : null;
@@ -514,6 +508,7 @@ Hooks.once('init', async function () {
           tip.className = "cp-dice-tooltip";
           tip.innerHTML = tooltipHTML;
 
+          const chain = el.dataset.chain ?? "";
           const showInlineRollFormula = game.settings.get(
             "cyberpunk2020",
             "showInlineRollFormula"
@@ -539,13 +534,23 @@ Hooks.once('init', async function () {
               : result || total;
 
             if (formulaLine.textContent) summary.appendChild(formulaLine);
-            if (resultLine.textContent && resultLine.textContent !== formulaLine.textContent) {
+            // The chain opens with the same number the sum line would print (§4.2 of
+            // DESIGN-attack-card.md), so it replaces that line rather than repeating it.
+            if (!chain && resultLine.textContent
+              && resultLine.textContent !== formulaLine.textContent) {
               summary.appendChild(resultLine);
             }
 
             if (summary.childElementCount > 0) {
               tip.prepend(summary);
             }
+          }
+
+          if (chain) {
+            const chainLine = document.createElement("div");
+            chainLine.className = "cp-inline-roll-chain";
+            chainLine.textContent = chain;
+            tip.appendChild(chainLine);
           }
 
           document.body.appendChild(tip);
@@ -576,14 +581,13 @@ Hooks.once('init', async function () {
         return;
       }
 
-      const tokenId = button.dataset.tokenId;
-      if (attack.applied?.[tokenId]) {
+      if (attack.targets?.every(t => t.applied || !t.hits?.length)) {
         button.disabled = true;
         button.textContent = game.i18n.localize("CYBERPUNK.DamageApplied");
         return;
       }
 
-      button.addEventListener("click", () => applyAttackFromMessage(message, { tokenId }));
+      button.addEventListener("click", () => applyAttackFromMessage(message));
     });
 
     // The zone's own button. Separate from the one above because it has no target to name: who is
@@ -600,7 +604,7 @@ Hooks.once('init', async function () {
         return;
       }
 
-      if (attack.applied?.zone) {
+      if (attack.applied) {
         button.disabled = true;
         button.textContent = game.i18n.localize("CYBERPUNK.ZoneApplied");
         return;
@@ -662,22 +666,42 @@ Hooks.once('init', async function () {
       button.dataset.cpDrawBound = "1";
 
       const attack = message.flags?.cyberpunk2020?.attack;
+      const zones = zonePayloads(attack);
       if (!game.user.isGM || !isCombatAutomationEnabled()
-        || attack?.version !== ATTACK_FLAG_VERSION || !attack.blast) {
+        || attack?.version !== ATTACK_FLAG_VERSION || !zones.length) {
         button.remove();
         return;
       }
 
       const drawn = () => {
         button.disabled = true;
-        button.textContent = localize("ZoneDrawn");
+        button.textContent = localize("ZoneDrawnState");
       };
       if (zoneRegions(message).length) return drawn();
 
       button.addEventListener("click", async () => {
-        if (!zoneRegions(message).length) await drawZone(attack.blast, attack.kind, message.id);
+        if (!zoneRegions(message).length) {
+          for (const blast of zones) await drawZone(blast, attack.kind, message.id);
+        }
         drawn();
       });
+    });
+
+    // D259 - the card's own way out of a wait that is not going to end by itself. The strip is
+    // rendered for everybody, so the button is what is decided per client: only the one holding
+    // the promise can resolve it, and on every other client there is nothing for it to do.
+    Hooks.on("renderChatMessageHTML", (message, html) => {
+      const root = getHtmlElement(html);
+      const button = root?.querySelector?.('button[data-action="stopWaiting"]');
+      if (!button || button.dataset.cpWaitBound === "1") return;
+      button.dataset.cpWaitBound = "1";
+
+      if (!isWaiting(message.id)) {
+        button.remove();
+        return;
+      }
+
+      button.addEventListener("click", () => stopWaiting(message.id));
     });
 
     // Wound icons follow system.damage wherever it comes from, which is what makes a hand click on
@@ -725,23 +749,42 @@ Hooks.once('init', async function () {
 
       // Same argument for the splash the card describes, and the same place: drawing it is what
       // lets the table see what will be hit before it is (D74), so it happens whoever applies.
-      if (attack.blast) await drawZone(attack.blast, attack.kind, message.id);
+      const zones = zonePayloads(attack);
+      for (const blast of zones) await drawZone(blast, attack.kind, message.id);
 
       if (game.settings.get("cyberpunk2020", "damageApplyMode") !== "auto") return;
 
       // The payload and not the kind, exactly as the drawing branch above already asks: a kind list
       // went stale the moment `T252` added a third zone kind, and a flamethrower sweep then fell
-      // through to the loop below, which `__zoneFlags` leaves empty for every zone card — so under
-      // the mode this family exists for the stream was placed, carded and drawn and nobody in it
-      // took a point (`T302`). `applyBlastFromMessage` gates on the same field.
-      if (attack.blast) {
+      // through to the direct family's loop, which no zone card fills, so under the mode this
+      // family exists for the stream was placed, carded and drawn and nobody in it took a point
+      // (`T302`). `applyBlastFromMessage` gates on the same field.
+      if (zones.length) {
         await applyBlastFromMessage(message);
         return;
       }
 
-      for (const target of attack.targets ?? []) {
-        await applyAttackFromMessage(message, { tokenId: target.tokenId });
-      }
+      await applyAttackFromMessage(message);
+    });
+
+    // D259 - the awaiting card is created with no hits, so the hook above has nothing due and the
+    // hits arrive on the update the resolved defence writes. Same gates, same single writer.
+    Hooks.on("updateChatMessage", async (message, changes) => {
+      if (!game.user.isActiveGM) return;
+      if (!isCombatAutomationEnabled()) return;
+
+      // The defence-resolved write is the only one that clears `pending`; the apply's own writes
+      // carry the targets and the content, so this cannot re-enter on what it just wrote.
+      const changed = changes.flags?.cyberpunk2020?.attack;
+      if (!changed || !("pending" in changed)) return;
+
+      const attack = message.flags?.cyberpunk2020?.attack;
+      if (attack?.version !== ATTACK_FLAG_VERSION || attack.kind !== "attack") return;
+      if (attack.pending === "defense") return;
+      if (!attack.targets?.some(target => target.hits?.length)) return;
+      if (game.settings.get("cyberpunk2020", "damageApplyMode") !== "auto") return;
+
+      await applyAttackFromMessage(message);
     });
 });
 

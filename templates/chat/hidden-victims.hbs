@@ -1,0 +1,12 @@
+{{!-- D6.4: a zone that caught a token the players cannot see writes its victims here, in one
+      GM-only whisper per attack, rather than onto the public card (D31/D120). --}}
+<div class="cyberpunk cyberpunk-card flexcol">
+    <h2>{{CPLocal "HiddenVictims"}}</h2>
+    {{#each targets as |t|}}
+        <p class="cp-target-name">{{t.name}}</p>
+        <div class="cp-target">
+        {{> "systems/cyberpunk2020/templates/chat/parts/hit-rows.hbs" rows=t.rows}}
+        {{> "systems/cyberpunk2020/templates/chat/parts/events.hbs" events=t.events pending=""}}
+        </div>
+    {{/each}}
+</div>

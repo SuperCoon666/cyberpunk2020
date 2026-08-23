@@ -114,7 +114,7 @@ export function classifyRollDice(roll) {
     /**
      * Note: You should provide either unevaluated Rolls, or fulfilledrolls (not promises). As things stand, promises will break a multiroll.
      * @param {*} speaker The speaker on the card for this multiroll
-     * @param {string} templatePath Path to the template. eg systems/cyberpunk2020/templates/chat/multi-hit.hbs
+     * @param {string} templatePath Path to the template. eg systems/cyberpunk2020/templates/chat/default-roll.hbs
      * Template provided should be one that loops through rolls.
      * Example data provided to the template:
      * {

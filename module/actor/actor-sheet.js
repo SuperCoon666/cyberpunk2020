@@ -877,11 +877,11 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     //
     // **Outside a started encounter there is no such token, and D151 accepts that**: `displayName`
     // falls back to the prototype, so a GM who renamed only the *placed* token reads the sheet's
-    // name in the `DefensePending` notice and the defence prompt (`T314`). Ruled rather than left
-    // open — D133's model is about the disagreement a **table** sees between a card and the turn
-    // order, and a contested melee outside initiative has no turn order to disagree with. The one
-    // encounter-free source, the acting client's controlled token, carries its own ambiguity and is
-    // deliberately not read; `getActiveTokens()` was tried and measured wrong (above).
+    // name in the defence prompt (`T314`). Ruled rather than left open: D133's model is about the
+    // disagreement a **table** sees between a card and the turn order, and a contested melee
+    // outside initiative has no turn order to disagree with. The one encounter-free source, the
+    // acting client's controlled token, carries its own ambiguity and is deliberately not read;
+    // `getActiveTokens()` was tried and measured wrong (above).
     //
     // **Not** because core reads `Combatant#name` the same way, which this comment used to claim in
     // its own words: core goes the combatant's token straight to `actor.name`, with no prototype step

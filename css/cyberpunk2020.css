@@ -811,6 +811,73 @@ div.statderive .value.rightborder {
   margin-left: 1.5em;
 }
 
+/* D260: the damage chip carries the state in its form: hollow before the apply, filled after,
+   muted when armour stopped it, tagged when it went into a cyberlimb. */
+.chat-message a.cp-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 22px;
+  padding: 0 6px;
+  margin: 0;
+  border: 1.5px solid #111;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.25);
+  font-weight: 700;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: #111;
+}
+.chat-message a.cp-chip.cp-chip-on { background: #111; color: #f7f3e8; }
+.chat-message a.cp-chip.cp-chip-z { background: rgba(17, 17, 17, 0.08); border-color: rgba(17, 17, 17, 0.28); color: #5f5a50; }
+.chat-message a.cp-chip.cp-chip-sdp { background: #111; color: #f7f3e8; }
+/* Not localized on purpose: `SDP` is the sheet's own abbreviation in every maintained locale,
+   which is the call `CYBERPUNK.ChainSdp` already makes for the same tag in the hover chain. */
+.chat-message a.cp-chip.cp-chip-sdp::after { content: "SDP"; font-size: 8px; letter-spacing: 0.05em; margin-left: 3px; opacity: 0.85; font-weight: 600; }
+.cyberpunk-card .cp-zone { display: flex; align-items: center; gap: 6px; padding: 2px 0; min-height: 24px; }
+.cyberpunk-card .cp-zone .cp-zone-name { flex: 1; }
+.cyberpunk-card .cp-chips { display: flex; gap: 4px; align-items: center; }
+.cp-dice-tooltip .cp-inline-roll-chain { margin-top: 4px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* D260: the card's quiet header: one black bar (the attack), key/value rows under the title, the
+   weapon as a muted line. */
+.chat-message .cp-attack-card h2 { font-size: 18px; margin: 2px 0 6px; padding-bottom: 2px; }
+.cyberpunk-card .cp-weapon { margin: -3px 0 5px; font-size: 13px; color: #5f5a50; }
+.cyberpunk-card .cp-kv { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; margin: 0 0 4px; font-size: 13px; }
+.cyberpunk-card .cp-kv dt { margin: 0; color: #5f5a50; font-variant: small-caps; font-weight: 600; }
+.cyberpunk-card .cp-kv dd { margin: 0; }
+.cyberpunk-card .cp-bar {
+  display: flex; align-items: center; gap: 5px;
+  padding: 2px 5px 2px 3px; margin-top: 3px;
+  background: #111; color: #f5f5f5;
+  border: 2px solid #111;
+  font-variant: small-caps; font-weight: 700; font-size: 13px; line-height: 18px;
+}
+.cyberpunk-card .cp-bar .cp-bar-total { font-family: "Open Sans ExtraBold", sans-serif; font-variant: normal; }
+.cyberpunk-card .cp-bar .cp-bar-dc { font-weight: 600; opacity: 0.8; font-variant: normal; }
+.cyberpunk-card .cp-bar .roll-results { margin-left: auto; }
+.cyberpunk-card .cp-bar-soft { background: transparent; color: #111; border-color: transparent; border-bottom: 1px solid rgba(17, 17, 17, 0.18); padding-left: 0; padding-right: 0; }
+.cyberpunk-card .cp-section {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 8px 0 3px;
+  font-variant: small-caps; font-weight: 700; font-size: 13px; letter-spacing: 0.01em;
+  border-bottom: 1px solid rgba(17, 17, 17, 0.35);
+}
+.cyberpunk-card .cp-section .cp-state { font-weight: 600; font-size: 12px; color: #5f5a50; }
+.cyberpunk-card .cp-section .cp-state-on { color: #111; }
+.cyberpunk-card .cp-tally, .cyberpunk-card .cp-note, .cyberpunk-card .cp-notice { margin: 3px 0 0; font-size: 13px; color: #5f5a50; }
+.cyberpunk-card .cp-note { font-style: italic; }
+.cyberpunk-card .cp-target-name { margin: 4px 0 0; font-weight: 700; font-size: 13px; }
+.cyberpunk-card .cp-target { padding-left: 12px; }
+.cyberpunk-card .cp-events { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; font-size: 13px; }
+.cyberpunk-card .cp-event { padding: 2px 6px; border-radius: 3px; border-left: 3px solid rgba(17, 17, 17, 0.35); background: rgba(17, 17, 17, 0.04); }
+.cyberpunk-card .cp-event-bad { background: rgba(209, 80, 47, 0.7215686275); border-left-color: #7d2410; }
+.cyberpunk-card .cp-event-wait { display: flex; align-items: center; gap: 6px; border: 1px dashed rgba(17, 17, 17, 0.55); border-left-width: 1px; background: transparent; padding: 3px 6px; font-size: 12px; }
+.cyberpunk-card .cp-event-wait .cp-wait-who { flex: 1; }
+.cyberpunk-card .cp-event-wait button { flex: 0 0 auto; height: 22px; padding: 0 8px; font-size: 12px; }
+.cyberpunk-card .cp-card-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.cyberpunk-card .cp-card-actions button { flex: 1 1 auto; min-width: 120px; white-space: nowrap; }
+
 /* Two columns the whole way down: everything that acts on the left, the body on the right. The
    right column is the armour diagram's own declared width (`.armor-display` is 16em) plus the
    rule and gutter that divide it from the acting column, so neither column is wider than the

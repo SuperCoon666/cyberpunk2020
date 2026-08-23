@@ -1,0 +1,56 @@
+<div class="cyberpunk cyberpunk-card cp-attack-card flexcol">
+    <h2>{{title}}</h2>
+    {{#if weaponName}}<p class="cp-weapon">{{weaponName}}</p>{{/if}}
+
+    <dl class="cp-kv">
+        {{#if targetName}}<dt>{{CPLocal "Target"}}</dt><dd>{{targetName}}</dd>{{/if}}
+        {{#if rangeLabel}}<dt>{{CPLocal "Range"}}</dt><dd>{{rangeLabel}}</dd>{{/if}}
+        {{#if roundsLine}}<dt>{{roundsLabel}}</dt><dd>{{roundsLine}}</dd>{{/if}}
+    </dl>
+
+    {{#if attackBar}}
+    {{> "systems/cyberpunk2020/templates/chat/parts/dice-bar.hbs" attackBar}}
+    {{/if}}
+    {{#if defenseBar}}
+    {{> "systems/cyberpunk2020/templates/chat/parts/dice-bar.hbs" defenseBar}}
+    {{/if}}
+    {{#if pendingDefense}}
+    {{> "systems/cyberpunk2020/templates/chat/parts/events.hbs" events=none pending=pendingDefense}}
+    {{/if}}
+
+    {{#if tally}}<p class="cp-tally">{{tally}}</p>{{/if}}
+
+    {{#each targets as |t|}}
+        {{#if ../multi}}
+        <div class="cp-section"><span>{{t.name}}</span>{{#if t.applied}}<span class="cp-state cp-state-on">{{CPLocal "DamageApplied"}}</span>{{/if}}</div>
+        {{#if t.attackBar}}{{> "systems/cyberpunk2020/templates/chat/parts/dice-bar.hbs" t.attackBar}}{{/if}}
+        {{#if t.tally}}<p class="cp-tally">{{t.tally}}</p>{{/if}}
+        {{else}}
+        {{#if t.rows.length}}
+        <div class="cp-section"><span>{{CPLocal "Damage"}}</span>{{#if t.applied}}<span class="cp-state cp-state-on">{{CPLocal "DamageApplied"}}</span>{{/if}}</div>
+        {{/if}}
+        {{/if}}
+        {{#if t.rows.length}}
+        <div class="{{#if ../multi}}cp-target{{/if}}">
+        {{> "systems/cyberpunk2020/templates/chat/parts/hit-rows.hbs" rows=t.rows}}
+        {{> "systems/cyberpunk2020/templates/chat/parts/events.hbs" events=t.events pending=t.pendingSave}}
+        </div>
+        {{else}}
+        {{#unless ../pendingDefense}}<p class="cp-tally">{{CPLocal "NoHits"}}</p>{{/unless}}
+        {{/if}}
+        {{#if t.fumble}}<hr/><div class="fumble-block"><h3>{{t.fumble.title}}</h3>{{{t.fumble.html}}}</div>{{/if}}
+    {{/each}}
+
+    {{!-- Under the last section: the allocation is what the burst ran out of, not how it opened. --}}
+    {{#if uncovered}}<p class="cp-note">{{uncovered}}</p>{{/if}}
+
+    {{> "systems/cyberpunk2020/templates/chat/parts/actions.hbs" buttons=buttons}}
+
+    {{#if fumble}}
+        <hr/>
+        <div class="fumble-block">
+            <h3>{{fumble.title}}</h3>
+            {{{fumble.html}}}
+        </div>
+    {{/if}}
+</div>
