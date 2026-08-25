@@ -1,6 +1,9 @@
 {{#each rows as |row|}}
 <div class="cp-zone">
-    <span class="cp-zone-name">{{row.zone}}</span>
+    <div class="cp-zone-head">
+        <span class="cp-zone-name">{{row.zone}}</span>
+        {{#if row.tally}}<span class="cp-zone-tally">{{row.tally}}</span>{{/if}}
+    </div>
     <span class="cp-chips">
         {{#each row.chips as |chip|}}
         <a class="inline-roll inline-result cp-inline-roll cp-chip cp-chip-{{chip.state}}"

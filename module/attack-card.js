@@ -54,7 +54,8 @@ function encodeRoll(record) {
 }
 
 function diceBar(record, label, { dc = 0, soft = false, noRollText = "" } = {}) {
-  return { label, dc, soft, noRollText, roll: record ? Roll.fromJSON(JSON.stringify(record)) : null };
+  return { label, dc, soft, noRollText, roll: record ? Roll.fromJSON(JSON.stringify(record)) : null,
+    rollData: record ? encodeRoll(record) : "" };
 }
 
 /**
@@ -82,6 +83,15 @@ export function hitRows(target, zoneLabel = localize) {
     if (!rows.has(zone)) rows.set(zone, { zone: zoneLabel(zone), chips: [] });
     rows.get(zone).chips.push(chip);
   });
+  for (const row of rows.values()) {
+    // Sorted only once applied: before it the chips still read in the burst's own order.
+    if (target.applied) row.chips.sort((a, b) => b.value - a.value);
+    if (row.chips.length < 2) continue;
+    row.tally = target.applied
+      ? localizeParam("LocationTallyApplied", { hits: row.chips.length,
+          damage: row.chips.reduce((sum, chip) => sum + chip.value, 0) })
+      : localizeParam("LocationTally", { hits: row.chips.length });
+  }
   return [...rows.values()];
 }
 

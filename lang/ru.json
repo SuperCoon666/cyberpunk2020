@@ -356,6 +356,8 @@
     "CYBERPUNK.SuppressiveOnFail": "При провале: 1d6 попаданий",
     "CYBERPUNK.AutofireTally": "Попаданий: {hits} / {fired}",
     "CYBERPUNK.CrossingHits": "Попаданий: {hits}",
+    "CYBERPUNK.LocationTally": "попаданий {hits}",
+    "CYBERPUNK.LocationTallyApplied": "попаданий {hits} · урон {damage}",
     "CYBERPUNK.SpreadWidth": "Ширина снопа",
     "CYBERPUNK.SweepWidth": "Ширина струи",
     "CYBERPUNK.FormulaInvalid": "«{formula}» — не формула броска, которую система может бросить: пишите через латинское d, например 2d6.",

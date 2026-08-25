@@ -356,6 +356,8 @@
     "CYBERPUNK.SuppressiveOnFail": "On a failure: 1d6 hits",
     "CYBERPUNK.AutofireTally": "Hits: {hits} / {fired}",
     "CYBERPUNK.CrossingHits": "Hits: {hits}",
+    "CYBERPUNK.LocationTally": "hits {hits}",
+    "CYBERPUNK.LocationTallyApplied": "hits {hits} · dmg {damage}",
     "CYBERPUNK.SpreadWidth": "Pattern width",
     "CYBERPUNK.SweepWidth": "Stream width",
     "CYBERPUNK.FormulaInvalid": "\"{formula}\" is not a dice formula this system can roll — use D notation, as in 2d6.",

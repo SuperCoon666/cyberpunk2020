@@ -495,18 +495,8 @@ Hooks.once('init', async function () {
             return;
           }
 
-          let tooltipHTML = "";
-          try {
-            tooltipHTML = await roll.getTooltip();
-          } catch (e) {
-            return;
-          }
-
-          if (!tooltipHTML) return;
-
           tip = document.createElement("div");
           tip.className = "cp-dice-tooltip";
-          tip.innerHTML = tooltipHTML;
 
           const chain = el.dataset.chain ?? "";
           const showInlineRollFormula = game.settings.get(
@@ -514,36 +504,37 @@ Hooks.once('init', async function () {
             "showInlineRollFormula"
           );
 
-          if (showInlineRollFormula) {
-            const summary = document.createElement("div");
-            summary.className = "cp-inline-roll-summary";
+          const summary = document.createElement("div");
+          summary.className = "cp-inline-roll-summary";
 
-            const formula = String(roll.formula ?? "").trim();
-            const result = String(roll.result ?? "").trim();
-            const totalValue = Number(roll.total);
-            const total = Number.isFinite(totalValue) ? String(roll.total) : "";
-
-            const formulaLine = document.createElement("div");
-            formulaLine.className = "cp-inline-roll-formula";
-            formulaLine.textContent = formula;
-
-            const resultLine = document.createElement("div");
-            resultLine.className = "cp-inline-roll-result";
-            resultLine.textContent = result && total
-              ? `${result} = ${total}`
-              : result || total;
-
-            if (formulaLine.textContent) summary.appendChild(formulaLine);
-            // The chain opens with the same number the sum line would print (§4.2 of
-            // DESIGN-attack-card.md), so it replaces that line rather than repeating it.
-            if (!chain && resultLine.textContent
-              && resultLine.textContent !== formulaLine.textContent) {
-              summary.appendChild(resultLine);
+          for (const term of roll.terms) {
+            if (term.faces) {
+              for (const result of term.results) {
+                if (result.active === false) continue;
+                const die = document.createElement("span");
+                die.className = "cp-tip-die";
+                die.textContent = String(result.result);
+                summary.appendChild(die);
+              }
+            } else if (!showInlineRollFormula) {
+              continue;
+            } else if (term.operator) {
+              summary.appendChild(document.createTextNode(` ${term.operator} `));
+            } else {
+              summary.appendChild(document.createTextNode(String(term.total ?? term.expression)));
             }
+          }
+          // The chain opens with the same number this line would close with (§4.2 of
+          // DESIGN-attack-card.md), so the total prints only when no chain follows.
+          if (!chain && Number.isFinite(Number(roll.total))) {
+            const total = document.createElement("span");
+            total.className = "cp-tip-total";
+            total.textContent = ` = ${roll.total}`;
+            summary.appendChild(total);
+          }
 
-            if (summary.childElementCount > 0) {
-              tip.prepend(summary);
-            }
+          if (summary.textContent.trim()) {
+            tip.prepend(summary);
           }
 
           if (chain) {
@@ -553,6 +544,7 @@ Hooks.once('init', async function () {
             tip.appendChild(chainLine);
           }
 
+          if (!tip.childElementCount) { tip = null; return; }
           document.body.appendChild(tip);
           document.addEventListener("mouseover", onPointerElsewhere, true);
 

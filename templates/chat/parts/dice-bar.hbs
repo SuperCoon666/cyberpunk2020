@@ -1,20 +1,8 @@
 <div class="cp-bar{{#if soft}} cp-bar-soft{{/if}}">
     <span class="cp-bar-label">{{label}}</span>
     {{#if roll}}
-    <span class="cp-bar-total">{{roll.total}}</span>
+    <a class="cp-inline-roll" data-roll="{{rollData}}"><span class="cp-bar-total">{{roll.total}}</span></a>
     {{#if dc}}<span class="cp-bar-dc">› {{dc}}</span>{{/if}}
-    <span class="flex-pad"></span>
-    <span class="roll-results">
-        {{#each roll.terms as |term|}}
-            {{#if term.results}}
-                {{#each term.results as |die|}}
-                    <span class="roll-result roll die d{{term.faces}}">{{die.result}}</span>
-                {{/each}}
-            {{else}}
-                <span class="roll-result inactive">{{compare term.operator "||" term.number}}</span>
-            {{/if}}
-        {{/each}}
-    </span>
     {{else}}
     <span class="cp-bar-total">{{noRollText}}</span>
     {{/if}}
