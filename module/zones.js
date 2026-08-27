@@ -497,10 +497,36 @@ export class SuppressiveFireBehavior extends foundry.data.regionBehaviors.Region
     await resolveZoneCrossing(this, event.data.token);
   }
 
+  /**
+   * The GM reshaped the zone: the drawn width becomes the declared width. Editing a Region is a
+   * referee action core cannot be told to refuse, so instead of the numbers quietly keeping the
+   * old width's price, the behaviour re-prices itself — rounded to whole metres, floored at the
+   * book's 2, the same `rounds ÷ width` the upkeep runs, which then keeps following the new width
+   * on its own. A zone from before the upkeep reads `rounds: 0` and keeps the price its card
+   * declared. Only behaviour fields are written, never shapes, so this cannot re-fire the
+   * boundary event.
+   *
+   * @this {SuppressiveFireBehavior}
+   */
+  static async #onReshaped() {
+    if (!game.user.isActiveGM) return;
+    if (!isCombatAutomationEnabled()) return;
+    if (!this.rounds) return;
+    const shape = this.parent.region.shapes[0];
+    if (shape?.type !== "rectangle") return;
+    const widthM = Math.max(2, Math.round(shape.width / metresToPixels(1)));
+    if (widthM === this.width) return;
+    await this.parent.update({
+      "system.width": widthM,
+      "system.saveDC": Math.floor(this.rounds / widthM)
+    });
+  }
+
   /** @override */
   static events = {
     [CONST.REGION_EVENTS.TOKEN_MOVE_IN]: this.#onCrossing,
-    [CONST.REGION_EVENTS.TOKEN_MOVE_WITHIN]: this.#onCrossing
+    [CONST.REGION_EVENTS.TOKEN_MOVE_WITHIN]: this.#onCrossing,
+    [CONST.REGION_EVENTS.REGION_BOUNDARY]: this.#onReshaped
   };
 }
 
@@ -761,16 +787,57 @@ async function resolveZoneCrossing(zone, token) {
  * save however far the zone runs — which is why no distance reaches this (D220).
  *
  * The origin is the middle of the near edge (`anchorX: 0, anchorY: 0.5`), which is both where the
- * cursor holds it and what the mouse wheel rotates it around, so the zone stands in front of the
+ * cursor holds it and what the mouse wheel turns it around, so the zone stands in front of the
  * muzzle and swings about it instead of pivoting on a corner.
  *
- * @param {number} width The fire zone's width in scene units — the number the save divides by, and
- *   its only measurement
+ * The plain wheel prices the zone rather than turning it: ±1 metre per notch (wheel up widens),
+ * floored at the book's 2, and capped at the rounds the burst pays with — past that,
+ * rounds ÷ width has nothing left to price and every further metre would be free ground.
+ * Shift+wheel (and Ctrl+wheel, finer) still turns it, through core. The shooter is usually a
+ * player and Region controls belong to the GM, so placement is the one moment the width can be
+ * corrected by the person who declared it; the returned `width` is the number the save must
+ * divide by, which is why the caller reads it back instead of trusting the declaration.
+ *
+ * The unmodified notch cannot ride `placeRegion`'s own `onRotate`: core's mouse routing forwards
+ * a wheel to the active layer only while Ctrl or Shift is held — a plain notch is the canvas
+ * ZOOM and never reaches the region layer. So the re-size is a capture-phase listener armed only
+ * while this placement lives: it consumes plain notches over the board, leaves every modified one
+ * to core's turn, and reaches the layer's placement context because core offers no public way to
+ * reshape a pending placement. The commit sequence is the same three steps core's own wheel
+ * handler runs.
+ *
+ * @param {number} width The fire zone's declared width in scene units — the opening size; the
+ *   wheel may re-price it before the placement is confirmed
  * @param {string} name The region's label while it is being placed
- * @returns {Promise<object|null>} the placed geometry, or null when the placement was dismissed
+ * @param {CyberpunkActor|null} [actor] Whoever is firing — their sheet is the window in the way
+ * @param {number} [rounds] The rounds this burst spends — the wheel's ceiling; 0 leaves the
+ *   width unadjustable (the pre-upkeep card's own behaviour)
+ * @returns {Promise<object|null>} the placed geometry and its final width, or null when the
+ *   placement was dismissed
  */
-export async function placeSuppressionZone(width, name, actor = null) {
-  const side = metresToPixels(width);
+export async function placeSuppressionZone(width, name, actor = null, rounds = 0) {
+  let widthM = Math.max(2, Math.floor(Number(width) || 2));
+
+  const onWheel = (event) => {
+    // The same canvas test armPlacement's click-catcher uses: a scroll over open UI scrolls it.
+    if (event.target !== canvas.app?.view) return;
+    if (event.shiftKey || event.ctrlKey || event.metaKey) return;
+    if (rounds <= 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    widthM = Math.clamp(widthM + Math.sign(-event.deltaY), 2, Math.max(2, rounds));
+    const side = metresToPixels(widthM);
+    const ctx = canvas.regions._placementContext;
+    const shape = ctx?.shape;
+    const doc = ctx?.preview?.document;
+    if (!shape || !doc) return;
+    shape.updateSource({ width: side, height: side });
+    doc.updateSource({ shapes: [...doc.shapes.slice(0, -1), shape] });
+    doc.updateShapeConstraints();
+    ctx.preview.renderFlags.set({ refreshShapes: true });
+  };
+  window.addEventListener("wheel", onWheel, { capture: true, passive: false });
+
   const disarm = await armPlacement(name, null, actor);
   let region;
   try {
@@ -780,21 +847,25 @@ export async function placeSuppressionZone(width, name, actor = null) {
         type: "rectangle",
         x: 0,
         y: 0,
-        width: side,
-        height: side,
+        width: metresToPixels(widthM),
+        height: metresToPixels(widthM),
         anchorX: 0,
         anchorY: 0.5
       }],
       levels: [canvas.level.id],
-      visibility: CONST.REGION_VISIBILITY.ALWAYS
+      visibility: CONST.REGION_VISIBILITY.ALWAYS,
+      // Preview-only (the GM lays the real Region from the card): the live dimensions are the
+      // only readout the resize has, so the shooter watches the width they are paying for.
+      displayMeasurements: true
     }, { create: false, preConfirm: refuseOffMap });
   } finally {
+    window.removeEventListener("wheel", onWheel, { capture: true });
     await disarm();
   }
   if (!region) return null;
 
   const { shapes, levels } = region.toObject();
-  return { sceneId: canvas.scene.id, shapes, levels };
+  return { sceneId: canvas.scene.id, shapes, levels, width: widthM };
 }
 
 /**

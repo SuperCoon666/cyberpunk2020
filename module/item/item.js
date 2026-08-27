@@ -1877,11 +1877,9 @@ export class CyberpunkItem extends Item {
       ui.notifications.warn(localize("NoRateOfFire"));
       return false;
     }
-    const width = Math.max(2, Math.floor(Number(mods.zoneWidth ?? 2)));
+    let width = Math.max(2, Math.floor(Number(mods.zoneWidth ?? 2)));
     const targets = Math.max(1, Math.floor(Number(mods.targetsCount ?? 1)));
 
-    // Floor, not ceil: the book's own worked example is 64 rounds over 5 m for a DC of 12.
-    const saveDC = Math.floor(rounds / width);
     const dmgFormula = sys.damage || "1d6";
 
     let zone = null;
@@ -1897,10 +1895,17 @@ export class CyberpunkItem extends Item {
       // laid before anything is measured and D199's *"the placed centre is the measure"* has
       // nothing to bite on.
       zone = await placeSuppressionZone(width,
-        localizeParam("ZoneName", { weapon: this.name }), this.actor);
+        localizeParam("ZoneName", { weapon: this.name }), this.actor, rounds);
       // Dismissing the placement takes the burst back: nothing has been rolled or spent yet.
       if (!zone) return null;
+      // The wheel may have re-priced the zone during placement: the drawn width is the declared
+      // width now, and everything downstream — the DC, the card, the behaviour — reads it.
+      width = zone.width ?? width;
     }
+
+    // Floor, not ceil: the book's own worked example is 64 rounds over 5 m for a DC of 12.
+    // Computed after placement, so the save prices the width that was actually drawn.
+    const saveDC = Math.floor(rounds / width);
 
     await this.__setWeaponField("shotsLeft", sys.shotsLeft - rounds);
 
