@@ -36,7 +36,8 @@
         {{> "systems/cyberpunk2020/templates/chat/parts/events.hbs" events=t.events pending=t.pendingSave}}
         </div>
         {{else}}
-        {{#unless ../pendingDefense}}<p class="cp-tally">{{CPLocal "NoHits"}}</p>{{/unless}}
+        {{!-- The verdict on the attack bar already states the miss. --}}
+        {{#unless ../pendingDefense}}{{#unless ../attackBar.verdict}}<p class="cp-tally">{{CPLocal "NoHits"}}</p>{{/unless}}{{/unless}}
         {{/if}}
         {{#if t.fumble}}<hr/><div class="fumble-block"><h3>{{t.fumble.title}}</h3>{{{t.fumble.html}}}</div>{{/if}}
     {{/each}}

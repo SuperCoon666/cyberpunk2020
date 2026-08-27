@@ -1,7 +1,7 @@
 import { martialOptions, meleeAttackTypes, meleeBonkOptions, rangedModifiers, stabilizationOptions, weaponTypes, FNFF2_ONLY_MARTIAL_ART_IDS, isCombatAutomationEnabled, isFnff2Enabled, COMBAT_SENSE_SKILL_IDS, INTERFACE_SKILL_IDS, UNARMED_STRIKE_ID, programTypes } from "../lookups.js";
 import { CyberpunkItem } from "../item/item.js";
 import { CyberpunkActor } from "./actor.js";
-import { deleteFieldUpdate, localize, localizeParamEscaped, cwHasType, cwIsEnabled, refusedWhilePaused, withCompendiumSource, zeroEmptyNumberFields } from "../utils.js"
+import { deleteFieldUpdate, localize, localizeParam, localizeParamEscaped, cwHasType, cwIsEnabled, refusedWhilePaused, withCompendiumSource, zeroEmptyNumberFields } from "../utils.js"
 import { ModifiersDialog } from "../dialog/modifiers.js"
 import { SortOrders, sortSkills } from "./skill-sort.js";
 import { getHtmlElement, getRichEditorHTML, itemFromDropData, saveRichEditorHTML } from "../compat.js";
@@ -299,6 +299,59 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
       cwIsEnabled(it) &&
       it.system?.CyberWorkType?.ChipActive === true
     );
+
+    // Wear on the combat tab: highlight and layer tooltip per zone, repair per worn item. The
+    // same composite gate as the subtraction in actor.js, so the tab never shows wear the rules
+    // are not counting.
+    const wearEnabled = isCombatAutomationEnabled()
+      && game.settings.get("cyberpunk2020", "armorAblation");
+    const wearZones = {};
+    const wearItems = {};
+    if (wearEnabled) {
+      for (const armor of sortedItems.armor.filter(a => a.system.equipped)) {
+        let total = 0;
+        for (const [zone, cover] of Object.entries(armor.system.coverage ?? {})) {
+          const sp = Number(cover?.stoppingPower) || 0;
+          if (sp <= 0) continue;
+          const ablation = Math.min(sp, Number(cover?.ablation) || 0);
+          const zoneInfo = wearZones[zone] ??= { worn: false, lines: [] };
+          zoneInfo.lines.push(ablation > 0
+            ? localizeParam("ArmorWearLayerLine", { name: armor.name, sp, ablation, current: sp - ablation })
+            : localizeParam("ArmorLayerLine", { name: armor.name, sp }));
+          if (ablation > 0) {
+            zoneInfo.worn = true;
+            total += ablation;
+          }
+        }
+        if (total > 0) wearItems[armor.id] = { ablation: total };
+      }
+      // Cyber-armor wears the same way; the gate mirrors the layering pass in actor.js.
+      for (const cw of allCyber.filter(c => c.system.equipped && cwIsEnabled(c) && cwHasType(c, "Armor"))) {
+        let total = 0;
+        const cwt = cw.system.CyberWorkType ?? {};
+        for (const [zone, spRaw] of Object.entries(cwt.Locations ?? {})) {
+          const sp = Number(spRaw) || 0;
+          if (sp <= 0) continue;
+          const ablation = Math.min(sp, Number(cwt.Ablation?.[zone]) || 0);
+          const zoneInfo = wearZones[zone] ??= { worn: false, lines: [] };
+          zoneInfo.lines.push(ablation > 0
+            ? localizeParam("ArmorWearLayerLine", { name: cw.name, sp, ablation, current: sp - ablation })
+            : localizeParam("ArmorLayerLine", { name: cw.name, sp }));
+          if (ablation > 0) {
+            zoneInfo.worn = true;
+            total += ablation;
+          }
+        }
+        if (total > 0) wearItems[cw.id] = { ablation: total };
+      }
+      for (const zoneInfo of Object.values(wearZones)) zoneInfo.tooltip = zoneInfo.lines.join("\n");
+    }
+    sheetData.armorWear = {
+      enabled: wearEnabled,
+      zones: wearZones,
+      items: wearItems,
+      showRepairAll: wearEnabled && !foundry.utils.isEmpty(wearItems)
+    };
   }
 
   /** @override */
@@ -333,6 +386,49 @@ export class CyberpunkActorSheet extends HandlebarsApplicationMixin(ActorSheetV2
     this._cpActivateCyberwareControls(root);
     this._cpActivateNetrunningControls(root);
     this._cpActivateActorDragDrop(root);
+    this._cpActivateArmorRepairControls(root);
+  }
+
+  /** Repair writes embedded armor, so ownership is checked per click: the frame element survives
+   * re-renders and the buttons only render while there is wear to clear. */
+  _cpActivateArmorRepairControls(root) {
+    if (!root?.addEventListener) return;
+
+    if (root.dataset.cpArmorRepairBound === "1") return;
+    root.dataset.cpArmorRepairBound = "1";
+
+    root.addEventListener("click", async (event) => {
+      const all = event.target?.closest?.(".armor-repair-all");
+      const one = all ? null : event.target?.closest?.(".armor-repair-item");
+      if ((!all && !one) || !root.contains(all ?? one)) return;
+
+      // Capture-phase stop: the per-item wrench sits inside an `.item-edit` row whose bubble
+      // handler would otherwise open the sheet on the same click.
+      event.preventDefault();
+      event.stopPropagation();
+      if (!this.isEditable) return;
+
+      const targets = all
+        ? [...this.actor.itemTypes.armor.filter(a => a.system.equipped),
+           ...this.actor.itemTypes.cyberware.filter(c => c.system.equipped && cwIsEnabled(c) && cwHasType(c, "Armor"))]
+        : [this.actor.items.get(one.dataset.itemId)].filter(Boolean);
+
+      const updates = [];
+      for (const item of targets) {
+        const update = {};
+        if (item.type === "cyberware") {
+          for (const [zone, abl] of Object.entries(item.system.CyberWorkType?.Ablation ?? {})) {
+            if ((Number(abl) || 0) > 0) update[`system.CyberWorkType.Ablation.${zone}`] = 0;
+          }
+        } else {
+          for (const [zone, cover] of Object.entries(item.system.coverage ?? {})) {
+            if ((Number(cover?.ablation) || 0) > 0) update[`system.coverage.${zone}.ablation`] = 0;
+          }
+        }
+        if (!foundry.utils.isEmpty(update)) updates.push({ _id: item.id, ...update });
+      }
+      if (updates.length) await this.actor.updateEmbeddedDocuments("Item", updates);
+    }, true);
   }
 
   _cpActivateTabs(root) {

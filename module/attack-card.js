@@ -53,8 +53,10 @@ function encodeRoll(record) {
   return encodeURIComponent(JSON.stringify(record));
 }
 
-function diceBar(record, label, { dc = 0, soft = false, noRollText = "" } = {}) {
-  return { label, dc, soft, noRollText, roll: record ? Roll.fromJSON(JSON.stringify(record)) : null,
+function diceBar(record, label, { dc = 0, dcRoll = "", soft = false, noRollText = "",
+  verdict = "", verdictState = "" } = {}) {
+  return { label, dc, dcRoll, soft, noRollText, verdict, verdictState,
+    roll: record ? Roll.fromJSON(JSON.stringify(record)) : null,
     rollData: record ? encodeRoll(record) : "" };
 }
 
@@ -271,6 +273,9 @@ export async function renderAttackCard(attack) {
     buttons.push({ cls: "cp-apply-damage", action: "applyDamage", label: localize("ApplyDamage") });
   }
   const defense = card.defense;
+  const defenseName = defense?.label && defense.action
+    ? localizeParam("DefenseManeuverLabel", { maneuver: localize(defense.action), skill: defense.label })
+    : defense?.label ?? "";
   return renderCyberpunkTemplate(ATTACK_TEMPLATE, {
     // A parametrised title has nothing to look up: the martial card names its own action and art.
     title: card.titleText ?? localize(card.title),
@@ -281,10 +286,19 @@ export async function renderAttackCard(attack) {
     // rounds, and the row is the same row (3.1.3).
     roundsLabel: localize(card.roundsLabel ?? "RoundsLabel"),
     roundsLine: card.roundsLine ?? "",
-    attackBar: card.attackRoll ? diceBar(card.attackRoll, localize("Attack"), { dc: card.dc }) : null,
+    // The defence total is the number the swing had to beat, printed the way the ranged bar
+    // prints its DC; the tie the defender wins is stated by the verdict, never by the numbers.
+    // That number carries the defence die's own tooltip, so the row below names the defence and
+    // prints no second copy of it.
+    attackBar: card.attackRoll ? diceBar(card.attackRoll, localize("Attack"),
+      { dc: card.dc || (defense?.total ?? 0),
+        dcRoll: defense?.roll ? encodeRoll(defense.roll) : "",
+        verdict: card.outcome ? localize(card.outcome === "hit" ? "OutcomeHit" : "OutcomeMiss") : "",
+        verdictState: card.outcome ?? "" }) : null,
     defenseBar: defense
-      ? diceBar(defense.roll, defense.label ? `${localize("Defense")} · ${defense.label}` : localize("Defense"),
-          { soft: true, noRollText: defense.skipped ? localize("DefenseSkippedRow") : localize("DefenseAllOutParryEffect") })
+      ? diceBar(null, defenseName ? `${localize("Defense")} · ${defenseName}` : localize("Defense"),
+          { soft: true, noRollText: defense.roll ? ""
+            : defense.skipped ? localize("DefenseSkippedRow") : localize("DefenseAllOutParryEffect") })
       : null,
     pendingDefense: attack.pending === "defense"
       ? localizeParam("WaitingDefense", { name: attack.targets[0]?.name ?? "" }) : "",

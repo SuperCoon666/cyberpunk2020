@@ -1,6 +1,6 @@
 import { evaluateCyberpunkRoll } from "./compat.js";
 import { damageChain, updateAttackCard, waitForAnswer } from "./attack-card.js";
-import { displayName, localize, localizeParam, rollLocation, isRollableFormula } from "./utils.js";
+import { cwHasType, cwIsEnabled, displayName, localize, localizeParam, rollLocation, isRollableFormula } from "./utils.js";
 import { CyberpunkActor } from "./actor/actor.js";
 import { ATHLETICS_SKILL_ID, isCombatAutomationEnabled } from "./lookups.js";
 import { DefaultRollTemplate, Multiroll } from "./dice.js";
@@ -48,6 +48,9 @@ import { DefaultRollTemplate, Multiroll } from "./dice.js";
  *     also carry `radius` and `fullDamageWithin` (D260): the renderer reads them so the geometry
  *     prints whether or not the shape reached the map, and the apply path reads neither, so the
  *     number stays 17 and an older card simply prints no radius row rather than a wrong one.
+ *     The melee readability pass adds `card.outcome` (the contest's stated verdict) and the
+ *     defence's `action` beside its `label`; the renderer alone reads both, so the number stays
+ *     17 again and an older card simply states no verdict and no maneuver.
  *     The fields of 17 by their reader, because "what the renderer needs" is not a contract:
  *     **the renderer alone** reads `card.title` and the `card.titleText` a martial swing sends in
  *     its place, `card.weaponName`, `card.rangeKey`/`rangeValue`, `card.dc`, `card.attackRoll`,
@@ -348,7 +351,7 @@ export function zoneIsSevered(actor, zone) {
 
 /**
  * Staged Penetration: every worn layer over a zone loses a point of SP per hit that got through it.
- * Written to the armor source here and nowhere else — the layering pass only reads it.
+ * Written to the worn item here and nowhere else in combat: the layering pass only reads it.
  *
  * @param {CyberpunkActor} actor
  * @param {Record<string, number>} hitsByZone Penetrating hits per zone
@@ -374,6 +377,27 @@ async function ablateArmor(actor, hitsByZone, { softOnly = false } = {}) {
     }
 
     if (!foundry.utils.isEmpty(update)) updates.push({ _id: armor.id, ...update });
+  }
+
+  // Cyber-armour wears by the same rule, but it is hard armour by construction (actor.js), so the
+  // soft-only burn wear never reaches it.
+  if (!softOnly) {
+    for (const cw of actor.itemTypes.cyberware) {
+      if (!cw.system.equipped || !cwIsEnabled(cw) || !cwHasType(cw, "Armor")) continue;
+      const cwt = cw.system.CyberWorkType ?? {};
+
+      const update = {};
+      for (const [zone, hits] of Object.entries(hitsByZone)) {
+        const sp = numberOr(cwt.Locations?.[zone], 0);
+        if (sp <= 0) continue;
+
+        const ablation = numberOr(cwt.Ablation?.[zone], 0);
+        if (ablation >= sp) continue;
+        update[`system.CyberWorkType.Ablation.${zone}`] = Math.min(sp, ablation + hits);
+      }
+
+      if (!foundry.utils.isEmpty(update)) updates.push({ _id: cw.id, ...update });
+    }
   }
 
   if (updates.length) await actor.updateEmbeddedDocuments("Item", updates);

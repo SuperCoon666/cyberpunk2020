@@ -120,6 +120,9 @@
     <section class="armor-section">
         <header>
             <h2>{{CPLocal "Armor"}}</h2>
+            {{#if armorWear.showRepairAll}}
+                <button type="button" class="armor-repair-all">{{CPLocal "ArmorRepairAll"}}</button>
+            {{/if}}
         </header>
 
         {{> (template "actor/parts/armor-display") hitLocations=system.hitLocations hitLocsName="hitLocations"}}
@@ -131,14 +134,39 @@
 
         <div class="field-list one-col">
             {{#each gear.armor}}
-            <div class="field item-edit" data-item-id="{{id}}">
+            {{#if system.equipped}}
+            <div class="field armor-item item-edit" data-item-id="{{id}}">
                 <div class="field-image" style="background-image: url({{img}})" data-item-id="{{id}}"></div>
-                <label class="name">{{name}}</label>
-                <span class="flex-pad"></span>
-                <span>
-                    <label class="inactive">{{armorSummary system.coverage}}</label>
-                </span>
+                <label class="name" title="{{name}}">{{name}}</label>
+                {{#with (lookup @root.armorWear.items id) as |wearItem|}}
+                    <span class="armor-wear-chip" title="{{CPLocalParam "AblationCurrent" wearItem}}">{{CPLocalParam "ArmorWearShort" wearItem}}</span>
+                    {{!-- ../id: inside the #with block the context is wearItem, and a bare {{id}}
+                          rendered the attribute empty, so the wrench repaired nothing. --}}
+                    <i class="fas fa-wrench armor-repair-item action" data-item-id="{{../id}}" data-tooltip="{{CPLocal 'ArmorRepair'}}"></i>
+                {{/with}}
+                {{#with (armorSummary system.coverage) as |zones|}}
+                    <label class="armor-zones" title="{{zones}}">{{zones}}</label>
+                {{/with}}
             </div>
+            {{/if}}
+            {{/each}}
+
+            {{!-- Cyber-armor rows: the same gate as the SP layering in actor.js (equipped, enabled,
+                  Armor type), so the list shows exactly what the rules are counting. --}}
+            {{#each gear.cyberware as |cyber|}}
+                {{#if (and (cwHasType cyber.system.CyberWorkType "Armor") (cwIsEnabled cyber) cyber.system.equipped)}}
+                <div class="field armor-item item-edit" data-item-id="{{cyber.id}}">
+                    <div class="field-image" style="background-image: url({{cyber.img}})" data-item-id="{{cyber.id}}"></div>
+                    <label class="name" title="{{cyber.name}}">{{cyber.name}}</label>
+                    {{#with (lookup @root.armorWear.items cyber.id) as |wearItem|}}
+                        <span class="armor-wear-chip" title="{{CPLocalParam "AblationCurrent" wearItem}}">{{CPLocalParam "ArmorWearShort" wearItem}}</span>
+                        <i class="fas fa-wrench armor-repair-item action" data-item-id="{{cyber.id}}" data-tooltip="{{CPLocal 'ArmorRepair'}}"></i>
+                    {{/with}}
+                    {{#with (armorSummary cyber.system.CyberWorkType.Locations) as |zones|}}
+                        <label class="armor-zones" title="{{zones}}">{{zones}}</label>
+                    {{/with}}
+                </div>
+                {{/if}}
             {{/each}}
         </div>
     </section>

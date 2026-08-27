@@ -2,8 +2,9 @@
     <span class="cp-bar-label">{{label}}</span>
     {{#if roll}}
     <a class="cp-inline-roll" data-roll="{{rollData}}"><span class="cp-bar-total">{{roll.total}}</span></a>
-    {{#if dc}}<span class="cp-bar-dc">› {{dc}}</span>{{/if}}
+    {{#if dc}}<span class="cp-bar-dc">› {{#if dcRoll}}<a class="cp-inline-roll" data-roll="{{dcRoll}}">{{dc}}</a>{{else}}{{dc}}{{/if}}</span>{{/if}}
     {{else}}
-    <span class="cp-bar-total">{{noRollText}}</span>
+    {{#if noRollText}}<span class="cp-bar-total">{{noRollText}}</span>{{/if}}
     {{/if}}
+    {{#if verdict}}<span class="cp-verdict cp-verdict-{{verdictState}}">{{verdict}}</span>{{/if}}
 </div>

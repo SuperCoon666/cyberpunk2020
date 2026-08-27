@@ -8,13 +8,6 @@
         </label>
       {{/if}}
 
-      {{!-- Ablation belongs to one armor item, so the buttons live on the editable path only: on the
-            actor sheet the zone's SP is layered from several items and there is no single owner. --}}
-      {{#if ../edit}}
-        <span class="segment-ablate action" title="{{CPLocalParam "AblationCurrent" hitLoc}}" data-hit-loc="{{name}}">-</span>
-        <span class="segment-repair action" title="{{CPLocalParam "AblationCurrent" hitLoc}}" data-hit-loc="{{name}}">+</span>
-      {{/if}}
-
       {{!-- D232 — the limb is gone, and the marker is the only way back from a severance the GM did
             not mean. A destroyed cyberlimb raises the same derived flag off `sdp.current`, and its
             own way back is the SDP box below, so a click that finds no record to clear is inert
@@ -23,16 +16,57 @@
         <i class="fas fa-ban segment-severed" data-tooltip="{{CPLocal "SeveredZoneTooltip"}}" data-hit-loc="{{name}}"></i>
       {{/if}}
 
-      {{!-- The name is emitted only on the editable path: this partial is shared with the armor
-            item sheet, where this input is the real control, while on the actor sheet the same
-            field is derived and submitOnChange would persist it over prepareData's own value. --}}
-      <input
-        type="number"
-        class="segment-sp {{#unless ../edit}}not-editable{{/unless}}"
-        title="{{CPLocal "SPFull"}}"
-        {{#if ../edit}}name="system.{{../hitLocsName}}.{{name}}.stoppingPower"{{/if}}
-        value="{{hitLoc.stoppingPower}}"
-        {{#unless ../edit}}readonly{{/unless}}>
+      {{#if ../edit}}
+        {{#if @root.wear.state}}
+          {{!-- Condition view: the big number is the derived remainder and the wear below is the
+                input. Neither carries a `name`: ablation is written by the sheet handler alone, so
+                the framework's submit never persists a derived value. --}}
+          <input
+            type="number"
+            class="segment-sp not-editable"
+            title="{{CPLocal "ArmorCurrentSP"}}"
+            value="{{lookup (lookup @root.wear.zones name) "current"}}"
+            readonly>
+          <div class="segment-wear-row">
+            {{#if hitLoc.stoppingPower}}
+              <span title="{{CPLocal "SPFull"}}">{{hitLoc.stoppingPower}}</span>
+              <span class="segment-wear-value{{#unless hitLoc.ablation}} zero{{/unless}}">{{CPLocal "ArmorWearPrefix"}}<input
+                type="number"
+                class="segment-wear-input"
+                min="0" max="{{hitLoc.stoppingPower}}" step="1"
+                title="{{CPLocalParam "AblationCurrent" hitLoc}}"
+                {{#if hitLoc.ablation}}value="{{hitLoc.ablation}}"{{/if}} placeholder="0"
+                data-hit-loc="{{name}}"></span>
+            {{/if}}
+          </div>
+        {{else}}
+          {{!-- The name is emitted only on the editable path: this partial is shared with the armor
+                item sheet, where this input is the real control, while on the actor sheet the same
+                field is derived and submitOnChange would persist it over prepareData's own value. --}}
+          <input
+            type="number"
+            class="segment-sp"
+            title="{{CPLocal "SPFull"}}"
+            name="system.{{../hitLocsName}}.{{name}}.stoppingPower"
+            value="{{hitLoc.stoppingPower}}">
+        {{/if}}
+      {{else}}
+        {{#with (lookup @root.armorWear.zones name) as |wz|}}
+          <input
+            type="number"
+            class="segment-sp not-editable{{#if wz.worn}} segment-worn{{/if}}"
+            title="{{wz.tooltip}}"
+            value="{{hitLoc.stoppingPower}}"
+            readonly>
+        {{else}}
+          <input
+            type="number"
+            class="segment-sp not-editable"
+            title="{{CPLocal "SPFull"}}"
+            value="{{hitLoc.stoppingPower}}"
+            readonly>
+        {{/with}}
+      {{/if}}
 
         {{!-- SDP: actors only (system.sdp.sum exists). The sum alone decides: it is the zone's
               maximum, so a zone with no implant has no SDP to show. `current` is the player's own

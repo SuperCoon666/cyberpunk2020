@@ -871,6 +871,8 @@ div.statderive .value.rightborder {
 }
 .cyberpunk-card .cp-bar .cp-bar-total { font-family: "Open Sans ExtraBold", sans-serif; font-variant: normal; }
 .cyberpunk-card .cp-bar .cp-bar-dc { font-weight: 600; opacity: 0.8; font-variant: normal; }
+.cyberpunk-card .cp-bar .cp-verdict { margin-left: auto; font-size: 12px; }
+.cyberpunk-card .cp-bar .cp-verdict-miss { opacity: 0.7; font-weight: 600; }
 .cyberpunk-card .cp-bar a.cp-inline-roll { color: inherit; text-decoration: underline dotted; text-underline-offset: 2px; cursor: help; }
 .cyberpunk-card .cp-bar-soft { background: transparent; color: #111; border-color: transparent; border-bottom: 1px solid rgba(17, 17, 17, 0.18); padding-left: 0; padding-right: 0; }
 .cyberpunk-card .cp-section {
@@ -968,6 +970,13 @@ div.statderive .value.rightborder {
 }
 .combat-tab .armor-section > header {
   margin-left: -10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  /* wrap is the overflow guard: neither the h2 nor the button can shrink below content,
+     so on a narrow sheet the button dropped past the window border instead of down. */
+  flex-wrap: wrap;
+  gap: 2px 8px;
 }
 
 /* The acting section folds away for a table that has its two rolls memorised; the name is the
@@ -1029,11 +1038,219 @@ div.statderive .value.rightborder {
 
 .armor-display .armor-segment .segment-sp,
 .armor-display .armor-segment .segment-sdp-row,
+.armor-display .armor-segment .segment-wear-row,
 .armor-display .armor-segment .segment-name {
   grid-column: 1 / -1 !important;
 }
 
+.armor-display .armor-segment .segment-wear-row {
+  /* Explicit area, not auto-placement: the item card has no loc label, so an auto-placed
+     full-width row landed in the empty loc row above the number instead of below it. */
+  grid-area: wear;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  min-height: 15px;
+}
+
+/* The generic `.field > div > *` padding (5px right, 3px left) made the minus sit closer
+   to the SP than to the input; with it stripped both gaps are the row's own 3px. */
+.armor-display .armor-segment .segment-wear-row > span {
+  padding: 0;
+}
+
+.armor-display .armor-segment .segment-wear-value {
+  /* inline-flex keeps the minus and the input on one line: as a plain inline span the
+     input wrapped under the sign whenever the segment ran narrow. */
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: #d1502f;
+  font-weight: bold;
+}
+
+.armor-display .armor-segment .segment-wear-value.zero {
+  color: inherit;
+  font-weight: normal;
+}
+
+/* The [type="number"] is specificity, not selection: the 24px box of
+   `.cyberpunk .field input[type="number"]` counts its attribute as a class and beat the
+   plain three-class selector this rule started as. */
+.armor-display .armor-segment input[type="number"].segment-wear-input {
+  /* `font: inherit` picks up the row's 11px over core's own input font, and the explicit
+     height beats the 24px `.field input[type="number"]` box that stretched the row;
+     without both, a two-digit value clipped inside the 2.2em box this used to be. */
+  width: 2.8em;
+  height: 16px;
+  line-height: normal;
+  font: inherit;
+  text-align: center;
+  padding: 0;
+  box-sizing: border-box;
+  color: inherit;
+}
+
+/* .cyberpunk outranks the later `.cyberpunk ... .segment-sp { color: black }` block, which
+   otherwise wins on order and keeps the worn zone unhighlighted. */
+.cyberpunk .armor-display .armor-segment .segment-sp.segment-worn {
+  color: #d1502f;
+}
+
+/* Cyber-armor wear rows on the cyberware sheet reuse the segment's vocabulary (printed SP, the
+   orange minus pair) at the field row's own 24px control height, so nothing here restates the
+   segment's cramped sizing. The input takes color and weight from the pair explicitly: form
+   controls inherit neither on their own. */
+.cyberpunk .field .cw-wear-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.cyberpunk .cw-wear-pair .segment-wear-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: #d1502f;
+  font-weight: bold;
+}
+
+.cyberpunk .cw-wear-pair .segment-wear-value.zero {
+  color: inherit;
+  font-weight: normal;
+}
+
+.cyberpunk .cw-wear-pair input[type="number"].segment-wear-input {
+  color: inherit;
+  font-weight: inherit;
+}
+
+.cyberpunk .armor-wear-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+/* The old .field button look, the accel/decel precedent: without it core's dark button
+   palette and fixed --button-size height leak in, which clipped the repair-all label. */
+.cyberpunk .armor-wear-controls button,
+.combat-tab .armor-section > header .armor-repair-all {
+  width: auto;
+  height: auto;
+  margin: 0;
+  line-height: 1.6;
+  padding: 0 10px;
+  border: 2px solid black;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  box-shadow: none;
+  /* Core paints button.active with the focus outline (foundry2.css:4078, 14.365.0), which read
+     as a stray frame on the toggled view; the accel/decel buttons suppress it the same way. */
+  outline: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cyberpunk .wear-view-toggle {
+  display: inline-flex;
+}
+
+.cyberpunk .wear-view-toggle button + button {
+  border-left-width: 0;
+}
+
+.cyberpunk .wear-view-toggle button.active {
+  background: black;
+  color: whitesmoke;
+}
+
+.combat-tab .armor-section > header .armor-repair-all {
+  /* margin-left: auto keeps the button at the right edge when the header wraps it onto
+     its own line, where space-between no longer places it. */
+  margin-left: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 0 6px;
+}
+
+.cyberpunk .armor-wear-controls button:hover,
+.combat-tab .armor-section > header .armor-repair-all:hover {
+  border-color: firebrick;
+  text-shadow: 0 0 6px firebrick;
+}
+
+.combat-tab .armor-section .armor-wear-chip {
+  color: #d1502f;
+  font-weight: bold;
+}
+
+/* The row is a two-line grid, not a flex line: name, chip and wrench above, the zone list on its
+   own full-width line below, so neither ever pushes the other out of the card. min-width: 0 is
+   the real overflow fix: the one-col list is a grid, and its item would not shrink below the
+   min-content of the whole row, which is what walked the text past the border. */
+.combat-tab .armor-section .field-list .field.armor-item {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-areas: "icon name chip wrench" "icon zones zones zones";
+  align-items: center;
+}
+.combat-tab .armor-section .field.armor-item > .field-image {
+  grid-area: icon;
+  align-self: stretch;
+}
+.combat-tab .armor-section .field.armor-item > label.name {
+  grid-area: name;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.combat-tab .armor-section .field.armor-item > .armor-zones {
+  grid-area: zones;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 10px;
+  padding-top: 0;
+  /* Muted by color, not by `.inactive`: that class is `filter: opacity`, and on this label the
+     black row background would fade with the text into a grey band. Normal weight over the row's
+     bold is width: it is what lets a five-zone list fit the line in ru. */
+  font-weight: normal;
+  color: rgb(245 245 245 / 0.5);
+}
+.combat-tab .armor-section .field.armor-item > .armor-wear-chip {
+  grid-area: chip;
+}
+.combat-tab .armor-section .field.armor-item > .armor-repair-item {
+  grid-area: wrench;
+  /* Stretched, not centered: the glyph box is shorter than the grid row, and the field behind it
+     is transparent, so an unstretched icon sat in a parchment gap that read as a hole punched
+     into the black row. */
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding: 0 5px 0 3px;
+}
+
+/* The d10 hit-range label: its grey-on-black text does not survive the segment's scale, so
+   on the combat tab it read as an empty black stripe over every zone. The item card never
+   renders it (coverage has no `location`), so this hides it everywhere it appeared. */
+.combat-tab .armor-display .armor-segment .segment-loc {
+  display: none;
+}
+
 .armor-display .armor-segment .segment-sdp-row {
+  /* Pinned, not auto-placed: with the loc label hidden on the combat tab, auto-placement
+     moved this row into the freed first grid row, above the SP. */
+  grid-area: sdp;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -1234,9 +1451,9 @@ div.statderive .value.rightborder {
   border: solid black;
   border-width: 2px 2px 0px 2px;
   display: grid;
-  grid-template-rows: auto auto 1fr;
+  grid-template-rows: auto auto auto 1fr auto;
   grid-template-columns: 1fr 2fr 1fr;
-  grid-template-areas: "loc loc loc" "ablate sp repair" "name name name";
+  grid-template-areas: "loc loc loc" "ablate sp repair" "wear wear wear" "name name name" "sdp sdp sdp";
 }
 .cyberpunk .armor-display .armor-segment .segment-sp {
   grid-area: sp;
@@ -1251,12 +1468,6 @@ div.statderive .value.rightborder {
   color: black;
   font-family: "Noto Sans", sans-serif;
 }
-.cyberpunk .armor-display .armor-segment .segment-ablate {
-  grid-area: ablate;
-}
-.cyberpunk .armor-display .armor-segment .segment-repair {
-  grid-area: repair;
-}
 .cyberpunk .armor-display .armor-segment .segment-severed {
   grid-area: ablate;
   align-self: center;
@@ -1269,16 +1480,6 @@ div.statderive .value.rightborder {
      control rather than a picture; the box it covers is readonly on the actor sheet. */
   position: relative;
   z-index: 1;
-}
-.cyberpunk .armor-display .armor-segment .segment-ablate, .cyberpunk .armor-display .armor-segment .segment-repair {
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
-  line-height: 100%;
-  display: none;
-}
-.cyberpunk .armor-display .armor-segment:hover .segment-ablate, .cyberpunk .armor-display .armor-segment:hover .segment-repair {
-  display: inline;
 }
 .cyberpunk .armor-display .armor-segment .segment-name {
   grid-area: name;

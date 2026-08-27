@@ -114,6 +114,7 @@ const DEFAULT_CYBERWARE = {
     Skill: {},
     Checks: {},
     Locations: {},
+    Ablation: {},
     Encumbrance: 0,
     Penalties: {},
     Link: "",

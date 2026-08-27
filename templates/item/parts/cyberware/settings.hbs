@@ -255,6 +255,19 @@
       <span class="flex-pad"></span>
     </div>
 
+    {{#if cw.wear.enabled}}
+      <div class="armor-wear-controls span-two-cells">
+        <span class="wear-view-toggle">
+          <button type="button" data-wear-view="passport" class="{{#unless cw.wear.state}}active{{/unless}}">{{CPLocal "ArmorViewPassport"}}</button>
+          <button type="button" data-wear-view="state" class="{{#if cw.wear.state}}active{{/if}}">{{CPLocal "ArmorViewState"}}</button>
+        </span>
+        {{#if cw.wear.hasWear}}
+          <button type="button" class="armor-repair-item">{{CPLocal "ArmorRepair"}}</button>
+        {{/if}}
+      </div>
+    {{/if}}
+
+    {{#unless cw.wear.state}}
     <div class="field">
       <label>{{CPLocal "CWT_AddLocation"}}</label>
       <span class="flex-pad"></span>
@@ -263,6 +276,7 @@
         {{#each cw.locationRemain as |l|}}<option value="{{l.key}}">{{l.label}}</option>{{/each}}
       </select>
     </div>
+    {{/unless}}
 
     <div class="field">
       <label>{{CPLocal "CWT_Armor_Encumbrance"}}</label>
@@ -272,13 +286,31 @@
     </div>
 
     {{#each cw.currentLocations as |l|}}
-      <div class="field">
-        <label>{{l.label}}</label>
-        <span class="flex-pad"></span>
-        <input type="number" class="smallnumber" name="system.CyberWorkType.Locations.{{l.key}}" placeholder="0"
-               value="{{#if (equals (lookup ../system.CyberWorkType.Locations l.key) 0)}}{{else}}{{lookup ../system.CyberWorkType.Locations l.key}}{{/if}}">
-        <a class="button danger cw-remove-location" data-key="{{l.key}}">x</a>
-      </div>
+      {{#if @root.cw.wear.state}}
+        {{!-- Condition view, the segment's vocabulary in one line: printed SP, the wear input,
+              and the derived remainder in the slot the passport view's SP input holds. Neither
+              input carries a `name`; the sheet handler is the wear's only persistence path. --}}
+        <div class="field">
+          <label>{{l.label}}</label>
+          <span class="flex-pad"></span>
+          <span class="cw-wear-pair"><span title="{{CPLocal "SPFull"}}">{{l.sp}}</span><span
+              class="segment-wear-value{{#unless l.ablation}} zero{{/unless}}">{{CPLocal "ArmorWearPrefix"}}<input
+              type="number" class="segment-wear-input smallnumber"
+              min="0" max="{{l.sp}}" step="1"
+              title="{{CPLocalParam "AblationCurrent" l}}"
+              {{#if l.ablation}}value="{{l.ablation}}"{{/if}} placeholder="0"
+              data-hit-loc="{{l.key}}"></span></span>
+          <input type="number" class="smallnumber" title="{{CPLocal "ArmorCurrentSP"}}" value="{{l.current}}" readonly>
+        </div>
+      {{else}}
+        <div class="field">
+          <label>{{l.label}}</label>
+          <span class="flex-pad"></span>
+          <input type="number" class="smallnumber" name="system.CyberWorkType.Locations.{{l.key}}" placeholder="0"
+                 value="{{#if (equals (lookup ../system.CyberWorkType.Locations l.key) 0)}}{{else}}{{lookup ../system.CyberWorkType.Locations l.key}}{{/if}}">
+          <a class="button danger cw-remove-location" data-key="{{l.key}}">x</a>
+        </div>
+      {{/if}}
     {{/each}}
 
     <div class="field span-two-cells">

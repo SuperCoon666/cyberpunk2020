@@ -1,4 +1,5 @@
 import { deepLookup, localize, properCase, replaceIn, shortLocalize, cwIsEnabled as cwIsEnabledFn } from "./utils.js"
+import { HIT_LOCATION_KEYS } from "./constants.js"
 
 const templatePath = "systems/cyberpunk2020/templates/";
 export function registerHandlebarsHelpers() {
@@ -190,10 +191,13 @@ export function registerHandlebarsHelpers() {
      * For each string, will look it up as a localization, with "Short" appended if possible, then join with "|"
     **/
     Handlebars.registerHelper("armorSummary", function(armorCoverage) {
-        return Object.keys(armorCoverage)
-            .filter(key => armorCoverage[key].stoppingPower > 0)
-            .map(shortLocalize)
-            .join("|");
+        // Two shapes share the zone keys: armor coverage ({zone: {stoppingPower}}) and
+        // cyber-armor Locations ({zone: sp}).
+        const covered = Object.keys(armorCoverage)
+            .filter(key => (Number(armorCoverage[key]?.stoppingPower ?? armorCoverage[key]) || 0) > 0);
+        // The six-zone list outgrows its line in ru; full coverage reads better as one word anyway.
+        if (HIT_LOCATION_KEYS.every(key => covered.includes(key))) return localize("ArmorZonesAll");
+        return covered.map(shortLocalize).join("|");
     });
 
     /**

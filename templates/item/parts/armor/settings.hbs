@@ -1,3 +1,14 @@
+{{#if wear.enabled}}
+<div class="armor-wear-controls">
+    <span class="wear-view-toggle">
+        <button type="button" data-wear-view="passport" class="{{#unless wear.state}}active{{/unless}}">{{CPLocal "ArmorViewPassport"}}</button>
+        <button type="button" data-wear-view="state" class="{{#if wear.state}}active{{/if}}">{{CPLocal "ArmorViewState"}}</button>
+    </span>
+    {{#if wear.hasWear}}
+        <button type="button" class="armor-repair-item">{{CPLocal "ArmorRepair"}}</button>
+    {{/if}}
+</div>
+{{/if}}
 {{> (template "actor/parts/armor-display") hitLocations=system.coverage edit=true hitLocsName="coverage"}}
 <div class="field-list one-col">
     {{> (template "fields/number") label="Encumbrance" edit="system.encumbrance"}}

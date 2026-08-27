@@ -313,9 +313,11 @@ export class CyberpunkActor extends Actor {
     // Cyber-armor: collecting SP layers (then we'll calculate them all together)
     for (const cw of cwArmorItems) {
       const locs = cw.system?.CyberWorkType?.Locations || {};
+      const abl = cw.system?.CyberWorkType?.Ablation || {};
       for (const [areaKey, sp] of Object.entries(locs)) {
         const loc = system.hitLocations[areaKey];
-        const addSP = Number(sp) || 0;
+        const ablated = ablationEnabled ? Number(abl[areaKey]) || 0 : 0;
+        const addSP = (Number(sp) || 0) - ablated;
         if (!loc || addSP <= 0) continue;
 
         if (!armorLayersByArea[areaKey]) armorLayersByArea[areaKey] = [];

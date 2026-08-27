@@ -1,4 +1,4 @@
-import { weaponTypes, meleeAttackTypes, rangedAttackTypes, attackSkills, concealability, availability, reliability, getStatNames, programTypes, effectiveRange, AMMO_ROUNDS_PER_BOX } from "../lookups.js";
+import { weaponTypes, meleeAttackTypes, rangedAttackTypes, attackSkills, concealability, availability, reliability, getStatNames, programTypes, effectiveRange, AMMO_ROUNDS_PER_BOX, isCombatAutomationEnabled } from "../lookups.js";
 import { formulaHasDice } from "../dice.js";
 import { deleteFieldUpdate, localize, localizeParam, localizeParamEscaped, cwHasType, getSkillIndex, zeroEmptyNumberFields } from "../utils.js";
 import { createCyberpunkChatMessage, getHtmlElement, getPublicMessageMode, getRichEditorHTML, saveRichEditorHTML, rollToCyberpunkChatMessage } from "../compat.js";
@@ -357,7 +357,18 @@ export class CyberpunkItemSheet extends HandlebarsApplicationMixin(ItemSheetV2) 
   }
 
   _prepareArmor(sheet) {
-    
+    const enabled = isCombatAutomationEnabled()
+      && game.settings.get("cyberpunk2020", "armorAblation");
+    const view = this._cpArmorWearView ?? "state";
+    const zones = {};
+    let hasWear = false;
+    for (const [zone, cover] of Object.entries(this.item.system.coverage ?? {})) {
+      const sp = Number(cover?.stoppingPower) || 0;
+      const ablation = Number(cover?.ablation) || 0;
+      if (ablation > 0) hasWear = true;
+      zones[zone] = { current: Math.max(0, sp - ablation) };
+    }
+    sheet.wear = { enabled, state: enabled && view === "state", hasWear, zones };
   }
 
 /**
@@ -452,8 +463,19 @@ async _prepareCyberware(sheet) {
   const PENALTY_KEYS = STAT_KEYS;
 
   const locObj = cwt.Locations ?? {};
-  sheet.cw.currentLocations = Object.keys(locObj).map((k) => ({ key: k, label: findLabel(LOCATION_KEYS, k) }));
+  const ablObj = cwt.Ablation ?? {};
+  const wearEnabled = isCombatAutomationEnabled()
+    && game.settings.get("cyberpunk2020", "armorAblation");
+  const wearView = this._cpArmorWearView ?? "state";
+  let hasWear = false;
+  sheet.cw.currentLocations = Object.keys(locObj).map((k) => {
+    const sp = Number(locObj[k]) || 0;
+    const ablation = Math.min(sp, Number(ablObj[k]) || 0);
+    if (ablation > 0) hasWear = true;
+    return { key: k, label: findLabel(LOCATION_KEYS, k), sp, ablation, current: Math.max(0, sp - ablation) };
+  });
   sheet.cw.locationRemain = LOCATION_KEYS.filter((l) => !(l.key in locObj));
+  sheet.cw.wear = { enabled: wearEnabled, state: wearEnabled && wearView === "state", hasWear };
 
   const penObj = cwt.Penalties ?? {};
   sheet.cw.currentPenalties = Object.keys(penObj).map((k) => ({ key: k, label: findLabel(PENALTY_KEYS, k) }));
@@ -737,34 +759,74 @@ async _prepareCyberware(sheet) {
     this._cpActivateAmmoControls(root);
     this._cpActivateWeaponControls(root);
     this._cpActivateSkillItemControls(root);
-    this._cpActivateArmorAblationControls(root);
+    this._cpActivateArmorWearControls(root);
   }
 
-  /** The ablate/repair buttons carry no `name`, so this handler is their only persistence path. */
-  _cpActivateArmorAblationControls(root) {
+  /**
+   * The condition view's wear input carries no `name`, so this handler is its only persistence
+   * path; the view toggle is sheet-local display state, not document data.
+   */
+  _cpActivateArmorWearControls(root) {
     if (!root?.addEventListener) return;
-    if (this.item.type !== "armor" || !this.isEditable) return;
+    if (this.item.type !== "armor" && this.item.type !== "cyberware") return;
 
-    if (root.dataset.cpAblationBound === "1") return;
-    root.dataset.cpAblationBound = "1";
+    if (root.dataset.cpArmorWearBound === "1") return;
+    root.dataset.cpArmorWearBound = "1";
 
     root.addEventListener("click", async (event) => {
-      const button = event.target?.closest?.(".segment-ablate, .segment-repair");
-      if (!button || !root.contains(button)) return;
+      const toggle = event.target?.closest?.("[data-wear-view]");
+      if (toggle && root.contains(toggle)) {
+        event.preventDefault();
+        event.stopPropagation();
+        this._cpArmorWearView = toggle.dataset.wearView;
+        this.render();
+        return;
+      }
 
+      const repair = event.target?.closest?.(".armor-repair-item");
+      if (!repair || !root.contains(repair)) return;
       event.preventDefault();
       event.stopPropagation();
+      // The frame element survives re-renders, so permissions are checked per click, not at bind.
+      if (!this.isEditable) return;
 
-      const zone = button.dataset.hitLoc;
-      const cover = this.item.system.coverage?.[zone];
-      if (!cover) return;
+      const update = {};
+      if (this.item.type === "cyberware") {
+        for (const [zone, abl] of Object.entries(this.item.system.CyberWorkType?.Ablation ?? {})) {
+          if ((Number(abl) || 0) > 0) update[`system.CyberWorkType.Ablation.${zone}`] = 0;
+        }
+      } else {
+        for (const [zone, cover] of Object.entries(this.item.system.coverage ?? {})) {
+          if ((Number(cover?.ablation) || 0) > 0) update[`system.coverage.${zone}.ablation`] = 0;
+        }
+      }
+      if (!foundry.utils.isEmpty(update)) await this.item.update(update);
+    }, true);
 
-      const step = button.classList.contains("segment-ablate") ? 1 : -1;
-      const sp = Number(cover.stoppingPower) || 0;
-      const next = Math.min(sp, Math.max(0, (Number(cover.ablation) || 0) + step));
-      if (next === (Number(cover.ablation) || 0)) return;
+    root.addEventListener("change", async (event) => {
+      const input = event.target?.closest?.(".segment-wear-input");
+      if (!input || !root.contains(input)) return;
+      event.stopPropagation();
+      if (!this.isEditable) return;
 
-      await this.item.update({ [`system.coverage.${zone}.ablation`]: next });
+      // The two carriers store wear apart: armor inside each coverage zone, cyber-armor in an
+      // Ablation object beside its Locations.
+      const zone = input.dataset.hitLoc;
+      const cyber = this.item.type === "cyberware";
+      const cwt = cyber ? this.item.system.CyberWorkType ?? {} : null;
+      const cover = cyber ? null : this.item.system.coverage?.[zone];
+      if (cyber ? !(zone in (cwt.Locations ?? {})) : !cover) return;
+
+      const sp = Number(cyber ? cwt.Locations[zone] : cover.stoppingPower) || 0;
+      const stored = Number(cyber ? cwt.Ablation?.[zone] : cover.ablation) || 0;
+      const next = Math.min(sp, Math.max(0, Math.round(Number(input.value) || 0)));
+      // A clamped or unparseable entry that lands on the stored value writes nothing, so the
+      // re-render is what snaps the display back to it.
+      if (next === stored) return this.render();
+
+      await this.item.update({
+        [cyber ? `system.CyberWorkType.Ablation.${zone}` : `system.coverage.${zone}.ablation`]: next
+      });
     }, true);
   }
 
@@ -1175,6 +1237,9 @@ async _prepareCyberware(sheet) {
 
       if (control.matches(".cw-remove-location")) {
         await this._cpDeleteCyberwarePath(`system.CyberWorkType.Locations.${key}`);
+        // The zone's wear record goes with it, or re-adding the zone would resurrect stale wear.
+        if (this.item.system.CyberWorkType?.Ablation?.[key] !== undefined)
+          await this._cpDeleteCyberwarePath(`system.CyberWorkType.Ablation.${key}`);
         return;
       }
 
@@ -2559,6 +2624,10 @@ async _prepareCyberware(sheet) {
 
       this._cpSkillItemControlsRoot = null;
       this._cpSkillItemControlsHandler = null;
+
+      // The ruled default is the condition view at open, so a toggled passport view does not
+      // outlive the window it was toggled in.
+      delete this._cpArmorWearView;
     } catch (_) {}
 
     return super._preClose(options);

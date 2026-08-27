@@ -2139,7 +2139,7 @@ export class CyberpunkItem extends Item {
       const card = {
         title: "MeleeAttackTitle", weaponName: CyberpunkItem.__weaponLabel(this.name, this.actor),
         rangeKey: "", rangeValue: 0, dc: 0,
-        attackRoll: rollRecord(attackRoll), defense: null,
+        attackRoll: rollRecord(attackRoll), defense: null, outcome: null,
         tally: null, fumble: null, uncovered: ""
       };
 
@@ -2217,10 +2217,14 @@ export class CyberpunkItem extends Item {
 
       const targets = [{ token: targetTokens[0], hits }];
       card.defense = defense
-        ? { label: defense.label, roll: defense.roll ? rollRecord(defense.roll) : null,
+        ? { label: defense.label, action: defense.action || null,
+            roll: defense.roll ? rollRecord(defense.roll) : null,
             total: defense.total, skipped: !!defense.skipped }
         : null;
       card.fumble = fumble;
+      // Only a resolved outcome is stated: an uncontested swing (no automation, no target) stays
+      // an announcement (D22), so the verdict prints when a contest or a fumble decided the swing.
+      card.outcome = defense || fumble ? (hit ? "hit" : "miss") : null;
       const attack = this.__attackPayload({ card, targets, ammo: null, fireMode: "", range: "" });
       // One opposed check is one message with two rolls: the card draws the defense die from the
       // payload either way, but only a message roll is animated and stored (`T40`). D163's
@@ -2422,7 +2426,7 @@ export class CyberpunkItem extends Item {
         { action: localize(action), martialArt: martialArtLabel }),
       weaponName: flavor,
       rangeKey: "", rangeValue: 0, dc: 0,
-      attackRoll: rollRecord(attackRoll), defense: null,
+      attackRoll: rollRecord(attackRoll), defense: null, outcome: null,
       tally: null, fumble: null, uncovered: ""
     };
 
@@ -2470,10 +2474,13 @@ export class CyberpunkItem extends Item {
 
     const targets = [{ token: targetTokens[0], hits }];
     card.defense = defense
-      ? { label: defense.label, roll: defense.roll ? rollRecord(defense.roll) : null,
+      ? { label: defense.label, action: defense.action || null,
+          roll: defense.roll ? rollRecord(defense.roll) : null,
           total: defense.total, skipped: !!defense.skipped }
       : null;
     card.fumble = fumble;
+    // The same resolved-outcome rule as __meleeBonk (D22): only a contest or a fumble states one.
+    card.outcome = defense || fumble ? (hit ? "hit" : "miss") : null;
     const attack = this.__attackPayload({ card, targets, ammo: null, fireMode: "", range: "" });
     // One opposed check is one message with two rolls (`T40`); D163's All-Out Parry is the one
     // defence with no die to add.
