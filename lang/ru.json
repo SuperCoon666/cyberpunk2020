@@ -476,6 +476,7 @@
     "CYBERPUNK.PlacementPending": "Разместите на карте: {name}.",
     "CYBERPUNK.PlacementClickCaught": "Этот клик попал в окно, а не в карту. Отодвинь окно и щёлкни там, где должно быть размещение.",
     "CYBERPUNK.PlacementOffMap": "Эта точка за пределами карты. Ставьте на самой сцене: край эффекта может выходить за неё, центр — нет.",
+    "CYBERPUNK.ZoneWidthHint": "Колесо мыши задаёт ширину зоны. Shift+колесо поворачивает её.",
     "CYBERPUNK.HiddenWeapon": "Невидимое оружие",
     "CYBERPUNK.AttackInFlight": "Эта атака всё ещё ждёт защиту цели.",
     "CYBERPUNK.MoveRun": "Бег",

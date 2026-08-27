@@ -476,6 +476,7 @@
     "CYBERPUNK.PlacementPending": "Place {name} on the map.",
     "CYBERPUNK.PlacementClickCaught": "That click went to a window, not the map. Move it aside, then click where the placement should land.",
     "CYBERPUNK.PlacementOffMap": "That point is off the map. Place it on the scene itself — the effect may hang over the edge, its centre may not.",
+    "CYBERPUNK.ZoneWidthHint": "Mouse wheel sets the zone width. Shift+wheel turns it.",
     "CYBERPUNK.HiddenWeapon": "Unseen weapon",
     "CYBERPUNK.AttackInFlight": "That attack is still waiting for the defender.",
     "CYBERPUNK.MoveRun": "Run",

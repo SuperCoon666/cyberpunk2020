@@ -1895,12 +1895,12 @@ export class CyberpunkItem extends Item {
       // laid before anything is measured and D199's *"the placed centre is the measure"* has
       // nothing to bite on.
       zone = await placeSuppressionZone(width,
-        localizeParam("ZoneName", { weapon: this.name }), this.actor, rounds);
+        localizeParam("ZoneName", { weapon: this.name }), this.actor);
       // Dismissing the placement takes the burst back: nothing has been rolled or spent yet.
       if (!zone) return null;
       // The wheel may have re-priced the zone during placement: the drawn width is the declared
-      // width now, and everything downstream — the DC, the card, the behaviour — reads it.
-      width = zone.width ?? width;
+      // width now, and the DC, the card and the behaviour all read it.
+      width = zone.width;
     }
 
     // Floor, not ceil: the book's own worked example is 64 rounds over 5 m for a DC of 12.

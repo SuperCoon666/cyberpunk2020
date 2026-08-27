@@ -500,11 +500,13 @@ export class SuppressiveFireBehavior extends foundry.data.regionBehaviors.Region
   /**
    * The GM reshaped the zone: the drawn width becomes the declared width. Editing a Region is a
    * referee action core cannot be told to refuse, so instead of the numbers quietly keeping the
-   * old width's price, the behaviour re-prices itself — rounded to whole metres, floored at the
-   * book's 2, the same `rounds ÷ width` the upkeep runs, which then keeps following the new width
-   * on its own. A zone from before the upkeep reads `rounds: 0` and keeps the price its card
-   * declared. Only behaviour fields are written, never shapes, so this cannot re-fire the
-   * boundary event.
+   * old width's price, the behaviour re-prices itself, rounded to whole metres and floored at the
+   * book's 2, and the turn upkeep then follows the new width on its own. A zone laid before that
+   * upkeep existed reads `rounds: 0` and keeps the price its card declared.
+   *
+   * The card is left as it was posted: it records the burst that was fired, while the behaviour is
+   * what a crossing is priced by. Only behaviour fields are written, never shapes, so this cannot
+   * re-fire the boundary event.
    *
    * @this {SuppressiveFireBehavior}
    */
@@ -512,14 +514,24 @@ export class SuppressiveFireBehavior extends foundry.data.regionBehaviors.Region
     if (!game.user.isActiveGM) return;
     if (!isCombatAutomationEnabled()) return;
     if (!this.rounds) return;
-    const shape = this.parent.region.shapes[0];
+    const shape = this.region.shapes[0];
     if (shape?.type !== "rectangle") return;
-    const widthM = Math.max(2, Math.round(shape.width / metresToPixels(1)));
+    // `height`, not `width`: the zone is anchored at the middle of its near edge (`anchorX: 0`,
+    // `anchorY: 0.5`), so the x axis runs downrange and the y axis is the frontage a crossing
+    // token has to get through. D220 prices that one and leaves the depth free.
+    const widthM = Math.max(2, Math.round(shape.height / metresToPixels(1)));
     if (widthM === this.width) return;
-    await this.parent.update({
-      "system.width": widthM,
-      "system.saveDC": Math.floor(this.rounds / widthM)
-    });
+
+    const update = { "system.width": widthM };
+    // The upkeep re-prices a zone whose magazine could not pay for the whole burst and records
+    // only the price, never the rounds that bought it, so the declared burst is the right divisor
+    // just while the standing DC is still the one it produced. Past that the width is written
+    // alone and the shooter's next upkeep sets the price, from the number it knows and this does
+    // not.
+    if (this.saveDC === Math.floor(this.rounds / this.width)) {
+      update["system.saveDC"] = Math.floor(this.rounds / widthM);
+    }
+    await this.behavior.update(update);
   }
 
   /** @override */
@@ -787,58 +799,60 @@ async function resolveZoneCrossing(zone, token) {
  * save however far the zone runs — which is why no distance reaches this (D220).
  *
  * The origin is the middle of the near edge (`anchorX: 0, anchorY: 0.5`), which is both where the
- * cursor holds it and what the mouse wheel turns it around, so the zone stands in front of the
+ * cursor holds it and what Shift+wheel turns it around, so the zone stands in front of the
  * muzzle and swings about it instead of pivoting on a corner.
  *
- * The plain wheel prices the zone rather than turning it: ±1 metre per notch (wheel up widens),
- * floored at the book's 2, and capped at the rounds the burst pays with — past that,
- * rounds ÷ width has nothing left to price and every further metre would be free ground.
- * Shift+wheel (and Ctrl+wheel, finer) still turns it, through core. The shooter is usually a
- * player and Region controls belong to the GM, so placement is the one moment the width can be
- * corrected by the person who declared it; the returned `width` is the number the save must
- * divide by, which is why the caller reads it back instead of trusting the declaration.
+ * The plain wheel prices the zone rather than turning it: 1 metre a notch, wheel up widens,
+ * floored at the book's 2 and open above it, the way the dialog's own width field is. The shooter
+ * is usually a player and Region controls belong to the GM, so placement is the one moment the
+ * width can be corrected by whoever declared it, and the returned `width` is the number the save
+ * must divide by, which is why the caller reads it back instead of trusting the declaration.
+ * Shift+wheel (and Ctrl+wheel, finer) still turns it, through core.
  *
- * The unmodified notch cannot ride `placeRegion`'s own `onRotate`: core's mouse routing forwards
- * a wheel to the active layer only while Ctrl or Shift is held — a plain notch is the canvas
- * ZOOM and never reaches the region layer. So the re-size is a capture-phase listener armed only
- * while this placement lives: it consumes plain notches over the board, leaves every modified one
- * to core's turn, and reaches the layer's placement context because core offers no public way to
- * reshape a pending placement. The commit sequence is the same three steps core's own wheel
- * handler runs.
+ * The unmodified notch cannot ride `placeRegion`'s own `onRotate`: core forwards a wheel to the
+ * active layer only while Ctrl or Shift is held, and a plain notch is the canvas zoom instead
+ * (`MouseManager`'s wheel handler, `client/helpers/interaction/mouse-manager.mjs:44-57`,
+ * 14.365.0), so it never reaches the region layer. The resize is therefore a capture-phase
+ * listener living only as long as this placement: it takes the plain notches over the board,
+ * leaves every modified one to core, and reaches the layer's placement context because core
+ * offers no public way to reshape a pending placement. The three writes are the ones core makes
+ * in its own wheel handler (`client/canvas/layers/regions.mjs:995-999`).
  *
- * @param {number} width The fire zone's declared width in scene units — the opening size; the
- *   wheel may re-price it before the placement is confirmed
+ * @param {number} width The fire zone's declared width in scene units: the opening size, which the
+ *   wheel may re-price before the placement is confirmed
  * @param {string} name The region's label while it is being placed
- * @param {CyberpunkActor|null} [actor] Whoever is firing — their sheet is the window in the way
- * @param {number} [rounds] The rounds this burst spends — the wheel's ceiling; 0 leaves the
- *   width unadjustable (the pre-upkeep card's own behaviour)
- * @returns {Promise<object|null>} the placed geometry and its final width, or null when the
- *   placement was dismissed
+ * @param {CyberpunkActor|null} [actor] Whoever is firing, whose sheet is the window in the way
+ * @returns {Promise<object|null>} the placed geometry and the width it was drawn at, or null when
+ *   the placement was dismissed
  */
-export async function placeSuppressionZone(width, name, actor = null, rounds = 0) {
+export async function placeSuppressionZone(width, name, actor = null) {
   let widthM = Math.max(2, Math.floor(Number(width) || 2));
 
   const onWheel = (event) => {
     // The same canvas test armPlacement's click-catcher uses: a scroll over open UI scrolls it.
     if (event.target !== canvas.app?.view) return;
     if (event.shiftKey || event.ctrlKey || event.metaKey) return;
-    if (rounds <= 0) return;
-    event.preventDefault();
-    event.stopPropagation();
-    widthM = Math.clamp(widthM + Math.sign(-event.deltaY), 2, Math.max(2, rounds));
-    const side = metresToPixels(widthM);
+    // Read before the notch is consumed, so a placement context core has already torn down leaves
+    // the wheel to its own zoom rather than silently moving a width nothing will draw.
     const ctx = canvas.regions._placementContext;
     const shape = ctx?.shape;
     const doc = ctx?.preview?.document;
     if (!shape || !doc) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    widthM = Math.max(2, widthM + Math.sign(-event.deltaY));
+    const side = metresToPixels(widthM);
     shape.updateSource({ width: side, height: side });
     doc.updateSource({ shapes: [...doc.shapes.slice(0, -1), shape] });
     doc.updateShapeConstraints();
     ctx.preview.renderFlags.set({ refreshShapes: true });
   };
-  window.addEventListener("wheel", onWheel, { capture: true, passive: false });
 
-  const disarm = await armPlacement(name, null, actor);
+  const disarm = await armPlacement(name, localize("ZoneWidthHint"), actor);
+  // Armed after the cue rather than before it: a throw in there would otherwise leave the listener
+  // on `window`, swallowing every plain notch over the board for the rest of the session.
+  window.addEventListener("wheel", onWheel, { capture: true, passive: false });
   let region;
   try {
     region = await canvas.regions.placeRegion({
@@ -853,10 +867,7 @@ export async function placeSuppressionZone(width, name, actor = null, rounds = 0
         anchorY: 0.5
       }],
       levels: [canvas.level.id],
-      visibility: CONST.REGION_VISIBILITY.ALWAYS,
-      // Preview-only (the GM lays the real Region from the card): the live dimensions are the
-      // only readout the resize has, so the shooter watches the width they are paying for.
-      displayMeasurements: true
+      visibility: CONST.REGION_VISIBILITY.ALWAYS
     }, { create: false, preConfirm: refuseOffMap });
   } finally {
     window.removeEventListener("wheel", onWheel, { capture: true });
