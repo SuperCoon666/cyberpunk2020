@@ -70,7 +70,7 @@
             <div class="fire-weapon field action" data-item-id="{{weapon.id}}">
             {{!-- D106 — the icon is its own action (it opens the item), so it is not `.no-action`. --}}
             <div class="field-image item-edit" style="background-image: url({{weapon.img}})" data-item-id="{{weapon.id}}"></div>
-            <label class="name">{{weapon.name}}</label>
+            <label class="name" title="{{weapon.name}}">{{weapon.name}}</label>
             <span class="flex-pad"></span>
             <span>
                 {{#with weapon.system}}
@@ -85,7 +85,7 @@
             {{#if (and (cwHasType cyber.system.CyberWorkType "Weapon") (cwIsEnabled cyber))}}
                 <div class="fire-weapon field action" data-item-id="{{cyber.id}}">
                 <div class="field-image item-edit" style="background-image: url({{cyber.img}})" data-item-id="{{cyber.id}}"></div>
-                <label class="name">{{cyber.name}}</label>
+                <label class="name" title="{{cyber.name}}">{{cyber.name}}</label>
                 <span class="flex-pad"></span>
                 <span>
                 {{#with cyber.system.CyberWorkType.Weapon}}
@@ -106,7 +106,7 @@
         {{#each system.deployedCharges as |charge|}}
             <div class="detonate-charge field action" data-charge-id="{{charge.id}}" data-tooltip="{{CPLocal 'DetonateHint'}}">
             <div class="no-action field-image" style="background-image: url({{charge.img}})"></div>
-            <label class="name">{{charge.name}}</label>
+            <label class="name" title="{{charge.name}}">{{charge.name}}</label>
             <span class="flex-pad"></span>
             <span>
                 <div class="field-label inactive">{{CPLocal "Detonate"}}</div>

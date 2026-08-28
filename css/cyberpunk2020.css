@@ -902,12 +902,16 @@ div.statderive .value.rightborder {
    rule and gutter that divide it from the acting column, so neither column is wider than the
    content asks for.
 
-   `--cp-combat-col` is the narrowest column either list in the acting half will accept. A row is
-   allowed to wrap — the ru save label takes two lines here and is meant to, the way a weapon's name
-   and type already do — so the number is the width at which text stops *fitting*: below it a single
-   token is wider than the box and paints over the value beside it. Measured as the last width at
-   which nothing clips: en 124px, ru 168px, and 180px is that with a margin. Both lists read it,
-   because they have to split at the same width or the half reads as two unrelated grids.
+   `--cp-combat-col` is the narrowest column either list in the acting half will accept. A rolls row
+   is allowed to wrap (the ru save label takes two lines here and is meant to), so the number is the
+   width at which text stops *fitting*: below it a single token is wider than the box and paints
+   over the value beside it. Measured as the last width at which nothing clips: en 124px, ru 168px,
+   and 180px is that with a margin. Both lists read it, because they have to split at the same width
+   or the half reads as two unrelated grids.
+
+   A weapons row is **not** held by this number and no longer wraps: it carries two long tokens side
+   by side, its name's and its type's, so the sum is what has to fit and one measured token never
+   answered for it. Its type takes a line of its own instead, at `.combat-tab .weapons-list` below.
 
    It is the two maintained locales that set it. `it` (122px) clears it and `es` (194px, its save
    label is a translated sentence) does not, and that is accepted rather than paid for: a locale
@@ -1396,11 +1400,60 @@ div.statderive .value.rightborder {
 .combat-tab .weapons-list > header {
   grid-column: 1 / -1;
 }
-/* A weapon's type is the right-hand end of its row, so when the column is narrow enough to wrap it
-   the second line has to end there too — left-aligned, a wrapped type leaves a gap against the
-   border it was reading against. */
+/* `--cp-combat-col` is the width at which one long token still fits, but a flex row put two of them
+   side by side: the name's longest word and the type's. In ru «(Встроенный)» (106px) beside
+   «Автоматический» (127px) needs 243px of a 187px track, and a flex child keeps `min-width: auto`,
+   so the type painted 50px past the row and over the next column. Truncating both cured that and
+   cost too much text, so the type moved to a line of its own instead (owner, 2026-08-28): the same
+   two-row grid the armour rows below already use, where the icon spans both lines and the name has
+   the whole first one. `minmax(0, 1fr)` on the text column is what keeps the row inside its track,
+   and `min-width: 0` carries that floor into the children, because a grid item's own automatic
+   minimum is still its longest word. */
+.combat-tab .weapons-list .field {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "icon name trash" "icon type trash";
+  align-items: center;
+  /* The row paints its own black now: a grid cell no child covers showed as parchment inside it. */
+  background-color: black;
+}
+.combat-tab .weapons-list .field > * {
+  min-width: 0;
+}
+.combat-tab .weapons-list .field > .field-image {
+  grid-area: icon;
+  align-self: stretch;
+}
+.combat-tab .weapons-list .field > label.name {
+  grid-area: name;
+}
+/* The spacer is a flex device and the row is no longer one. */
+.combat-tab .weapons-list .field > .flex-pad {
+  display: none;
+}
+.combat-tab .weapons-list .field > span:not(.flex-pad) {
+  grid-area: type;
+}
+.combat-tab .weapons-list .field > .charge-remove {
+  grid-area: trash;
+}
+/* Two lines and then an ellipsis: with the whole row to itself a name that still overruns is long
+   enough that a third line would set the height of every row beside it. The full name is on the
+   label's own `title`. */
+.combat-tab .weapons-list .field > label.name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+/* A weapon's type is the right-hand end of its row, so that is where its own line ends too.
+   `anywhere` is the floor under the wrap: a token wider than the column is broken rather than
+   silently cut in half, which is what `overflow: hidden` does to it on its own. */
 .combat-tab .weapons-list .field-label {
   text-align: right;
+  overflow: hidden;
+  overflow-wrap: anywhere;
 }
 
 /* Below this the acting column can no longer hold one weapon row beside the armour: the armour
@@ -2675,35 +2728,53 @@ div.statderive .value.rightborder {
 }
 
 
+/* The negative margin is the container's own padding, so the strip meets the 3px border on three
+   sides. */
+
+.netrun-active-programs-container > .netrun-label {
+
+  background-color: black;
+
+  color: whitesmoke;
+
+  padding: 4px 8px 5px;
+
+  margin: -6px -6px 6px;
+
+}
+
+
 .netrun-active-icons {
 
   display: flex;
 
   flex-wrap: wrap;
 
-  gap: 8px;
+  gap: 6px;
 
-  margin-top: 5px;
+  padding: 6px;
 
-
-  min-height: 100px;
+  min-height: 72px;
 
   border: 2px dashed #999;
-
-  margin-bottom: 15px;
 
 }
 
 
+/* 72px: under the netrunner's own 80px frame at the top of the tab, and carrying that frame's
+   #ddd and 2px #333, so a program reads as the same kind of icon one size down (owner,
+   2026-08-28). The floor above no longer tracks it: a filled row is taller than 72px, so it now
+   only holds the empty drop zone open. */
+
 .netrun-active-icon {
 
-  width: 120px;
+  width: 72px;
 
-  height: 120px;
+  height: 72px;
 
-  border: 2px solid black;
+  border: 2px solid #333;
 
-  background-color: #ccc;
+  background-color: #ddd;
 
   display: flex;
 
@@ -2746,6 +2817,16 @@ div.statderive .value.rightborder {
 
 }
 
+/* `1fr` is `minmax(auto, 1fr)`, and the auto minimum is the row's own min-content: in ru the tracks
+   resolved to 324px and 398px inside a 626px box, and `.window-content`'s `overflow-x: hidden` cut
+   the right column off the sheet. A zero floor is what makes the truncation below reachable. */
+
+.cyberpunk .netrun-program-list {
+
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+
+}
+
 /* Each program (tile) - background on the whole area */
 
 .field.netrun-program {
@@ -2773,11 +2854,21 @@ div.statderive .value.rightborder {
 
 .field.netrun-program .program-left {
 
-  display: flex;
+  display: grid;
+
+  grid-template-columns: auto minmax(0, 1fr);
+
+  grid-template-areas: "icon name" "icon type";
 
   align-items: center;
 
-  gap: 8px;
+  gap: 2px 8px;
+
+}
+
+.field.netrun-program .program-left > img {
+
+  grid-area: icon;
 
 }
 
@@ -2818,9 +2909,10 @@ div.statderive .value.rightborder {
 }
 
 
-/* The row overflows its column by ~15px from 760px down (measured), so the name is the part that
-
-   gives: everything else is short and must stay on one line. */
+/* The row overflows its column, so the name and the type are the parts that give: the icon, the MU
+   and the two buttons are fixed and must stay on one line. Truncating both onto that one line cost
+   too much text, so the type took a line of its own instead (owner, 2026-08-28), on the same
+   two-row grid the weapons rows use. The full name is on the label's own `title`. */
 
 .field.netrun-program .program-left {
 
@@ -2831,22 +2923,38 @@ div.statderive .value.rightborder {
 }
 
 
+/* Two lines and then an ellipsis: a name that overruns the whole row is long enough that a third
+   line would set the height of every row beside it. */
+
 .field.netrun-program .program-name {
+
+  grid-area: name;
+
+  min-width: 0;
+
+  display: -webkit-box;
+
+  -webkit-box-orient: vertical;
+
+  -webkit-line-clamp: 2;
+
+  overflow: hidden;
+
+}
+
+
+/* `anywhere` is the floor under the wrap: a token wider than the column is broken rather than
+   silently cut in half, which is what `overflow: hidden` does to it on its own. */
+
+.field.netrun-program .program-type {
+
+  grid-area: type;
 
   min-width: 0;
 
   overflow: hidden;
 
-  text-overflow: ellipsis;
-
-  white-space: nowrap;
-
-}
-
-
-.field.netrun-program .program-type {
-
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 
 }
 
@@ -2860,19 +2968,16 @@ div.statderive .value.rightborder {
 }
 
 
-/* Everything in the row but the name measures 218px, and the name truncates, so two columns stay
-
-   readable well below the 760px the cyberware tab uses. Scoped with .cyberpunk because the list
-
-   also carries .field-list, whose two-column rule is (0,2,0) — a container query does not raise
-
-   specificity. */
+/* Below this a row has nothing left to truncate and the whole column reads as ellipses. Scoped with
+   .cyberpunk because the list also carries .field-list, whose two-column rule is (0,2,0) and a
+   container query does not raise specificity; the zero floor is carried over for the same reason it
+   is set above. */
 
 @container (max-width: 620px) {
 
   .cyberpunk .netrun-program-list {
 
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
 
   }
 
