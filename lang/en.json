@@ -918,8 +918,7 @@
     "CYBERPUNK.AmmoPenHalvesHint": "An AP round meets half the armor's SP and then has what gets through divided — 0.5 in both armor multipliers, 2 in the divisor. Each box decides whether the division applies against that class of armor; turn both off and there is no division at all.",
     "CYBERPUNK.AmmoSlugHint": "A finned slug has normal AP ability against all armors, and the damage that penetrates hard armor is not halved — leave the hard armor box clear. Armor-piercing, Slug and Mono edge are one family: a round carries one of them, never two.",
     "CYBERPUNK.AmmoMonoHint": "A mono edge cuts armor instead of punching through it: SP counts as one third against soft armor and two thirds against hard, and the damage that gets through is not halved. The book states the fractions, so there is nothing here to set.",
-    "CYBERPUNK.AmmoAPFamilyExclusive": "A round carries one armor-piercing type — Armor-piercing, Slug or Mono edge, never two.",
-    "CYBERPUNK.WeaponAPMonoExclusive": "A blade carries one edge — armor-piercing or mono, not both.",
+    "CYBERPUNK.ExclusiveOptionCleared": "Choosing {chosen} removed {removed}.",
     "CYBERPUNK.AmmoStunOnHitHint": "A hit demands a Stun Save, and the save number drops 2 for every successive shot within three combat rounds. Unless the charge ignores armor, only a hit that got past the armor asks for one.",
 
     "CYBERPUNK.AmmoArmorMultSoft": "Soft armor multiplier",

@@ -21,6 +21,36 @@ const MAX_DOT_TICKS = 10;
 const AP_FAMILY_EFFECTS = new Set(["AP", "Slug", "Mono"]);
 
 /**
+ * The stock rounds a GM builds (D52), not the mechanisms behind them. `migrateData` renames a
+ * world's existing values into these, so nothing here has to answer for the old spellings.
+ */
+const AMMO_EFFECT_KEYS = {
+  Standard: "AmmoEffect_Standard",
+  AP: "AmmoEffect_AP",
+  Slug: "AmmoEffect_Slug",
+  Mono: "AmmoEffect_Mono",
+  Electroshock: "AmmoEffect_Electroshock",
+  Incendiary: "AmmoEffect_Incendiary",
+  Buckshot: "AmmoEffect_Buckshot",
+  Blast: "AmmoEffect_Blast",
+  DamageReplace: "AmmoEffect_DamageReplace"
+};
+
+/**
+ * Р-22: an exclusive choice names the option it removed and the choice that removed it, rather
+ * than restating the rule: the cleared box is never on screen long enough to be read (measured,
+ * `T415`). The keys are the labels of the sheet the boxes are on, so the round and the blade each
+ * speak their own vocabulary (`T499`), and the list is formatted because one tick can clear two
+ * carriers of the armour-piercing family.
+ */
+function warnExclusiveCleared(chosenKey, clearedKeys) {
+  ui.notifications.warn(localizeParam("ExclusiveOptionCleared", {
+    chosen: localize(chosenKey),
+    removed: game.i18n.getListFormatter().format(clearedKeys.map((key) => localize(key)))
+  }));
+}
+
+/**
  * Ch. 07's own numbers for the two carriers that have any to author, written when the effect is
  * **selected**: stock is the book's round and the GM edits from there (owner, 2026-08-22).
  *
@@ -277,23 +307,9 @@ export class CyberpunkItemSheet extends HandlebarsApplicationMixin(ItemSheetV2) 
       ? sys.effectTypes
       : (sys.effectTypes ? [sys.effectTypes] : ["Standard"]);
 
-    // The stock rounds a GM builds (D52), not the mechanisms behind them. `migrateData` renames a
-    // world's existing values into these, so nothing here has to answer for the old spellings.
-    const effectKeyMap = {
-      Standard: "AmmoEffect_Standard",
-      AP: "AmmoEffect_AP",
-      Slug: "AmmoEffect_Slug",
-      Mono: "AmmoEffect_Mono",
-      Electroshock: "AmmoEffect_Electroshock",
-      Incendiary: "AmmoEffect_Incendiary",
-      Buckshot: "AmmoEffect_Buckshot",
-      Blast: "AmmoEffect_Blast",
-      DamageReplace: "AmmoEffect_DamageReplace"
-    };
-
     sheet.ammoFx = {
       typeLabels: (effectTypes.length ? effectTypes : ["Standard"])
-        .map(t => localize(effectKeyMap[t] ?? "AmmoEffect_Standard"))
+        .map(t => localize(AMMO_EFFECT_KEYS[t] ?? "AmmoEffect_Standard"))
     };
   }
 
@@ -879,11 +895,15 @@ async _prepareCyberware(sheet) {
       : checkbox.name.replace(/\.mono$/, ".ap");
     const other = root.querySelector(`input[name="${otherName}"]`);
 
+    // The two boxes are labelled `AP` and `WeaponMono` on both surfaces, which is not what the
+    // round calls the same family (`T499`): the message names the box the author is looking at.
+    const edgeLabelKey = (name) => name.endsWith(".ap") ? "AP" : "WeaponMono";
+
     const update = { [checkbox.name]: checkbox.checked };
     if (checkbox.checked && other?.checked) {
       other.checked = false;
       update[otherName] = false;
-      ui.notifications.warn(localize("WeaponAPMonoExclusive"));
+      warnExclusiveCleared(edgeLabelKey(checkbox.name), [edgeLabelKey(otherName)]);
     }
 
     // No re-render: both boxes render unconditionally on a melee weapon now, so nothing changes
@@ -2003,9 +2023,14 @@ async _prepareCyberware(sheet) {
 
     const boxes = Array.from(menu.querySelectorAll("input[type='checkbox']"));
 
-    // A plain round excludes every real effect, in both directions.
+    // A plain round excludes every real effect, in both directions. Only the direction that
+    // removes authored choices says so (Р-22): a real effect clearing `Standard` takes away the
+    // absence of an effect, which is not something the author chose.
     if (checkbox.value === "Standard" && checkbox.checked) {
+      const cleared = boxes.filter((box) => box.checked && box.value !== "Standard");
       for (const box of boxes) box.checked = box.value === "Standard";
+      if (cleared.length) warnExclusiveCleared(AMMO_EFFECT_KEYS[checkbox.value],
+        cleared.map((box) => AMMO_EFFECT_KEYS[box.value]));
     } else if (checkbox.checked) {
       const plain = boxes.find((box) => box.value === "Standard");
       if (plain) plain.checked = false;
@@ -2018,17 +2043,21 @@ async _prepareCyberware(sheet) {
     if (checkbox.checked && (checkbox.value === "Buckshot" || checkbox.value === "Blast")) {
       const other = checkbox.value === "Buckshot" ? "Blast" : "Buckshot";
       const box = boxes.find((entry) => entry.value === other);
-      if (box) box.checked = false;
+      if (box?.checked) {
+        box.checked = false;
+        warnExclusiveCleared(AMMO_EFFECT_KEYS[checkbox.value], [AMMO_EFFECT_KEYS[other]]);
+      }
     }
 
     // D172/D174 — AP, Slug and Mono are three carriers of one armour-piercing family, so a round
-    // takes one. Warned rather than silently swapped, unlike the pair above: the box that clears is
+    // takes one. Warned like every other exclusive choice on this sheet: the box that clears is
     // not the one clicked.
     if (checkbox.checked && AP_FAMILY_EFFECTS.has(checkbox.value)) {
       const cleared = boxes.filter((entry) => entry.checked && entry !== checkbox
         && AP_FAMILY_EFFECTS.has(entry.value));
       for (const box of cleared) box.checked = false;
-      if (cleared.length) ui.notifications.warn(localize("AmmoAPFamilyExclusive"));
+      if (cleared.length) warnExclusiveCleared(AMMO_EFFECT_KEYS[checkbox.value],
+        cleared.map((box) => AMMO_EFFECT_KEYS[box.value]));
     }
 
     let next = boxes.filter((box) => box.checked).map((box) => box.value);
