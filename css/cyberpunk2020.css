@@ -2083,7 +2083,6 @@ div.statderive .value.rightborder {
   display: flex;
   align-items: center;
   overflow: hidden;
-  white-space: nowrap;
   text-overflow: ellipsis;
 }
 
