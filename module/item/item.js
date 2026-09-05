@@ -808,14 +808,18 @@ export class CyberpunkItem extends Item {
   }
 
   /**
-   * Whether the card is worth storing its payload on. With automation off, with nobody targeted or
-   * with nothing that landed there is nothing for the apply path to read, and the card would carry
-   * a button over a breakdown of nothing. The card itself is posted either way.
-   *
-   * @param {object[]} targets The entries handed to `__attackPayload`
+   * Whether the card stores its payload. With automation off nothing will ever read it, so the
+   * card is posted bare, as `postAttackCard` says. With automation on it is stored whatever the
+   * outcome: the payload is the card's own record of the shot - its targets, its rounds, the
+   * fumble ruling - and not only the apply path's work order. A miss stores the same shape with
+   * `hits: []`, which every reader already takes in its stride: the apply path files nothing due,
+   * `renderAttackCard` offers no button without a hit, and the defence contest below stores that
+   * very shape on purpose while it waits. What a bare card cost was the record itself - anything
+   * reading the card after the fact (an add-on presenting the shot, a later transition) had a
+   * hit to work from and nothing for a miss.
    */
-  static __storesAttack(targets) {
-    return isCombatAutomationEnabled() && targets.some(t => t.token && t.hits.length > 0);
+  static __storesAttack() {
+    return isCombatAutomationEnabled();
   }
 
   /**
@@ -1666,7 +1670,7 @@ export class CyberpunkItem extends Item {
       },
       targets, ammo, fireMode: attackMods.fireMode, range: attackMods.range
     });
-    return postAttackCard({ attack, store: CyberpunkItem.__storesAttack(targets),
+    return postAttackCard({ attack, store: CyberpunkItem.__storesAttack(),
       rolls: shots.map(shot => shot.attackRoll) });
   }
 
@@ -1786,7 +1790,7 @@ export class CyberpunkItem extends Item {
         },
         targets, ammo, fireMode: attackMods.fireMode, range: attackMods.range
       });
-      return postAttackCard({ attack, store: CyberpunkItem.__storesAttack(targets), rolls });
+      return postAttackCard({ attack, store: CyberpunkItem.__storesAttack(), rolls });
   }
 
   async __threeRoundBurst(attackMods, targetTokens = []) {
@@ -1856,7 +1860,7 @@ export class CyberpunkItem extends Item {
       }
       return postAttackCard({
         attack,
-        store: CyberpunkItem.__storesAttack(targets),
+        store: CyberpunkItem.__storesAttack(),
         rolls: [attackRoll]
       });
   }
@@ -2130,7 +2134,7 @@ export class CyberpunkItem extends Item {
       });
       return postAttackCard({
         attack,
-        store: CyberpunkItem.__storesAttack(targets),
+        store: CyberpunkItem.__storesAttack(),
         rolls: [attackRoll]
       });
   }
@@ -2239,7 +2243,7 @@ export class CyberpunkItem extends Item {
       }
       return postAttackCard({
         attack,
-        store: CyberpunkItem.__storesAttack(targets),
+        store: CyberpunkItem.__storesAttack(),
         rolls: defense?.roll ? [attackRoll, defense.roll] : [attackRoll]
       });
   }
@@ -2494,7 +2498,7 @@ export class CyberpunkItem extends Item {
     }
     return postAttackCard({
       attack,
-      store: CyberpunkItem.__storesAttack(targets),
+      store: CyberpunkItem.__storesAttack(),
       rolls: defense?.roll ? [attackRoll, defense.roll] : [attackRoll]
     });
   }
